@@ -7,6 +7,7 @@ cd "$(dirname "$0")/.."          # 仓库根 /kf/medaudit
 PKGSRC=packaging
 SRC=/tmp/medaudit-dist/medaudit-0.25.0-m23
 OUT="${1:-/tmp/medaudit-dist}"
+mkdir -p "$OUT"
 WORK=$(mktemp -d)
 ROOTFS=$WORK/rootfs
 trap 'rm -rf "$WORK"' EXIT
