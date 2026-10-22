@@ -16,12 +16,14 @@
         </button>
       </form>
     </div>
+    <SiteFooter class="login-footer" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
 import { api } from '../api'
+import SiteFooter from '../components/SiteFooter.vue'
 
 const emit = defineEmits<{ success: [username: string] }>()
 const username = ref('admin')
@@ -45,7 +47,8 @@ async function submit() {
 </script>
 
 <style scoped>
-.login-wrap { display: flex; justify-content: center; padding-top: 10vh; }
+.login-wrap { display: flex; flex-direction: column; align-items: center; padding-top: 10vh; }
+.login-footer { width: 340px; }
 .login-card { width: 340px; padding: 28px 30px; }
 .login-card h1 { font-size: 19px; margin: 0 0 4px; }
 .login-card .sub { color: #666; font-size: 13px; margin: 0 0 18px; }

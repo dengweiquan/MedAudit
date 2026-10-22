@@ -234,13 +234,13 @@ var mwBuiltinRules = []builtinRule{
 	},
 	{
 		spec: RuleSpec{
-			ID: "mw.tomcat.tls_weak", Version: "1",
+			ID: "mw.tomcat.tls_weak", Version: "2",
 			Name:        "Tomcat TLS 启用了弱协议",
 			Target:      facts.TargetMWTomcat,
-			Description: "Connector 的 SSLProtocol 含 TLSv1/TLSv1.1/SSL 或为 all（含弱协议）。",
+			Description: "Connector 的 TLS 协议配置（SSLHostConfig protocols / sslProtocol / SSLProtocol）含 TLSv1/TLSv1.1/SSL 或为 all（含弱协议）。",
 			Requires:    []facts.FactKind{facts.FactServiceConfig},
 			Risk:        RiskMedium,
-			Remediation: "SSLProtocol 收紧为 TLSv1.2 起（建议 TLSv1.2,TLSv1.3）。",
+			Remediation: "TLS 协议配置收紧为 TLSv1.2 起（建议 TLSv1.2,TLSv1.3）。",
 		},
 		check: func(c *EvalContext) []CheckHit {
 			var hits []CheckHit
@@ -255,7 +255,7 @@ var mwBuiltinRules = []builtinRule{
 				if strings.EqualFold(proto, "all") {
 					hits = append(hits, CheckHit{
 						Subject: f.Subject,
-						Detail:  fmt.Sprintf("Connector %s SSLProtocol=all（含弱协议）", f.Subject),
+						Detail:  fmt.Sprintf("Connector %s 协议配置=all（含弱协议）", f.Subject),
 						Evidence: []string{f.FactID},
 					})
 					continue

@@ -2,10 +2,40 @@ package rules
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"medaudit/internal/facts"
 )
+
+// isRootConfiguredUser 判断 systemd 配置用户是否为 root 本人：名称形式
+// "root" 与数值形式 "0" 等价（如 user@0.service 的 User 经 systemctl
+// show 返回实例 uid "0"，其进程 EUID=0 属正常，不构成不一致）。
+func isRootConfiguredUser(u string) bool {
+	if u == "root" {
+		return true
+	}
+	n, err := strconv.Atoi(u)
+	return err == nil && n == 0
+}
+
+// configuredUserDisplay 配置用户的展示形式：数值 uid 加 "uid " 前缀，
+// 避免「配置用户 0，但实际 EUID=0」式自相矛盾的表述。
+func configuredUserDisplay(u string) string {
+	if _, err := strconv.Atoi(u); err == nil {
+		return "uid " + u
+	}
+	return u
+}
+
+// rootMismatchDetail root_mismatch 的命中说明：含单元（采集事实带
+// unit 属性时）、配置用户与进程名，不再出现无主体的裸表述。
+func rootMismatchDetail(f facts.Fact, cfgUser string) string {
+	if unit := f.Attributes["unit"]; unit != "" {
+		return fmt.Sprintf("服务 %s 配置用户 %s，但进程 %s 实际 EUID=0", unit, configuredUserDisplay(cfgUser), f.Attributes["comm"])
+	}
+	return fmt.Sprintf("进程 %s 配置用户 %s，但实际 EUID=0", f.Attributes["comm"], configuredUserDisplay(cfgUser))
+}
 
 // DefaultRegistry 返回注册了 M2 内置规则的注册表。
 func DefaultRegistry() *Registry {
@@ -55,10 +85,10 @@ var builtinRules = []builtinRule{
 	// ---------- OS Linux ----------
 	{
 		spec: RuleSpec{
-			ID: "os.linux.root_mismatch", Version: "1",
+			ID: "os.linux.root_mismatch", Version: "2",
 			Name:        "服务配置用户与实际运行身份不一致",
 			Target:      facts.TargetOSLinux,
-			Description: "systemd 配置的 User 为非 root，但进程实际 EUID=0（启动者不等于运行者）。",
+			Description: "systemd 配置的 User 为非 root 用户（名称或数值 uid），但进程实际 EUID=0（启动者不等于运行者）。",
 			Requires:    []facts.FactKind{facts.FactProcess},
 			Risk:        RiskHigh,
 			Remediation: "检查服务启动方式与提权路径，按基线修正配置或补例外说明。",
@@ -66,14 +96,14 @@ var builtinRules = []builtinRule{
 		check: func(c *EvalContext) []CheckHit {
 			var hits []CheckHit
 			for _, f := range c.ByKind[facts.FactProcess] {
-				cfgUser := f.Attributes["configured_user"]
-				if cfgUser == "" || cfgUser == "root" {
+				cfgUser := strings.TrimSpace(f.Attributes["configured_user"])
+				if cfgUser == "" || isRootConfiguredUser(cfgUser) {
 					continue
 				}
 				if f.Attributes["euid"] == "0" {
 					hits = append(hits, CheckHit{
 						Subject:  f.Subject,
-						Detail:   fmt.Sprintf("配置用户 %s，但实际 EUID=0（%s）", cfgUser, f.Attributes["comm"]),
+						Detail:   rootMismatchDetail(f, cfgUser),
 						Evidence: []string{f.FactID},
 					})
 				}

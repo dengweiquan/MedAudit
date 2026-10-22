@@ -108,3 +108,44 @@ func TestOracleDBARole(t *testing.T) {
 		t.Fatal("DBA 角色未被检出")
 	}
 }
+
+func TestLinuxRootMismatch(t *testing.T) {
+	proc := func(attrs map[string]string) facts.Fact {
+		return facts.Fact{FactID: "f-p1", Kind: facts.FactProcess, Subject: "h/boot/1/1",
+			Status: facts.StatusObserved, Attributes: attrs}
+	}
+	hit := func(fs []facts.Fact) (bool, string) {
+		for _, r := range DefaultRegistry().Evaluate(testBundle(facts.TargetOSLinux, fs), &Baseline{}) {
+			if r.RuleID == "os.linux.root_mismatch" && r.Conclusion == facts.ConclusionFail {
+				return true, r.Detail
+			}
+		}
+		return false, ""
+	}
+	// 数值 "0" 即 root 本人（如 user@0.service），不得误报
+	if found, _ := hit([]facts.Fact{proc(map[string]string{
+		"configured_user": "0", "euid": "0", "comm": "systemd",
+	})}); found {
+		t.Fatal("configured_user=0 被误报 root_mismatch")
+	}
+	// 命名非 root 用户 + EUID=0 → 命中，文案含单元与配置用户
+	found, detail := hit([]facts.Fact{proc(map[string]string{
+		"configured_user": "app", "euid": "0", "comm": "java", "unit": "app.service",
+	})})
+	if !found {
+		t.Fatal("命名用户不一致未被检出")
+	}
+	if want := "服务 app.service 配置用户 app，但进程 java 实际 EUID=0"; detail != want {
+		t.Fatalf("文案不符：got %q want %q", detail, want)
+	}
+	// 数值非 root uid + EUID=0 → 命中，文案以 uid 形式表述
+	found, detail = hit([]facts.Fact{proc(map[string]string{
+		"configured_user": "1000", "euid": "0", "comm": "svc",
+	})})
+	if !found {
+		t.Fatal("数值 uid 不一致未被检出")
+	}
+	if want := "进程 svc 配置用户 uid 1000，但实际 EUID=0"; detail != want {
+		t.Fatalf("文案不符：got %q want %q", detail, want)
+	}
+}

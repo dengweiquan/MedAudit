@@ -2,8 +2,9 @@ name: release
 
 # 推送 v* 标签即在 GitHub 托管机上从源码构建 deb/rpm 并创建 Release（挂包）。
 # 说明文案取 release-notes/<标签>.md（无则自动生成）。
-# 版本号目前同时写在 packaging/deb/control、packaging/medaudit.spec 与
-# packaging/build-packages.sh 中，发新版时三处一并 bump（与本地发版流程一致）。
+# 版本号只有一个入口：由标签派生后同时传给 package.sh 与
+# packaging/build-packages.sh，后者按派生规则生成 deb/rpm 版本串
+# （control/spec 中为占位符），仓库内不再硬编码版本号。
 
 on:
   push:
@@ -48,7 +49,7 @@ jobs:
           TAG="${{ inputs.tag || github.ref_name }}"
           VER="${TAG#v}"
           bash package.sh "$VER"
-          bash packaging/build-packages.sh "$PWD/out"
+          bash packaging/build-packages.sh "$PWD/out" "$VER"
           ls -lh out/
 
       - name: Create or update GitHub Release

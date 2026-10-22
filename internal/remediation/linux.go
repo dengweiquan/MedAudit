@@ -67,15 +67,23 @@ func linuxRootMismatch(subject string, ev []facts.Fact) *Script {
 	cfgUser := f.Attributes["configured_user"]
 	comm := f.Attributes["comm"]
 	exe := f.Attributes["exe"]
+	unitRef := "<单元>"
+	if u := f.Attributes["unit"]; u != "" {
+		unitRef = u
+	}
+	precheck := fmt.Sprintf("ps -eo user,euid,comm,args | grep -F %s | grep -v grep; systemctl list-units --type=service | grep -i %s", sq(comm), comm)
+	if unitRef != "<单元>" {
+		precheck = fmt.Sprintf("systemctl cat %s; systemctl show %s -p User,MainPID; ps -eo user,euid,comm,args | grep -F %s | grep -v grep", unitRef, unitRef, sq(comm))
+	}
 	return &Script{
 		RuleID: "os.linux.root_mismatch", Subject: subject,
-		Precheck: fmt.Sprintf("ps -eo user,euid,comm,args | grep -F %s | grep -v grep; systemctl list-units --type=service | grep -i %s", sq(comm), comm),
-		Fix: "-- 指导型整改：单元配置用户为 " + cfgUser + "，进程实际 EUID=0，两条对齐路径二选一（先定位单元：systemctl cat <单元>）：\n" +
-			"-- (a) 让服务真正以配置用户运行（推荐）：确认二进制与数据目录属主允许 " + cfgUser + " 读写后，检查单元是否被 override/启动脚本以 root 拉起并修正，然后 systemctl daemon-reload && systemctl restart <单元>；\n" +
+		Precheck: precheck,
+		Fix: "-- 指导型整改：单元配置用户为 " + cfgUser + "，进程实际 EUID=0，两条对齐路径二选一（单元：" + unitRef + "，systemctl cat " + unitRef + "）：\n" +
+			"-- (a) 让服务真正以配置用户运行（推荐）：确认二进制与数据目录属主允许 " + cfgUser + " 读写后，检查单元是否被 override/启动脚本以 root 拉起并修正，然后 systemctl daemon-reload && systemctl restart " + unitRef + "；\n" +
 			"-- (b) 若业务确需 root 运行：把单元 User= 改为 root 使配置与实际一致，并将本项走基线备案说明理由。\n" +
 			"-- 进程：" + comm + "（" + exe + "）",
 		Verify:   "ps -eo user,euid,comm | grep -F " + sq(comm) + " | grep -v grep;  -- EUID 应与配置用户一致",
-		Rollback: "-- 回滚：还原单元文件改动（systemctl cat 记录的原内容），systemctl daemon-reload && systemctl restart <单元>。",
+		Rollback: "-- 回滚：还原单元文件改动（systemctl cat 记录的原内容），systemctl daemon-reload && systemctl restart " + unitRef + "。",
 		Note:     "切到非 root 运行后最常见的问题是日志/数据目录权限不足，先看 journalctl -u <单元> 再放行目录属主，不要直接改回 root 了事。",
 	}
 }

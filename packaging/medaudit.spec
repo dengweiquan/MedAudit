@@ -1,6 +1,6 @@
 Name:           medaudit
-Version:        0.25.0
-Release:        m23.1
+Version:        @RPM_VERSION@
+Release:        @RPM_RELEASE@
 Summary:        MedAudit 医疗权限审计平台（服务端）
 License:        Proprietary
 BuildArch:      x86_64

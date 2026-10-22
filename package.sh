@@ -1,9 +1,15 @@
 #!/bin/bash
 # MedAudit V1 安装包打包脚本
-# 用法: bash package.sh [版本号]
+# 用法: bash package.sh <版本号，如 0.26.0-m25>（必填，与 build-packages.sh 同值）
 set -e
 cd "$(dirname "$0")"
-VERSION="${1:-0.1.0-m3}"
+VERSION="${1:-}"
+[ -n "$VERSION" ] || { echo "用法: bash package.sh <版本号，如 0.26.0-m25>"; exit 1; }
+# 版本一致性护栏：三处程序版本常量必须与打包版本一致，防止包名与
+# 程序自报版本不符（常量仍是版本源头，本脚本只做校验、不注入）。
+for f in cmd/medaudit-server/main.go cmd/ma/main.go cmd/medaudit-collector/main.go; do
+  grep -q "const version = \"$VERSION\"" "$f" || { echo "版本不一致：$f 的 const version 不是 $VERSION，请先同步三处版本常量"; exit 1; }
+done
 DIST="/tmp/medaudit-dist"
 PKG="$DIST/medaudit-$VERSION"
 

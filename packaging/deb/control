@@ -1,5 +1,5 @@
 Package: medaudit
-Version: 0.25.0+m23-1
+Version: @DEB_VERSION@
 Section: admin
 Priority: optional
 Architecture: amd64

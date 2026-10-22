@@ -212,6 +212,9 @@ func collectService(ctx context.Context, b *facts.FactBundle, node, bootID, svc 
 		if unit.User != "" {
 			attrs["configured_user"] = unit.User
 		}
+		if unit.ID != "" {
+			attrs["unit"] = unit.ID
+		}
 		b.Facts = append(b.Facts, facts.Fact{
 			FactID: fmt.Sprintf("fact-proc-%d-%d", idx, j),
 			Kind: facts.FactProcess, Subject: ProcKey(node, bootID, p),

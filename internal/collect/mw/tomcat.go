@@ -29,6 +29,32 @@ type tcConnector struct {
 	Address     string `xml:"address,attr"`
 	Scheme      string `xml:"scheme,attr"`
 	SSLProtocol string `xml:"SSLProtocol,attr"`
+	// sslProtocol 为 JSSE 连接器的协议属性（小写 s），与 APR 的
+	// SSLProtocol 区分大小写分别解析。
+	SSLProtocolJSSE string            `xml:"sslProtocol,attr"`
+	SSLHostConfigs  []tcSSLHostConfig `xml:"SSLHostConfig"`
+}
+
+// tcSSLHostConfig Tomcat 9 的 TLS 主机配置（Connector 内嵌元素），
+// protocols 是当前主流写法，优先于连接器级协议属性。
+type tcSSLHostConfig struct {
+	HostName  string `xml:"hostName,attr"`
+	Protocols string `xml:"protocols,attr"`
+}
+
+// effectiveSSLProtocol 连接器实际生效的 TLS 协议配置，取值优先级：
+// SSLHostConfig@protocols（Tomcat 9 主流）> Connector@sslProtocol
+// （JSSE）> Connector@SSLProtocol（APR，旧）。
+func effectiveSSLProtocol(c tcConnector) string {
+	for _, hc := range c.SSLHostConfigs {
+		if hc.Protocols != "" {
+			return hc.Protocols
+		}
+	}
+	if c.SSLProtocolJSSE != "" {
+		return c.SSLProtocolJSSE
+	}
+	return c.SSLProtocol
 }
 
 type tcUsers struct {
@@ -125,7 +151,7 @@ func CollectTomcat(opts Options) (*facts.FactBundle, error) {
 				bd.fact(facts.FactServiceConfig, "connector:"+c.Port, "mw.tomcat.server_xml", facts.StatusObserved,
 					map[string]string{
 						"port": c.Port, "protocol": c.Protocol, "tls": boolStr(tls),
-						"address": c.Address, "ssl_protocol": c.SSLProtocol,
+						"address": c.Address, "ssl_protocol": effectiveSSLProtocol(c),
 					})
 				n++
 			}

@@ -52,6 +52,7 @@
     <PathsView v-else-if="nav.view === 'paths'" />
     <AdminView v-else-if="nav.view === 'admin'" />
     </template>
+    <SiteFooter />
   </template>
 </template>
 
@@ -60,6 +61,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { api, type Health } from './api'
 import { nav, goto } from './store'
 import LoginView from './views/LoginView.vue'
+import SiteFooter from './components/SiteFooter.vue'
 import DashboardView from './views/DashboardView.vue'
 import DatabasesView from './views/DatabasesView.vue'
 import OsView from './views/OsView.vue'
