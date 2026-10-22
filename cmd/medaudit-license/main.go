@@ -73,9 +73,10 @@ func main() {
 		ser = fmt.Sprintf("MA-%s-%04d", issT.Format("20060102"), now.UnixNano()%10000)
 	}
 	f := license.File{
+		Product:  license.ProductName,
 		Licensee: *licensee, Hosts: *hosts, Issued: iss,
 		Expires: issT.AddDate(0, 0, *days).Format("2006-01-02"),
-		Serial: ser, ActivationID: *activation, HostKeyFingerprint: *fingerprint,
+		Serial:  ser, ActivationID: *activation, HostKeyFingerprint: *fingerprint,
 	}
 	f.Signature = base64.StdEncoding.EncodeToString(ed25519.Sign(priv, []byte(f.Payload())))
 	data, err := json.MarshalIndent(f, "", "  ")

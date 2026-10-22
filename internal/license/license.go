@@ -1,5 +1,10 @@
 // Package license 实现维讯源码许可证的版本显示与授权版门控。
 //
+// 许可证格式为统一 v2（weixun-lic 统一授权台口径）：JSON 字段含
+// product（本产品固定 "medaudit"），签名规范串键序固定为
+// product, licensee, hosts, issued, expires, serial, activation_id,
+// host_key_fingerprint；验签时 product 不符按签名失败处理。
+//
 // 两种构建：免费版（默认，Edition=free）与授权版（构建时
 // -ldflags "-X medaudit/internal/license.Edition=licensed"）。
 // 授权版在「产生新数据」的操作（审计执行/采集产包）前校验许可证：
@@ -36,22 +41,29 @@ const (
 	CopyrightLine = "Copyright (c) 2026 厦门维讯信息科技有限公司 (Xiamen Weixun Information Technology Co., Ltd.)"
 )
 
-// File 许可证文件（JSON）。签名字段为对其余字段规范串的 Ed25519 签名。
+// ProductName 本产品的许可证 product 值（统一格式 v2）。
+const ProductName = "medaudit"
+
+// File 许可证文件（JSON，统一格式 v2）。签名字段为对其余字段规范串
+// 的 Ed25519 签名。
 type File struct {
-	Licensee          string `json:"licensee"`
-	Hosts             int    `json:"hosts"`
-	Issued            string `json:"issued"`  // YYYY-MM-DD
-	Expires           string `json:"expires"` // YYYY-MM-DD
-	Serial            string `json:"serial"`
-	ActivationID      string `json:"activation_id,omitempty"`
+	Product            string `json:"product"`
+	Licensee           string `json:"licensee"`
+	Hosts              int    `json:"hosts"`
+	Issued             string `json:"issued"`  // YYYY-MM-DD
+	Expires            string `json:"expires"` // YYYY-MM-DD
+	Serial             string `json:"serial"`
+	ActivationID       string `json:"activation_id,omitempty"`
 	HostKeyFingerprint string `json:"host_key_fingerprint,omitempty"`
-	Signature         string `json:"signature"` // base64
+	Signature          string `json:"signature"` // base64
 }
 
-// Payload 待签名的规范串（签发与验签共用，字段顺序固定）。
+// Payload 待签名的规范串（签发与验签共用，键序固定）：
+// product, licensee, hosts, issued, expires, serial,
+// activation_id, host_key_fingerprint。
 func (f *File) Payload() string {
 	return strings.Join([]string{
-		f.Licensee, strconv.Itoa(f.Hosts), f.Issued, f.Expires,
+		f.Product, f.Licensee, strconv.Itoa(f.Hosts), f.Issued, f.Expires,
 		f.Serial, f.ActivationID, f.HostKeyFingerprint,
 	}, "\n")
 }
@@ -136,6 +148,12 @@ func Evaluate(now time.Time) Status {
 	var f File
 	if err := json.Unmarshal(raw, &f); err != nil || f.Licensee == "" || f.Expires == "" {
 		st.Reason = ReasonMalformed
+		return st
+	}
+	// 统一格式 v2 产品校验：他产品许可证（含签名对他产品有效者）
+	// 一律按签名验证失败处理。
+	if f.Product != ProductName {
+		st.Reason = ReasonBadSignature
 		return st
 	}
 	pub, err := base64.StdEncoding.DecodeString(PublicKeyB64)
