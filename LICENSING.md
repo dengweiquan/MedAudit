@@ -27,9 +27,6 @@ MedAudit is licensed under the **Business Source License 1.1
   license** obtained from the Licensor in advance. This includes running
   the MedAudit platform for the organization's own business operations,
   and using MedAudit to provide audit services to third parties.
-- Every version converts automatically to the **MIT License** four
-  years after that version is first made available, at which point it
-  becomes fully open source under MIT terms.
 
 ### Production vs. non-production: examples
 
@@ -51,18 +48,15 @@ MedAudit is licensed under the **Business Source License 1.1
 
 The Business Source License is **not** an Open Source license as
 defined by the Open Source Initiative, because it restricts production
-use. We describe MedAudit as **source available**, not open source. The
-time limit is real, though: each version becomes MIT-licensed open
-source four years after its release.
+use. We describe MedAudit as **source available**, not open source.
 
 ### How to obtain a commercial license
 
 The Licensor is 厦门维讯信息科技有限公司 (Xiamen Weixun Information
 Technology Co., Ltd.). Contact the Licensor: **sales@xmweixun.com**.
 
-Commercial contracts and invoices are issued by the Licensor. Pricing is
-quoted per engagement and is not published; see `COMMERCIAL-LICENSE.md`
-for a summary of the commercial terms.
+Commercial contracts and invoices are issued by the Licensor. See
+`COMMERCIAL-LICENSE.md` for a summary of the commercial terms.
 
 ---
 
@@ -83,8 +77,6 @@ MedAudit 采用 **Business Source License 1.1（BSL 1.1）**，正文见
 - **营利性组织在生产环境中使用，必须事先取得 Licensor（许可方）的
   商业授权。**这包括为组织自身业务运行 MedAudit 平台，以及利用
   MedAudit 为第三方提供审计服务。
-- 每个版本在其发布满 4 年后自动转为 **MIT 许可证**，届时成为完全按
-  MIT 条款的开源软件。
 
 ### 生产与非生产：具体例子
 
@@ -102,11 +94,10 @@ MedAudit 采用 **Business Source License 1.1（BSL 1.1）**，正文见
 
 Business Source License **不是** OSI（Open Source Initiative）定义
 的开源许可证，因为它限制生产用途。我们将 MedAudit 称为**源码可见
-（source available）**，不称开源。但时间限制是真实的：每个版本在发
-布 4 年后转为 MIT 开源许可。
+（source available）**，不称开源。
 
 ### 如何购买商业授权
 
 Licensor（许可方）为厦门维讯信息科技有限公司。联系 Licensor：
-**sales@xmweixun.com**。商业授权的签约与开票由 Licensor 办理。价格
-按项目询价，不公开报价；商业条款概要见 `COMMERCIAL-LICENSE.md`。
+**sales@xmweixun.com**。商业授权的签约与开票由 Licensor 办理。商业
+条款概要见 `COMMERCIAL-LICENSE.md`。

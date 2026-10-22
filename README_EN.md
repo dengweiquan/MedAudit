@@ -214,11 +214,9 @@ MedAudit is published under the **Business Source License 1.1**
 (source available; not an Open Source license): personal use and
 non-production use (evaluation, testing, development, laboratory) are
 free; production use by a for-profit organization requires a commercial
-license obtained in advance; every version converts automatically to
-the MIT License four years after its release. The Licensor is Xiamen
+license obtained in advance. The Licensor is Xiamen
 Weixun Information Technology Co., Ltd. Commercial licensing
-inquiries: **sales@xmweixun.com** (pricing is quoted per engagement
-and is not published).
+inquiries: **sales@xmweixun.com**.
 
 See [LICENSE](LICENSE), [LICENSING.md](LICENSING.md), and
 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).

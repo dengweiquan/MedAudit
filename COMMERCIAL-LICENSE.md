@@ -9,11 +9,11 @@
 > **草案 — 待律师审定。本页仅为拟议商业条款的通俗概要，不构成合同。
 > 有约束力的条款以双方签署的授权协议为准。**
 >
-> **Pricing is not published. Fees, the billing unit, and the licensed
+> **Fees, the billing unit, and the licensed
 > scope are agreed in the signed agreement; contact the Licensor for a
 > quotation.**
 >
-> **本页不公开价格。费用、计费方式与授权范围以正式签署的协议为准；
+> **费用、计费方式与授权范围以正式签署的协议为准；
 > 询价请联系 Licensor。**
 
 ## English
@@ -39,9 +39,8 @@ license. See `LICENSING.md`.
 
 ### Pricing and payment
 
-- Pricing is **not published**. Fees, the billing unit, and the
-  licensed scope are quoted per engagement and agreed in the signed
-  agreement.
+- Fees, the billing unit, and the licensed scope are agreed in the
+  signed agreement.
 - Licensor, contracting and invoicing entity: 厦门维讯信息科技有限公
   司 (Xiamen Weixun Information Technology Co., Ltd.). Taxes are as
   stated in the signed agreement.
@@ -79,8 +78,7 @@ Business Source License 1.1 免费，无需商业授权。详见
 
 ### 价格与付款
 
-- 价格**不公开**。费用、计费方式与授权范围按项目询价，并以正式签署
-  的协议为准。
+- 费用、计费方式与授权范围以正式签署的协议为准。
 - Licensor 及签约开票主体：厦门维讯信息科技有限公司。税费以正式签署
   的协议为准。
 - 询价联系邮箱：**sales@xmweixun.com**

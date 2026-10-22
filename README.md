@@ -179,9 +179,8 @@ masrv                                    # 服务端状态
 
 MedAudit 采用 **Business Source License 1.1** 发布（源码可见，非开
 源许可证）：个人使用与非生产用途（评估、测试、开发、实验室）免费；
-营利性组织的生产使用需事先取得商业授权；每个版本在发布满 4 年后
-自动转为 MIT 许可证。许可方为厦门维讯信息科技有限公司，商业授权询
-价：**sales@xmweixun.com**（价格不公开，按项目报价）。
+营利性组织的生产使用需事先取得商业授权。许可方为厦门维讯信息科技
+有限公司，商业授权联系：**sales@xmweixun.com**。
 
 详见 [LICENSE](LICENSE)、[LICENSING.md](LICENSING.md) 与
 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)。
