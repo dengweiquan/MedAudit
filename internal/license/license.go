@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -44,8 +43,8 @@ const (
 // ProductName 本产品的许可证 product 值（统一格式 v2）。
 const ProductName = "medaudit"
 
-// File 许可证文件（JSON，统一格式 v2）。签名字段为对其余字段规范串
-// 的 Ed25519 签名。
+// File 许可证文件（JSON，统一格式 v2）。签名字段名为 sig，内容为对
+// 其余字段规范串（见 Payload）的 Ed25519 签名（base64）。
 type File struct {
 	Product            string `json:"product"`
 	Licensee           string `json:"licensee"`
@@ -55,17 +54,41 @@ type File struct {
 	Serial             string `json:"serial"`
 	ActivationID       string `json:"activation_id,omitempty"`
 	HostKeyFingerprint string `json:"host_key_fingerprint,omitempty"`
-	Signature          string `json:"signature"` // base64
+	Signature          string `json:"sig"` // base64
 }
 
-// Payload 待签名的规范串（签发与验签共用，键序固定）：
-// product, licensee, hosts, issued, expires, serial,
-// activation_id, host_key_fingerprint。
+// canonicalPayload 签名载荷的规范形式（统一标准，2026-10-22 钉死，
+// 以授权台 weixun-lic 与 altrootdisk 的 internal/license 为唯一母版）：
+// 紧凑 JSON，键序固定为 product, licensee, hosts, issued, expires,
+// serial, activation_id, host_key_fingerprint；预留字段恒出现（空串），
+// 字符串按 Go encoding/json 紧凑编码，取 UTF-8 字节签/验。
+type canonicalPayload struct {
+	Product            string `json:"product"`
+	Licensee           string `json:"licensee"`
+	Hosts              int    `json:"hosts"`
+	Issued             string `json:"issued"`
+	Expires            string `json:"expires"`
+	Serial             string `json:"serial"`
+	ActivationID       string `json:"activation_id"`
+	HostKeyFingerprint string `json:"host_key_fingerprint"`
+}
+
+// Payload 待签名的规范串（签发与验签共用）。
 func (f *File) Payload() string {
-	return strings.Join([]string{
-		f.Product, f.Licensee, strconv.Itoa(f.Hosts), f.Issued, f.Expires,
-		f.Serial, f.ActivationID, f.HostKeyFingerprint,
-	}, "\n")
+	b, err := json.Marshal(canonicalPayload{
+		Product:            f.Product,
+		Licensee:           f.Licensee,
+		Hosts:              f.Hosts,
+		Issued:             f.Issued,
+		Expires:            f.Expires,
+		Serial:             f.Serial,
+		ActivationID:       f.ActivationID,
+		HostKeyFingerprint: f.HostKeyFingerprint,
+	})
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // Path 许可证文件路径：环境变量优先，否则默认路径。
