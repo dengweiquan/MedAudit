@@ -220,5 +220,7 @@ license obtained in advance. The Licensor is Xiamen
 Weixun Information Technology Co., Ltd. Commercial licensing
 inquiries: **sales@xmweixun.com**.
 
+Project planning: Deng WeiQuan （邓伟权）.
+
 See [LICENSE](LICENSE), [LICENSING.md](LICENSING.md), and
 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).

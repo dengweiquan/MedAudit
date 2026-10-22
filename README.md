@@ -183,5 +183,7 @@ MedAudit 采用 **维讯源码许可证 1.0（Weixun Source License 1.0）**
 开发、实验室）免费；营利性组织的生产使用需事先取得商业授权。许可方
 为厦门维讯信息科技有限公司，商业授权联系：**sales@xmweixun.com**。
 
+项目规划：邓伟权（Deng WeiQuan）。
+
 详见 [LICENSE](LICENSE)、[LICENSING.md](LICENSING.md) 与
 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)。
