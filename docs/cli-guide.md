@@ -263,7 +263,7 @@ ma offeval bundle.zip -o 离线报告.docx                # 本地评估出 Word
 - 许可证文件：默认 `/etc/medaudit.license`，环境变量 `MEDAUDIT_LICENSE` 可覆盖；JSON 格式（统一 v2），Ed25519 验签（公钥嵌入二进制，私钥由统一授权台保管）。字段：product（固定 `medaudit`，他产品许可证按签名失败拒绝）、licensee、hosts（授权站点数）、issued、expires、serial，及预留的 activation_id、host_key_fingerprint；签名字段名为 `sig`。签名载荷为紧凑 JSON 规范串：`{"product":…,"licensee":…,"hosts":数字,"issued":…,"expires":…,"serial":…,"activation_id":"","host_key_fingerprint":""}`，键序固定、预留字段恒出现为 `""`、字符串按 Go encoding/json 紧凑编码，取 UTF-8 字节验签。许可证格式的唯一母版为统一授权台 weixun-lic 与 altrootdisk 的 `internal/license` 实现，本产品口径与之逐字对齐。
 - 门控范围（中间档）：仅授权版、仅「产生新数据」的操作受门控——服务端一键审计/远程审计、采集器产包（db 预检除外）、`ma audit`；查询、导出、恢复类与只读操作永不拦截。
 - 时限口径：剩余 ≤30 天临期提醒（放行）；过期 ≤30 天为宽限期（放行并警告）；超过宽限期拦截，拦截文案给出原因（未找到许可证文件 / 许可证文件格式损坏 / 许可证签名验证失败 / 许可证已过期且超出宽限期）与应放路径。
-- 签发：许可方使用 `medaudit-license` 工具（不随产品包分发）：`medaudit-license -licensee <名称> -hosts <站点数> -days <天数> [-serial <序列号>] [-out <文件>]`，私钥文件经 `-key` 或环境变量 `MEDAUDIT_LICENSE_KEY` 指定。
+- 签发：自 2026-10-22 起一律由统一授权台 weixun-lic 签发并记台账（私钥已移交授权台保管）；原 `medaudit-license` 工具已退役（源码留仓备查，不再构建、不再分发）。
 
 ## 附录：环境变量速览
 

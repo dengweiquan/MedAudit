@@ -1,5 +1,9 @@
 // medaudit-license — 许可方签发工具（不随产品包分发）。
 //
+// 【已退役，2026-10-22】许可证签发已移交统一授权台 weixun-lic，
+// 私钥同日移交授权台保管、本机副本已删除。本工具源码仅留仓备查，
+// 不再构建、不再分发；新证一律由授权台签发并记台账。
+//
 // 用法：
 //
 //	medaudit-license -licensee 某医院 -hosts 1 -days 365 [-serial S] [-issued YYYY-MM-DD]

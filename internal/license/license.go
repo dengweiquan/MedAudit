@@ -27,8 +27,8 @@ import (
 // Edition 构建版本类型：free（默认）或 licensed（授权版构建）。
 var Edition = "free"
 
-// PublicKeyB64 许可方 Ed25519 公钥（base64）。私钥由许可方离线保管
-// （kf7 /root/.medaudit/license-ed25519.key，仅记路径）。
+// PublicKeyB64 许可方 Ed25519 公钥（base64）。私钥已于 2026-10-22
+// 移交统一授权台 weixun-lic 保管（本机副本已删除），本产品侧仅持公钥验签。
 const PublicKeyB64 = "WpzDCluvYnz6lsGBQclpHJojP+LrMiAYYX1J7CJPbZE="
 
 const (
