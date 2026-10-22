@@ -10,8 +10,8 @@
   生成 + 规则/基线管理），一份部署服务一家医院。
 - **采集器 `medaudit-collector`**：在目标侧或远程只读采集权限事实，打包
   为可验证的事实包；采集全程只读，不改目标系统。
-- **工程师 CLI `ma` 命令族**：HP-UX LVM 风格的一命令一事（`maaudit`、
-  `mafind`、`mareport`、`mabasels` …），供实施工程师在命令行完成全部
+- **工程师 CLI `ma` 命令族**：HP-UX LVM 风格的一命令一事（`ma audit`、
+  `ma find`、`ma report`、`ma basels` …），供实施工程师在命令行完成全部
   工程师侧操作。
 
 ## 快速开始
@@ -19,8 +19,9 @@
 ```
 # 1. 安装（Debian 系）—— RHEL 系用对应的 .rpm 与 dnf
 sudo apt install ./medaudit_0.25.0+m23-1_amd64.deb
+#    交互安装时按提示输入本站医院 ID 与名称，装完服务即自动启动
 
-# 2. 填写本站医院（首次启动自动登记），然后重启服务
+# 2. （可选）事后设置/修改本站医院（首次启动自动登记），然后重启服务
 sudo vi /etc/medaudit/medaudit.env     # MEDAUDIT_SITE_HOSPITAL_ID / _NAME
 sudo systemctl restart medaudit-server
 
@@ -56,9 +57,8 @@ NOT_RUN / NOT_APPLICABLE——证据不足时如实报 UNKNOWN，绝不把缺失
 | RHEL 系（RHEL、Rocky、AlmaLinux、CentOS） | rpm | 同上 |
 | 其他 Linux | 源码编译 | `go build` 后自备 systemd 单元 |
 
-当前预编译包为 x86_64。审计 Oracle 需要目标侧可达的 Oracle Instant
-Client（平台不打包分发，配置项 `MEDAUDIT_ORACLE_LIB` 指向本机已安装
-目录）；其余数据库走纯 Go 驱动，无此要求。
+当前预编译包为 x86_64。全部数据库（含 Oracle）走纯 Go 驱动，
+零外部依赖，不需要安装任何客户端库。
 
 **审计对象**不要求安装任何代理：数据库走原生协议只读查询；Linux /
 HP-UX 走 SSH 只读命令集；Windows 走 WinRM 推送同版本采集器一次性执
@@ -69,8 +69,9 @@ HP-UX 走 SSH 只读命令集；Windows 走 WinRM 推送同版本采集器一次
 **方式一：装 Release 包（推荐）**：在 GitHub Release 页面下载对应系
 统的 `.deb` / `.rpm` 直接安装。安装自动完成：建系统用户 `medaudit`、
 生成证据加密密钥（写入 `/etc/medaudit/medaudit.env`，请备份，丢失则
-历史证据不可读）、注册并启动 systemd 服务。两个包均为零外部依赖
-（Go 静态二进制；不依赖目标机预装运行时）。
+历史证据不可读）、交互询问本站医院（无终端时跳过）、注册并启动
+systemd 服务。两个包均为零外部依赖（Go 静态二进制；不依赖目标机
+预装运行时）。
 
 **方式二：源码编译**：
 
@@ -95,18 +96,18 @@ deb/rpm 并挂到对应 GitHub Release（打包脚本见 `packaging/`）。
 Word 报告发给系统负责人；整改后再次审计，在「复检对比」里确认问题
 已修复 / 仍存在 / 新增。
 
-**工程师用 `ma` 命令族**（`ma` 本身打印命令索引）：
+**工程师用 `ma` 命令**（只敲 `ma` 打印功能索引）：
 
 ```
-malogin                                  # 登录（会话存 ~/.medaudit/session.json）
-mause h-demo                             # 切换当前医院上下文
-maassetls                                # 看登记的审计对象
-maaudit db-mysql-01 -e MYSQL_PW          # 对一个对象审计（口令经环境变量，不落库）
-mafind -c FAIL                           # 看问题（可按规则/对象过滤）
-maeval <包ID> -b bl-vendor               # 用基线重评
-mareport db-mysql-01 -o report.docx      # 导出 Word 报告
-marulels                                 # 规则与本站启停状态
-masrv                                    # 服务端状态
+ma login                                  # 登录（会话存 ~/.medaudit/session.json）
+ma use h-demo                             # 切换当前医院上下文
+ma assetls                                # 看登记的审计对象
+ma audit db-mysql-01 -e MYSQL_PW          # 对一个对象审计（口令经环境变量，不落库）
+ma find -c FAIL                           # 看问题（可按规则/对象过滤）
+ma eval <包ID> -b bl-vendor               # 用基线重评
+ma report db-mysql-01 -o report.docx      # 导出 Word 报告
+ma rules                                 # 规则与本站启停状态
+ma srv                                    # 服务端状态
 ```
 
 完整命令手册见 `docs/cli-guide.md`，端到端操作手册见
@@ -154,7 +155,7 @@ masrv                                    # 服务端状态
 - WebLogic 采集为目录级（config.xml 等配置工件），不连管理域运行时。
 - Windows 远程审计需要被审计机能回连平台 `server_url` 拉取一次性
   采集令牌。
-- 离线评估（`maoffeval`）不应用本站规则停用口径，与在线评估的区别在
+- 离线评估（`ma offeval`）不应用本站规则停用口径，与在线评估的区别在
   手册中明示。
 
 ## 测试记录
@@ -177,10 +178,10 @@ masrv                                    # 服务端状态
 
 ## License
 
-MedAudit 采用 **Business Source License 1.1** 发布（源码可见，非开
-源许可证）：个人使用与非生产用途（评估、测试、开发、实验室）免费；
-营利性组织的生产使用需事先取得商业授权。许可方为厦门维讯信息科技
-有限公司，商业授权联系：**sales@xmweixun.com**。
+MedAudit 采用 **维讯源码许可证 1.0（Weixun Source License 1.0）**
+发布（源码可见，非开源许可证）：个人使用与非生产用途（评估、测试、
+开发、实验室）免费；营利性组织的生产使用需事先取得商业授权。许可方
+为厦门维讯信息科技有限公司，商业授权联系：**sales@xmweixun.com**。
 
 详见 [LICENSE](LICENSE)、[LICENSING.md](LICENSING.md) 与
 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)。

@@ -15,15 +15,17 @@ audit → report → remediate → re-audit — with professional Word reports.
   or remotely, strictly read-only, and packs them into verifiable fact
   bundles.
 - **`ma` command family**: an HP-UX LVM-style engineer CLI — one command
-  per task (`maaudit`, `mafind`, `mareport`, `mabasels`, …).
+  per task (`ma audit`, `ma find`, `ma report`, `ma basels`, …).
 
 ## Quick start
 
 ```
 # 1. Install (Debian family; use the .rpm with dnf on RHEL family)
 sudo apt install ./medaudit_0.25.0+m23-1_amd64.deb
+#    Interactive installs prompt for this site's hospital ID and name;
+#    the service then starts automatically.
 
-# 2. Set this site's hospital (auto-registered on first start), restart
+# 2. (Optional) Set/change this site's hospital later, then restart
 sudo vi /etc/medaudit/medaudit.env     # MEDAUDIT_SITE_HOSPITAL_ID / _NAME
 sudo systemctl restart medaudit-server
 
@@ -65,10 +67,9 @@ checks do not appear in reports.
 | RHEL family (RHEL, Rocky, AlmaLinux, CentOS) | rpm | same |
 | Other Linux | build from source | `go build`, bring your own unit |
 
-Prebuilt packages are x86_64. Auditing Oracle requires a locally
-installed Oracle Instant Client (not redistributed with the platform;
-point `MEDAUDIT_ORACLE_LIB` at it). All other databases use pure-Go
-drivers.
+Prebuilt packages are x86_64. All databases (including Oracle) use
+pure-Go drivers — zero external dependencies, no client libraries to
+install.
 
 **Targets** need no agent: databases are queried over their native
 protocols with read-only statements; Linux / HP-UX over SSH with a
@@ -82,9 +83,10 @@ read-only HTTP(S) probes.
 `.rpm` from the GitHub Release page and install. Installation creates
 the `medaudit` system user, generates the evidence encryption key
 (into `/etc/medaudit/medaudit.env` — back it up; losing it makes
-historical evidence unreadable), and registers and starts the systemd
-service. Both packages have zero external dependencies (static Go
-binaries; no runtime needs to be preinstalled).
+historical evidence unreadable), interactively asks for this site's
+hospital (skipped when there is no terminal), and registers and starts
+the systemd service. Both packages have zero external dependencies
+(static Go binaries; no runtime needs to be preinstalled).
 
 **Option 2 — build from source:**
 
@@ -113,18 +115,18 @@ audit" on an object, and send the exported Word report to the system
 owner; after remediation, audit again and use the recheck comparison
 to confirm fixed / still present / newly appeared.
 
-**Engineers use the `ma` family** (bare `ma` prints the command index):
+**Engineers use the `ma` command** (bare `ma` prints the function index):
 
 ```
-malogin                                  # log in (session in ~/.medaudit/session.json)
-mause h-demo                             # switch current hospital context
-maassetls                                # list registered audit targets
-maaudit db-mysql-01 -e MYSQL_PW          # audit one target (password via env, never stored)
-mafind -c FAIL                           # list findings (filter by rule/target)
-maeval <bundle-id> -b bl-vendor          # re-evaluate with a baseline
-mareport db-mysql-01 -o report.docx      # export a Word report
-marulels                                 # rules and site enable/disable state
-masrv                                    # server status
+ma login                                  # log in (session in ~/.medaudit/session.json)
+ma use h-demo                             # switch current hospital context
+ma assetls                                # list registered audit targets
+ma audit db-mysql-01 -e MYSQL_PW          # audit one target (password via env, never stored)
+ma find -c FAIL                           # list findings (filter by rule/target)
+ma eval <bundle-id> -b bl-vendor          # re-evaluate with a baseline
+ma report db-mysql-01 -o report.docx      # export a Word report
+ma rules                                 # rules and site enable/disable state
+ma srv                                    # server status
 ```
 
 Full references: `docs/cli-guide.md` and `docs/operations-guide.md`
@@ -187,7 +189,7 @@ the evidence key, and the Oracle client library path. Restart
   artifacts); it does not connect to a domain runtime.
 - Windows remote audit requires the target to call back to the
   platform `server_url` for a one-time collection token.
-- Offline evaluation (`maoffeval`) does not apply site rule toggles;
+- Offline evaluation (`ma offeval`) does not apply site rule toggles;
   the difference from online evaluation is documented in the manual.
 
 ## Test records
@@ -210,7 +212,7 @@ All verified in real environments (laboratory, October 2026):
 
 ## License
 
-MedAudit is published under the **Business Source License 1.1**
+MedAudit is published under the **Weixun Source License 1.0**
 (source available; not an Open Source license): personal use and
 non-production use (evaluation, testing, development, laboratory) are
 free; production use by a for-profit organization requires a commercial

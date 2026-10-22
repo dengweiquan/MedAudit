@@ -20,13 +20,7 @@ cp -a "$SRC"/bin "$SRC"/web "$SRC"/migrations-sqlite "$SRC"/rulesets "$SRC"/quer
 cp "$SRC/install.sh" "$ROOTFS/opt/medaudit/" 2>/dev/null || true
 cp "$PKGSRC/medaudit-server.service" "$ROOTFS/lib/systemd/system/"
 cp "$PKGSRC/medaudit.env" "$ROOTFS/etc/medaudit/"
-for n in ma malogin malogout mawhoami mause masite mauserls mauseradd mauseron mauseroff mauserpw \
-         maassetls maassetadd maassetshow maassetmod maassetrm maaudit maeval maoffeval \
-         mabundlels mabundlein mabundleshow mabundledrift mabundleeff mafind \
-         mareport mareportls mareportshow mareportfix mabasels mabaseshow mabaseadd mabasediff mabaseexempt \
-         marulels maruleoff maruleon macorr masum masrv masrvbak; do
-  ln -sf "/opt/medaudit/bin/$n" "$ROOTFS/usr/bin/$n"
-done
+ln -sf "/opt/medaudit/bin/ma" "$ROOTFS/usr/bin/ma"
 find "$ROOTFS/opt/medaudit/bin" -type f -exec chmod 755 {} +
 
 echo "=== 构建 .deb ==="

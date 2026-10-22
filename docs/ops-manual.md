@@ -62,7 +62,7 @@ export MYSQL_PASS='***'
 | 现象 | 排查 |
 |------|------|
 | 采集执行 PARTIAL | 查 receipts 的 error_stage，多为目标权限不足（permission_denied），按最小只读授权补齐 |
-| Oracle 连接失败 | 确认 LD_LIBRARY_PATH 含 instantclient；确认防火墙/1521 |
+| Oracle 连接失败 | 确认网络可达与监听端口、服务名与口令正确（ORA-01017 为口令错误） |
 | Windows 采集器报 oracle 不支持 | 预期行为；Oracle 采集用 Linux 采集器连远程实例 |
 | 评估 UNKNOWN 偏多 | 前置事实缺失，检查采集收据是否为 denied/truncated |
 

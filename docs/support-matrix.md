@@ -37,7 +37,7 @@
 | os 采集 | ✅ | ✅（2019 虚机实测） |
 | db-mysql | ✅ | ✅（纯 Go，可用） |
 | db-sqlserver | ✅ | ✅（纯 Go，可用） |
-| db-oracle | ✅ | ❌ 不支持（godror 无 Windows 构建，需用 Linux 采集器） |
+| db-oracle | ✅ | ✅（纯 Go go-ora，可用） |
 | db-postgres | ✅ | ✅（纯 Go lib/pq，可用） |
 
 ## 规则覆盖

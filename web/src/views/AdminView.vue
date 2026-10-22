@@ -1,7 +1,7 @@
 <template>
   <div class="card">
     <h2>管理说明</h2>
-    <p class="todo">本页为工程师管理面：医院与对象的登记、参数修改、归类与删除。客户日常只需在类别页点「开始审计」与「导出报告」。删除只移除资产登记，历史事实包/问题/报告作为审计证据保留。工程师也可使用 ma 命令族（maasset* / marule* / mabase* / masrv 等命令）。</p>
+    <p class="todo">本页为工程师管理面：医院与对象的登记、参数修改、归类与删除。客户日常只需在类别页点「开始审计」与「导出报告」。删除只移除资产登记，历史事实包/问题/报告作为审计证据保留。工程师也可使用 ma 命令（如 ma assetadd、ma rules、ma baseexempt、ma srv）。</p>
     <div class="msg" v-if="msg">{{ msg }}</div>
     <div class="msg err" v-if="err">{{ err }}</div>
   </div>

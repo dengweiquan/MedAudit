@@ -1,8 +1,9 @@
 package oracle
 
 import (
-	"fmt"
 	"time"
+
+	go_ora "github.com/sijms/go-ora/v2"
 )
 
 // Config 连接配置。只接受白名单字段，由调用方结构化构建，
@@ -19,9 +20,7 @@ type Config struct {
 	QueryTimeout   time.Duration
 }
 
-// connString 用白名单字段构建 EZCONNECT 连接串。
+// connString 用白名单字段构建连接串（go-ora 纯 Go 驱动，BuildUrl 负责转义）。
 func (c Config) connString() string {
-	// godror 支持 user/pass@host:port/service 格式。
-	return fmt.Sprintf("%s/%s@%s:%d/%s",
-		c.User, c.Password, c.Host, c.Port, c.Service)
+	return go_ora.BuildUrl(c.Host, c.Port, c.Service, c.User, c.Password, nil)
 }

@@ -46,7 +46,7 @@ func cmdBundleImport(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "mabundlein <文件.zip>"); err != nil {
+	if err := p.requirePos(1, "ma bundlein <文件.zip>"); err != nil {
 		return err
 	}
 	raw, err := os.ReadFile(p.pos[0])
@@ -73,7 +73,7 @@ func cmdBundleShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "mabundleshow <包id> [-j]"); err != nil {
+	if err := p.requirePos(1, "ma bundleshow <包id> [-j]"); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -118,7 +118,7 @@ func cmdBundleDrift(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(2, "mabundledrift <新包> <旧包>"); err != nil {
+	if err := p.requirePos(2, "ma bundledrift <新包> <旧包>"); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -162,7 +162,7 @@ func cmdBundleEffective(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "mabundleeff <包id> [-j]"); err != nil {
+	if err := p.requirePos(1, "ma bundleeff <包id> [-j]"); err != nil {
 		return err
 	}
 	c, err := newClient()

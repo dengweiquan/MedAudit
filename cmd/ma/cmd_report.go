@@ -13,7 +13,7 @@ func cmdReport(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "mareport <包id> [-o 报告.docx]"); err != nil {
+	if err := p.requirePos(1, "ma report <包id> [-o 报告.docx]"); err != nil {
 		return err
 	}
 	bundleID := p.pos[0]
@@ -80,7 +80,7 @@ func cmdReportShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "mareportshow <报告id> [-j]"); err != nil {
+	if err := p.requirePos(1, "ma reportshow <报告id> [-j]"); err != nil {
 		return err
 	}
 	id := p.pos[0]
@@ -126,7 +126,7 @@ func cmdReportShow(args []string) error {
 	}
 	fmt.Printf("  问题快照 %d 条（FAIL %d）\n", len(d.Findings), fail)
 	if d.Remediation != nil {
-		fmt.Printf("  修复脚本：%d/%d 条 FAIL 已生成（mareportfix 查看）\n", d.Remediation.Generated, d.Remediation.FailTotal)
+		fmt.Printf("  修复脚本：%d/%d 条 FAIL 已生成（ma reportfix 查看）\n", d.Remediation.Generated, d.Remediation.FailTotal)
 	}
 	if len(d.PrivilegePaths) > 0 {
 		fmt.Printf("  关联提权路径摘录 %d 条\n", len(d.PrivilegePaths))
@@ -142,7 +142,7 @@ func cmdReportScripts(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "mareportfix <报告id> [-r 规则]"); err != nil {
+	if err := p.requirePos(1, "ma reportfix <报告id> [-r 规则]"); err != nil {
 		return err
 	}
 	c, err := newClient()

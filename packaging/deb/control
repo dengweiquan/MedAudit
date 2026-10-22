@@ -6,7 +6,7 @@ Architecture: amd64
 Maintainer: MedAudit <dengweiquan@gmail.com>
 Description: MedAudit 医疗权限审计平台（服务端）
  数据库/操作系统/中间件权限审计：采集、评估、基线豁免、整改
- 修复脚本与 Word 报告。安装后编辑 /etc/medaudit/medaudit.env
- 填本站医院并 systemctl restart medaudit-server；Web 默认
- 管理员 admin（首登强制改密）。工程师 CLI 为 ma 命令族。
- Oracle 采集另需 Oracle Instant Client（见 medaudit.env 注释）。
+ 修复脚本与 Word 报告。安装时交互询问本站医院（或事后编辑
+ /etc/medaudit/medaudit.env 并 systemctl restart medaudit-server）；
+ Web 默认管理员 admin（首登强制改密）。工程师 CLI 为 ma 命令
+ （ma <功能>）。全部驱动为纯 Go 实现，零外部依赖。

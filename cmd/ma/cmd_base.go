@@ -67,7 +67,7 @@ func cmdBaselineGet(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "mabaseshow <id> [-o 文件] [-h 医院]"); err != nil {
+	if err := p.requirePos(1, "ma baseshow <id> [-o 文件] [-h 医院]"); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -113,7 +113,7 @@ func cmdBaselineApply(args []string) error {
 		file = p.pos[0]
 	}
 	if file == "" {
-		return fmt.Errorf("用法：mabaseadd -f 基线.json")
+		return fmt.Errorf("用法：ma baseadd -f 基线.json")
 	}
 	raw, err := os.ReadFile(file)
 	if err != nil {
@@ -181,7 +181,7 @@ func cmdBaselineDiff(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(2, "mabasediff <基线A> <基线B>（ID 或 .json 文件）"); err != nil {
+	if err := p.requirePos(2, "ma basediff <基线A> <基线B>（ID 或 .json 文件）"); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -244,12 +244,12 @@ func cmdBaselineExempt(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "mabaseexempt <finding-id> [-b 基线] [-y] [原因…]"); err != nil {
+	if err := p.requirePos(1, "ma baseexempt <finding-id> [-b 基线] [-y] [原因…]"); err != nil {
 		return err
 	}
 	findingID, err := strconv.ParseInt(p.pos[0], 10, 64)
 	if err != nil {
-		return fmt.Errorf("finding-id 须为数字（问题清单 mafind 输出的 id）")
+		return fmt.Errorf("finding-id 须为数字（问题清单 ma find 输出的 id）")
 	}
 	reason := strings.Join(p.pos[1:], " ")
 	c, err := newClient()
@@ -261,7 +261,7 @@ func cmdBaselineExempt(args []string) error {
 		return err
 	}
 	if !pv.Supported {
-		return fmt.Errorf("规则 %s 不支持基线豁免（可使用 maruleoff 整类关闭）", pv.RuleID)
+		return fmt.Errorf("规则 %s 不支持基线豁免（可使用 ma ruleoff 整类关闭）", pv.RuleID)
 	}
 	fmt.Printf("问题：%s · %s\n将加入的放行项（按证据推导）：\n", pv.RuleID, pv.Subject)
 	for _, a := range pv.Allows {
@@ -326,7 +326,7 @@ func cmdBaselineExempt(args []string) error {
 	if res.Skipped > 0 {
 		fmt.Printf("，%d 条已存在跳过", res.Skipped)
 	}
-	fmt.Println("）。用该基线重新评估（maeval -b）后生效。")
+	fmt.Println("）。用该基线重新评估（ma eval -b）后生效。")
 	return nil
 }
 
@@ -378,10 +378,10 @@ func cmdRuleSet(args []string, enabled bool) error {
 		return err
 	}
 	if enabled {
-		if err := p.requirePos(1, "maruleon <规则id>"); err != nil {
+		if err := p.requirePos(1, "ma ruleon <规则id>"); err != nil {
 			return err
 		}
-	} else if err := p.requirePos(2, "maruleoff <规则id> <原因…>"); err != nil {
+	} else if err := p.requirePos(2, "ma ruleoff <规则id> <原因…>"); err != nil {
 		return err
 	}
 	id := p.pos[0]

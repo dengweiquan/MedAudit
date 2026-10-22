@@ -61,7 +61,7 @@ func cmdAudit(args []string) error {
 	if p.str("f") != "" {
 		return cmdAuditBatch(p.str("f"), p.has("F"))
 	}
-	if err := p.requirePos(1, "maaudit <资产id> [-b 基线] [-e 口令环境变量]，或 maaudit -f 清单.yaml"); err != nil {
+	if err := p.requirePos(1, "ma audit <资产id> [-b 基线] [-e 口令环境变量]，或 ma audit -f 清单.yaml"); err != nil {
 		return err
 	}
 	assetID := p.pos[0]
@@ -80,7 +80,7 @@ func cmdAudit(args []string) error {
 	case strings.HasPrefix(a.Kind, "os-"), strings.HasPrefix(a.Kind, "mw-"):
 		path, label = "/api/v1/audit/run-remote", "远程推送审计"
 	default:
-		return fmt.Errorf("资产 %s 的类型 %s 不支持一键审计（本地采集后用 mabundlein 导入）", assetID, a.Kind)
+		return fmt.Errorf("资产 %s 的类型 %s 不支持一键审计（本地采集后用 ma bundlein 导入）", assetID, a.Kind)
 	}
 	pw, err := auditPassword(p.str("e"), fmt.Sprintf("资产 %s 的口令: ", assetID))
 	if err != nil {
@@ -183,7 +183,7 @@ func cmdEvaluate(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "maeval <包id> [-b 基线] [-F]"); err != nil {
+	if err := p.requirePos(1, "ma eval <包id> [-b 基线] [-F]"); err != nil {
 		return err
 	}
 	c, err := newClient()

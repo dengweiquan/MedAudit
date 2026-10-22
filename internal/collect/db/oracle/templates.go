@@ -1,5 +1,5 @@
 // Package oracle 模板注册表：解析 queries/oracle/*.sql 的头部注释。
-// 本包需要 CGO + Oracle Instant Client（见 prototype.go 头部注释）。
+// 驱动为纯 Go（go-ora），无 CGO / Instant Client 依赖。
 package oracle
 
 import (

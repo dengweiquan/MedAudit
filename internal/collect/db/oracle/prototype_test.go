@@ -12,7 +12,7 @@ import (
 
 // TestPrototypeLive 针对 M0 测试 Oracle 实例的真实连接原型。
 // 需要环境变量：MEDAUDIT_TEST_ORA_HOST/PORT/SERVICE/USER/PASS，未设置则跳过。
-// 构建需要 CGO + Oracle Instant Client（见 prototype.go 头部注释）。
+// 驱动为纯 Go（go-ora），无 CGO / Instant Client 依赖。
 func TestPrototypeLive(t *testing.T) {
 	host := os.Getenv("MEDAUDIT_TEST_ORA_HOST")
 	user := os.Getenv("MEDAUDIT_TEST_ORA_USER")

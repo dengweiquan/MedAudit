@@ -22,7 +22,7 @@ type sessionFile struct {
 	Server   string `json:"server"`
 	Username string `json:"username"`
 	Cookie   string `json:"cookie"`
-	Hospital string `json:"hospital,omitempty"` // mause 设定的当前医院上下文
+	Hospital string `json:"hospital,omitempty"` // ma use 设定的当前医院上下文
 }
 
 func sessionDir() string {
@@ -59,7 +59,7 @@ func clearSession() {
 func setContextHospital(h string) error {
 	s, err := loadSession()
 	if err != nil {
-		return fmt.Errorf("尚无会话：先 malogin")
+		return fmt.Errorf("尚无会话：先 ma login")
 	}
 	s.Hospital = h
 	return saveSession(s)
@@ -127,7 +127,7 @@ func (c *client) do(method, path string, body any) (int, []byte, error) {
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode == http.StatusUnauthorized && !strings.HasSuffix(path, "/auth/login") {
-		return resp.StatusCode, raw, fmt.Errorf("未登录或会话已过期：先运行 malogin（%s）", c.base)
+		return resp.StatusCode, raw, fmt.Errorf("未登录或会话已过期：先运行 ma login（%s）", c.base)
 	}
 	if resp.StatusCode >= 400 {
 		return resp.StatusCode, raw, fmt.Errorf("%s %s -> %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(raw)))
@@ -236,7 +236,7 @@ func (c *client) siteHospitalID() string {
 	return siteHospital
 }
 
-// contextHospital 当前医院：-h 覆盖 > mause 会话上下文 > 本站医院。
+// contextHospital 当前医院：-h 覆盖 > ma use 会话上下文 > 本站医院。
 func (c *client) contextHospital(override string) (string, error) {
 	if override != "" {
 		return override, nil
@@ -247,7 +247,7 @@ func (c *client) contextHospital(override string) (string, error) {
 	if h := c.siteHospitalID(); h != "" {
 		return h, nil
 	}
-	return "", fmt.Errorf("未设定当前医院：先 mause <医院ID>（多院/实验室实例需要；单院部署自动取本站）")
+	return "", fmt.Errorf("未设定当前医院：先 ma use <医院ID>（多院/实验室实例需要；单院部署自动取本站）")
 }
 
 // ---------- 口令 ----------

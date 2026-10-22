@@ -55,7 +55,7 @@ Linux 服务覆盖口径（M19）：采集器未指定服务白名单时，自�
 
 - **基线**（「基线」页）：只放行**点名的主体**。逐条登记例外五要素——主体（如 root@localhost）、类型（privilege 权限 / role 角色 / identity 身份）、值（权限名，**大小写须与规则约定一致**：MySQL 写 SUPER、PostgreSQL 的 superuser 写小写、Oracle 角色写 DBA）、范围（如 *.*）、原因。评估时选用基线（开始审计弹窗、审计记录评估、CLI 均可选），命中的问题不再计为 FAIL，事实不变、不用基线重评即恢复全量。典型场景：厂商系统账号（mysql.session 等）、内置账号（PostgreSQL 的 postgres、Oracle 的 SYS/SYSTEM、Windows 内置 Administrator）、操作员管理账号（root）。
 - **规则启停**（「规则」页）：**整项检查**本站不要了。如客户现场 Oracle 的 SYS/SYSTEM 必须保留 DBA 角色且不希望报告体现，可关闭 db.oracle.dba_role。关闭必须填写原因并留痕（谁、何时、为何）；关闭的规则不评估、不落库、报告不出现，工作台「启用规则」数相应减少。批量启停支持多选。
-- 边界：工程师 CLI 的离线评估（`maoffeval`）是纯技术口径，**不应用**本站规则启停；在线评估才应用。
+- 边界：工程师 CLI 的离线评估（`ma offeval`）是纯技术口径，**不应用**本站规则启停；在线评估才应用。
 
 ## 6. 深度分析
 
@@ -73,16 +73,16 @@ Linux 服务覆盖口径（M19）：采集器未指定服务白名单时，自�
 
 安装包 bin/ 内含 `ma`（Linux/Windows 双版本）与 39 个 `ma*` 命令链接，工程师日常优先用它，与服务端 API 同一契约（全量手册见 docs/cli-guide.md）：
 
-- 会话：`malogin`（口令交互输入不回显）/ `malogout` / `mawhoami`；会话文件 `~/.medaudit/session.json`（0600）只存服务地址、用户名、会话 Cookie 与当前医院上下文，**不存口令**。当前医院用 `mause` 设定，单院部署自动取本站。
-- 审计：`maaudit <资产>`（数据库/远程推送按类型自动分发）、`maaudit -f 清单.yaml`（批量巡检，口令只写环境变量名）；采集器预检 `medaudit-collector db -f 配置 -P` 先探目标可采性（逐模板收据，退出码 0 完整 / 3 不完整 / 1 失败）。
-- 结果：`maeval <包>`（在线评估，`-F` 供脚本门禁）、`mafind <包>`（-j/-o CSV）、`mareport <包>`（生成并下载 Word）/ `mareportshow` / `mareportfix`（打印某报告的修复脚本）、`mabundlels/show/in/drift/eff`、`macorr`、`masum`。
-- 管理：`maassetls/add/show/mod/rm`（端点为位置参数，如 `maassetadd db-oracle 10.0.0.11:1521/HISDB -u reader`）、`mabasels/show/add/diff`（文件即基线全量格式）、`mabaseexempt <finding-id>`（一键豁免）、`marulels/off/on`、`masrv`、`masrvbak`（在线一致性快照；恢复 = 停服后替换库文件再启动，见部署指南第 6 节）。
-- 离线评估：`maoffeval <包.zip>` 在本地以同一规则引擎对事实包出结论并生成 Word（纯技术口径，不应用本站规则启停）。
+- 会话：`ma login`（口令交互输入不回显）/ `ma logout` / `ma whoami`；会话文件 `~/.medaudit/session.json`（0600）只存服务地址、用户名、会话 Cookie 与当前医院上下文，**不存口令**。当前医院用 `ma use` 设定，单院部署自动取本站。
+- 审计：`ma audit <资产>`（数据库/远程推送按类型自动分发）、`ma audit -f 清单.yaml`（批量巡检，口令只写环境变量名）；采集器预检 `medaudit-collector db -f 配置 -P` 先探目标可采性（逐模板收据，退出码 0 完整 / 3 不完整 / 1 失败）。
+- 结果：`ma eval <包>`（在线评估，`-F` 供脚本门禁）、`ma find <包>`（-j/-o CSV）、`ma report <包>`（生成并下载 Word）/ `ma reportshow` / `ma reportfix`（打印某报告的修复脚本）、`ma bundlels/show/in/drift/eff`、`ma corr`、`ma sum`。
+- 管理：`ma assetls/add/show/mod/rm`（端点为位置参数，如 `ma assetadd db-oracle 10.0.0.11:1521/HISDB -u reader`）、`ma basels/show/add/diff`（文件即基线全量格式）、`ma baseexempt <finding-id>`（一键豁免）、`ma rules/off/on`、`ma srv`、`ma srvbak`（在线一致性快照；恢复 = 停服后替换库文件再启动，见部署指南第 6 节）。
+- 离线评估：`ma offeval <包.zip>` 在本地以同一规则引擎对事实包出结论并生成 Word（纯技术口径，不应用本站规则启停）。
 
 ## 9. 口径与边界（试点须知）
 
 - 结论分 PASS/FAIL/UNKNOWN/NOT_RUN/NOT_APPLICABLE；执行分 COMPLETE/PARTIAL/FAILED。PARTIAL 是诚实口径（如 Oracle 大视图 5000 行采集窗口、大库 tab_privs 横跨窗口时结论覆盖不完整），不要当作失败、更不要当作完整。
 - PostgreSQL 对象级 ACL 只覆盖所连数据库；WebLogic 为域配置目录级解析（嵌入式 LDAP 账号不采集）；IIS 配置文件 ACL 由操作系统采集覆盖；Windows Server 2022 以 2019 实测替代验收（见支持矩阵）。
-- 平台库为单机 SQLite（单写者），试点单机部署即设计内用法；备份必须走在线备份（`masrvbak` 或 sqlite `.backup`），**不要直接拷运行中的库主文件**（WAL 未合并会丢最新数据）。
+- 平台库为单机 SQLite（单写者），试点单机部署即设计内用法；备份必须走在线备份（`ma srvbak` 或 sqlite `.backup`），**不要直接拷运行中的库主文件**（WAL 未合并会丢最新数据）。
 - 远程推送的采集器与服务端同版本同架构（Linux/Windows amd64）；Windows 资产必须登记目标机可达的 server_url。
 - 报告快照章节（提权路径/漂移/修复脚本）只出现在生成时点已具备数据的报告里，旧报告不回填，需要时重新生成。

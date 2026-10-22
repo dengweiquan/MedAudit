@@ -22,7 +22,6 @@ GOOS=windows go build -o "$PKG/bin/medaudit-collector.exe" ./cmd/medaudit-collec
 echo "--- 工程师 CLI（Linux + Windows）---"
 go build -o "$PKG/bin/ma" ./cmd/ma
 GOOS=windows go build -o "$PKG/bin/ma.exe" ./cmd/ma
-for n in malogin malogout mawhoami mause masite mauserls mauseradd mauseron mauseroff mauserpw maassetls maassetadd maassetshow maassetmod maassetrm maaudit maeval maoffeval mabundlels mabundlein mabundleshow mabundledrift mabundleeff mafind mareport mareportls mareportshow mareportfix mabasels mabaseshow mabaseadd mabasediff mabaseexempt marulels maruleoff maruleon macorr masum masrv masrvbak; do ln -sf ma "$PKG/bin/$n"; done
 
 echo "--- 复制前端/迁移/规则/SQL 模板 ---"
 cp -r web/dist "$PKG/web/"

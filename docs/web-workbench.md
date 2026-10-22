@@ -20,7 +20,7 @@
 - 登记时只保存非机密连接参数（host/port/user/dbname|service/sslmode）到 assets.labels 的 JSON。
 - **口令永不落库**：审计弹窗输入，仅经子进程环境变量（password_env 机制）传给采集器，配置文件不含口令，临时目录用后即删。
 - 服务端以子进程调用 medaudit-collector（路径：环境变量 MEDAUDIT_COLLECTOR_BIN，未设时取服务二进制同目录），流程：采集 → 导入（含证据加密）→ 评估（可选基线）→ 生成报告，接口 POST /api/v1/audit/run，串行执行，超时 5 分钟。
-- Oracle 采集时自动给子进程加 LD_LIBRARY_PATH（MEDAUDIT_ORACLE_LIB，默认 /opt/oracle/instantclient_19_23）。
+- Oracle 采集走纯 Go 驱动（go-ora），无 Instant Client 依赖。
 
 ## M6 新增/变更接口
 

@@ -18,7 +18,7 @@ func cmdFindings(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "mafind <包id> [-c 结论] [-r 规则] [-j] [-o 清单.csv]"); err != nil {
+	if err := p.requirePos(1, "ma find <包id> [-c 结论] [-r 规则] [-j] [-o 清单.csv]"); err != nil {
 		return err
 	}
 	c, err := newClient()

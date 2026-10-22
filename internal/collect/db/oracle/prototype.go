@@ -1,14 +1,8 @@
-//go:build !windows
-
 // Package oracle 提供 Oracle 权限核查适配器。
 // M0：连接原型（Connect + 版本查询 + 最小事实包）。
 //
-// 构建要求（CGO）：
-//
-//	export CGO_CFLAGS=-I/opt/oracle/instantclient_19_23/sdk/include
-//	export CGO_LDFLAGS="-L/opt/oracle/instantclient_19_23 -lclntsh"
-//
-// 运行要求：LD_LIBRARY_PATH 包含 instantclient 目录（或 rpath）。
+// 驱动为纯 Go 实现（go-ora），不依赖 Oracle Instant Client，
+// Linux / Windows 采集器同一实现，零外部依赖。
 package oracle
 
 import (
@@ -19,7 +13,7 @@ import (
 
 	"medaudit/internal/facts"
 
-	_ "github.com/godror/godror"
+	_ "github.com/sijms/go-ora/v2"
 
 	"errors"
 	"strings"
@@ -30,7 +24,7 @@ func Connect(ctx context.Context, cfg Config) (*sql.DB, error) {
 	if cfg.ConnectTimeout <= 0 {
 		cfg.ConnectTimeout = 15 * time.Second
 	}
-	db, err := sql.Open("godror", cfg.connString())
+	db, err := sql.Open("oracle", cfg.connString())
 	if err != nil {
 		return nil, fmt.Errorf("oracle open: %w", err)
 	}
@@ -43,7 +37,7 @@ func Connect(ctx context.Context, cfg Config) (*sql.DB, error) {
 	defer cancel()
 	if err := db.PingContext(pingCtx); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("oracle ping: %w", cleanGodrorErr(err))
+		return nil, fmt.Errorf("oracle ping: %w", cleanOracleErr(err, cfg.Password))
 	}
 	return db, nil
 }
@@ -125,19 +119,16 @@ func PrototypeCollect(ctx context.Context, db *sql.DB, cfg Config, collectorVers
 	return b, nil
 }
 
-// cleanGodrorErr 去掉 godror 连接错误里的大段参数转储
-// （standalone params={...}），只保留可读结论（如 ORA-01017: ...），
-// 避免内部参数直达界面且刷屏。
-func cleanGodrorErr(err error) error {
+// cleanOracleErr 清洗连接错误：抹去可能混入的口令等敏感串，
+// 只保留可读结论（如 ORA-01017: ...），避免内部参数直达界面。
+func cleanOracleErr(err error, secrets ...string) error {
 	if err == nil {
 		return nil
 	}
 	str := err.Error()
-	if i := strings.Index(str, "standalone params="); i >= 0 {
-		if j := strings.Index(str[i:], "}: "); j >= 0 {
-			str = str[:i] + str[i+j+3:]
-		} else {
-			str = strings.TrimSpace(str[:i])
+	for _, s := range secrets {
+		if s != "" {
+			str = strings.ReplaceAll(str, s, "***")
 		}
 	}
 	return errors.New(str)

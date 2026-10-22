@@ -65,7 +65,7 @@
                                   <p v-if="detailText(f)">{{ detailText(f) }}</p>
                                   <p v-if="ruleOf(f)">{{ ruleOf(f)?.Description }}</p>
                                   <p v-if="ruleOf(f)"><b>如何解决：</b>{{ ruleOf(f)?.Remediation }}</p>
-                                  <p class="todo">需要可执行命令（修复/回滚脚本）的，请生成报告后在报告详情中查看，或由工程师用 mareportfix 导出。</p>
+                                  <p class="todo">需要可执行命令（修复/回滚脚本）的，请生成报告后在报告详情中查看，或由工程师用 ma reportfix 导出。</p>
 
                                   <template v-if="f.conclusion === 'FAIL'">
                                     <h3>加入基线（确认是例外时）</h3>

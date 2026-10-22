@@ -55,7 +55,7 @@ func cmdWhoami(args []string) error {
 	}
 	u := c.username()
 	if u == "" {
-		return fmt.Errorf("未登录或会话已过期：先运行 malogin")
+		return fmt.Errorf("未登录或会话已过期：先运行 ma login")
 	}
 	hosp := ""
 	if s, err := loadSession(); err == nil {
@@ -65,11 +65,11 @@ func cmdWhoami(args []string) error {
 	if hosp == "" {
 		hosp = c.siteHospitalID()
 		if hosp == "" {
-			hosp = "（未设定，多院实例请 mause 指定）"
+			hosp = "（未设定，多院实例请 ma use 指定）"
 			src = ""
 		}
 	} else {
-		src = "mause 设定"
+		src = "ma use 设定"
 	}
 	fmt.Printf("%s @ %s\n当前医院：%s %s\n", u, c.base, hosp, src)
 	return nil
@@ -103,7 +103,7 @@ func cmdSite(args []string) error {
 		return err
 	}
 	if site.HospitalID == "" {
-		fmt.Println("本站未初始化（多院/开发模式）：用 mause <医院ID> 设定当前医院上下文")
+		fmt.Println("本站未初始化（多院/开发模式）：用 ma use <医院ID> 设定当前医院上下文")
 		return nil
 	}
 	fmt.Printf("本站医院：%s（%s）\n", site.HospitalID, site.Name)
@@ -142,7 +142,7 @@ func cmdUserAdd(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "mauseradd <name> [-e 口令环境变量]"); err != nil {
+	if err := p.requirePos(1, "ma useradd <name> [-e 口令环境变量]"); err != nil {
 		return err
 	}
 	name := p.pos[0]
@@ -167,7 +167,7 @@ func cmdUserPassword(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "mauserpw <name> [-e 口令环境变量]"); err != nil {
+	if err := p.requirePos(1, "ma userpw <name> [-e 口令环境变量]"); err != nil {
 		return err
 	}
 	name := p.pos[0]
@@ -191,9 +191,9 @@ func cmdUserDisabled(args []string, disabled bool) error {
 	if err != nil {
 		return err
 	}
-	verb := "mauseron"
+	verb := "ma useron"
 	if disabled {
-		verb = "mauseroff"
+		verb = "ma useroff"
 	}
 	if err := p.requirePos(1, verb+" <name>"); err != nil {
 		return err

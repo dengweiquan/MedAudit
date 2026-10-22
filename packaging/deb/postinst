@@ -17,6 +17,22 @@ case "$1" in
       sed -i "s|^MEDAUDIT_EVIDENCE_KEY=$|MEDAUDIT_EVIDENCE_KEY=$KEY|" "$ENV_FILE"
       echo "medaudit: 已生成证据加密密钥到 $ENV_FILE（请备份，丢失则历史证据不可读）"
     fi
+    # 本站医院：未设置且有交互终端时询问（非交互安装跳过，不阻塞）
+    if [ -f "$ENV_FILE" ] && grep -q '^MEDAUDIT_SITE_HOSPITAL_ID=$' "$ENV_FILE" && ( : < /dev/tty ) 2>/dev/null; then
+      printf 'medaudit: 请输入本站医院 ID（如 h-001，直接回车跳过）: ' > /dev/tty
+      IFS= read -r MA_HID < /dev/tty || MA_HID=
+      if [ -n "$MA_HID" ]; then
+        printf 'medaudit: 请输入本站医院名称: ' > /dev/tty
+        IFS= read -r MA_HNAME < /dev/tty || MA_HNAME=
+        MA_HID_ESC=$(printf '%s' "$MA_HID" | sed 's|[&|\\]|\\&|g')
+        sed -i "s|^MEDAUDIT_SITE_HOSPITAL_ID=$|MEDAUDIT_SITE_HOSPITAL_ID=$MA_HID_ESC|" "$ENV_FILE"
+        if [ -n "$MA_HNAME" ]; then
+          MA_HNAME_ESC=$(printf '%s' "$MA_HNAME" | sed 's|[&|\\]|\\&|g')
+          sed -i "s|^MEDAUDIT_SITE_HOSPITAL_NAME=$|MEDAUDIT_SITE_HOSPITAL_NAME=$MA_HNAME_ESC|" "$ENV_FILE"
+        fi
+        echo "medaudit: 本站医院已设置（$MA_HID $MA_HNAME），服务启动时自动登记"
+      fi
+    fi
     [ -f "$ENV_FILE" ] && chmod 640 "$ENV_FILE" && chgrp medaudit "$ENV_FILE" || true
     if [ -d /run/systemd/system ]; then
       systemctl daemon-reload || true
@@ -25,7 +41,7 @@ case "$1" in
       systemctl restart medaudit-server 2>/dev/null || systemctl start medaudit-server 2>/dev/null || \
         echo "medaudit: 服务未启动，填好 /etc/medaudit/medaudit.env 后执行 systemctl start medaudit-server"
     fi
-    echo "medaudit: Web 入口 http://<本机>:8080（默认 admin，首登强制改密）；工程师 CLI：ma 命令族（ma 查看索引）"
+    echo "medaudit: Web 入口 http://<本机>:8080（默认 admin，首登强制改密）；工程师 CLI：运行 ma 查看功能索引"
     ;;
 esac
 exit 0

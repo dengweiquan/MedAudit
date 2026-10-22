@@ -116,13 +116,6 @@ func RunDBAudit(ctx context.Context, db *sql.DB, reg *rules.Registry, kr *Eviden
 	cmd := exec.CommandContext(runCtx, collectorBin, "db",
 		"-engine", engine, "-config", cfgPath, "-out", zipPath)
 	env := append(os.Environ(), "MEDAUDIT_RUN_PW="+password)
-	if engine == "oracle" {
-		lib := os.Getenv("MEDAUDIT_ORACLE_LIB")
-		if lib == "" {
-			lib = "/opt/oracle/instantclient_19_23"
-		}
-		env = append(env, "LD_LIBRARY_PATH="+lib)
-	}
 	cmd.Env = env
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

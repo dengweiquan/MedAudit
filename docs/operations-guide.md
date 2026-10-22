@@ -8,7 +8,7 @@
 
 ## 0. 约定（先读）
 
-- **组成**：服务端（平台 + Web）一台；工程师用命令行工具 `ma`（LVM 风格命令族，如 `maaudit`、`mafind`）；目标机采集用 `medaudit-collector`（数据库由服务端代调，OS/中间件可推送或本地运行）。
+- **组成**：服务端（平台 + Web）一台；工程师用命令行工具 `ma`（LVM 风格命令族，如 `ma audit`、`ma find`）；目标机采集用 `medaudit-collector`（数据库由服务端代调，OS/中间件可推送或本地运行）。
 - **口令纪律**：任何口令不落盘、不进平台数据库。命令行一律经 `-e <环境变量名>` 传入，或在提示时交互输入；ma 会话文件只存服务地址、用户名、会话 Cookie 与当前医院上下文。
 - **结论口径**：单项结论 PASS（通过）/ FAIL（问题）/ UNKNOWN（证据不足，不能判安全）/ NOT_RUN / N/A（不适用）；整包执行状态 COMPLETE / PARTIAL（部分模板缺失，报告会注明）/ FAILED。
 - **时间口径**：平台内部存储为 UTC；Web 页面按浏览器本地时区显示；Word 报告按服务端 `MEDAUDIT_DISPLAY_TZ`（默认 Asia/Shanghai）渲染；CSV 导出为 UTC 原始值。
@@ -79,7 +79,7 @@ MEDAUDIT_SERVER=http://127.0.0.1:8080 MEDAUDIT_USER=admin MEDAUDIT_PASS=<新口�
 ### 1.6 备份
 
 ```bash
-masrvbak /backup/medaudit-$(date +%F).db
+ma srvbak /backup/medaudit-$(date +%F).db
 ```
 
 > ⚠️ 平台库是 SQLite WAL 模式：**严禁用 `cp` 直接拷贝数据库主文件**做备份（会丢未合并事务），只用上面的备份命令（一致性快照）。
@@ -89,16 +89,16 @@ masrvbak /backup/medaudit-$(date +%F).db
 ## 2. 工程师 CLI 准备
 
 ```bash
-cp -a /opt/medaudit/bin/ma /opt/medaudit/bin/ma* /usr/local/bin/    # ma 本体与 ma* 命令族链接，或全路径使用
+cp -a /opt/medaudit/bin/ma /usr/local/bin/    # 工程师 CLI 只有一个 ma，或全路径使用
 ma -s http://<服务器>:8080 login admin
 # 按提示输入口令；预期输出：已登录 admin（…会话存 ~/.medaudit/session.json）
-mawhoami
+ma whoami
 # 预期：admin @ http://<服务器>:8080 + 当前医院行
 ```
 
 - 也可用环境变量 `MEDAUDIT_USER` / `MEDAUDIT_PASS` 自动登录；注意：本机若留有过期会话文件，自动登录不会触发，先执行一次 `login` 刷新。
 - 服务端重启后会话失效（内存会话），重新 `login` 即可。
-- 之后所有命令可省 `-s`（会话已记住）；命令族也可不经 ma 分发器、直接以全名执行（如 `maaudit`）。下文为清晰起见仍写全路径变量（$CTL 后跟家族命令名）：
+- 之后所有命令可省 `-s`（会话已记住）。下文为清晰起见仍写全路径变量（$CTL 后跟功能词）：
 
 ```bash
 CTL='ma -s http://<服务器>:8080'
@@ -124,10 +124,10 @@ $CTL userls
 
 | 命令 | 用途 |
 |---|---|
-| `mauseradd <名> [-e <VAR>]` | 建号；新账号首次 Web 登录强制改密 |
-| `mauserpw <名> [-e <VAR>]` | 重置口令，并吊销该用户全部会话 |
-| `mauseroff / mauseron <名>` | 禁用/启用；禁用即吊销会话；不能禁用自己与最后一个可用账号 |
-| `mauserls` | 列表（状态、强制改密标志、创建时间） |
+| `ma useradd <名> [-e <VAR>]` | 建号；新账号首次 Web 登录强制改密 |
+| `ma userpw <名> [-e <VAR>]` | 重置口令，并吊销该用户全部会话 |
+| `ma useroff / ma useron <名>` | 禁用/启用；禁用即吊销会话；不能禁用自己与最后一个可用账号 |
+| `ma userls` | 列表（状态、强制改密标志、创建时间） |
 
 所有账号当前同权（无角色分级）；建号/重置/启停都会在服务端日志留痕。
 
@@ -173,13 +173,13 @@ $CTL eval <包ID> -b <基线ID>    # 选基线再评一次（厂商/内置账号
 $CTL report <包ID> -o <文件名>.docx   # 生成并下载 Word 报告（见第 5 节）
 ```
 
-**确认例外（基线豁免）最简路径——Web 问题页一键加入（0.24.0 起）**：打开「问题」页 → 展开问题类型 → 展开主体 → 点开一条 FAIL 明细 → 「加入基线」：系统按该问题的证据**自动推导**放行项（主体/种类/值/范围都已算好，不用手填）→ 选已有基线或新建 → 填原因 → 确认。之后在「审计记录」页选用该基线重新评估，该条不再计为问题。个别检查项不支持豁免（会明确提示），整类停用请用「规则」页的规则启停。基线页已改为结构化表单（逐条填写/删除放行项），原始 JSON 仅保留在「高级」折叠区；工程师也可用 `mabaseexempt <finding-id>` 在命令行一键豁免（先预览推导项、确认后加入），或用 `mabaseadd -f 基线.json` 以文件方式维护基线。
+**确认例外（基线豁免）最简路径——Web 问题页一键加入（0.24.0 起）**：打开「问题」页 → 展开问题类型 → 展开主体 → 点开一条 FAIL 明细 → 「加入基线」：系统按该问题的证据**自动推导**放行项（主体/种类/值/范围都已算好，不用手填）→ 选已有基线或新建 → 填原因 → 确认。之后在「审计记录」页选用该基线重新评估，该条不再计为问题。个别检查项不支持豁免（会明确提示），整类停用请用「规则」页的规则启停。基线页已改为结构化表单（逐条填写/删除放行项），原始 JSON 仅保留在「高级」折叠区；工程师也可用 `ma baseexempt <finding-id>` 在命令行一键豁免（先预览推导项、确认后加入），或用 `ma baseadd -f 基线.json` 以文件方式维护基线。
 
 ### 4.1 Oracle
 
 ```bash
 export ORA_PW='******'          # 采集账号口令（建议专用只读审计账号）
-$CTL maaudit db-ora-01 -e ORA_PW
+$CTL ma audit db-ora-01 -e ORA_PW
 # 预期输出示例：
 # 数据库一键审计完成：事实 8528 / 收据 10；评估 1690 条（FAIL 1630，落库 1630）；
 # 报告 report-bundle-ora-…；事实包 bundle-ora-…
@@ -192,12 +192,12 @@ $CTL bundleshow bundle-ora-…
 
 ### 4.2 MySQL / SQL Server / PostgreSQL
 
-命令形与 Oracle 相同（`maaudit <对应资产>`），各自资产登记时给定的账号连接，口令经 `-e` 传入（或环境变量 `MEDAUDIT_PW`、或交互输入）。
+命令形与 Oracle 相同（`ma audit <对应资产>`），各自资产登记时给定的账号连接，口令经 `-e` 传入（或环境变量 `MEDAUDIT_PW`、或交互输入）。
 
 ```bash
-$CTL maaudit db-mysql-01 -e MY_PW
-$CTL maaudit db-mssql-01 -e MS_PW
-$CTL maaudit db-pg-01 -e PG_PW
+$CTL ma audit db-mysql-01 -e MY_PW
+$CTL ma audit db-mssql-01 -e MS_PW
+$CTL ma audit db-pg-01 -e PG_PW
 ```
 
 判读要点：
@@ -209,7 +209,7 @@ $CTL maaudit db-pg-01 -e PG_PW
 路径 A（远程推送，资产已登记 SSH 参数）：
 
 ```bash
-$CTL maaudit os-linux-01 -e SSH_PW
+$CTL ma audit os-linux-01 -e SSH_PW
 # 输出含主机密钥指纹（首次 TOFU 回显，请与目标机核对后可登记 labels 的 host_key 固定）
 ```
 
@@ -227,7 +227,7 @@ $CTL eval <包ID>
 ### 4.4 Windows
 
 ```bash
-$CTL maaudit os-win-01 -e WIN_PW
+$CTL ma audit os-win-01 -e WIN_PW
 # WinRM 通道：采集器 exe 由目标机凭一次性令牌从平台拉取（令牌 5 分钟单次有效）
 ```
 
@@ -235,7 +235,7 @@ $CTL maaudit os-win-01 -e WIN_PW
 
 ### 4.5 HP-UX
 
-路径 A（服务端远程，资产已登记 SSH 参数）：`$CTL maaudit os-hpux-01 -e HPUX_PW`（SSH 命令采集，不推送二进制）。
+路径 A（服务端远程，资产已登记 SSH 参数）：`$CTL ma audit os-hpux-01 -e HPUX_PW`（SSH 命令采集，不推送二进制）。
 
 路径 B（工程师本地）：
 
@@ -262,7 +262,7 @@ $CTL bundlein tc.zip && $CTL eval <包ID>
 判读要点：
 - **容器部署**时把采集器复制进容器内执行（`docker cp` + `docker exec`），否则进程类检查（如 run_as_root）因视角不一致为 UNKNOWN。
 - WebLogic 无运行进程可看，run_as_root 类恒为 UNKNOWN，属目录级采集的既定边界。
-- IIS 走远程：`$CTL maaudit mw-iis-01 -e WIN_PW`。
+- IIS 走远程：`$CTL ma audit mw-iis-01 -e WIN_PW`。
 
 ### 4.7 业务接口（API 越权审计）
 
@@ -328,7 +328,7 @@ $CTL reportfix <报告ID> [-r <规则ID>] # 打印修复/回滚脚本（四步�
 ### 5.2 问题清单（CSV）
 
 ```bash
-$CTL find <包ID> -o findings.csv   # 问题清单 CSV（finding_id/规则/主体/结论/明细；修复脚本走 mareportfix 或报告 CSV）
+$CTL find <包ID> -o findings.csv   # 问题清单 CSV（finding_id/规则/主体/结论/明细；修复脚本走 ma reportfix 或报告 CSV）
 ```
 
 CSV 内时间为 UTC 原始值（与 Word 的显示时区口径不同，交换数据时注意）。
@@ -357,25 +357,25 @@ curl -b <会话Cookie> -o api报告.docx \
 部署与账号
 - [ ] `GET /api/v1/health` 返回 ok 且版本为 0.25.0-m23
 - [ ] 默认口令已改，Web 登录后不被强制改密拦截
-- [ ] `mawhoami` 正常；`mauseradd` 建出工程师账号且其首登被要求改密
+- [ ] `ma whoami` 正常；`ma useradd` 建出工程师账号且其首登被要求改密
 - [ ] 本站医院在管理页显示正确，登记的对象都归属本站
 
 逐类型各跑通一遍（审计 → 问题 → 报告三步齐）
-- [ ] Oracle：`maaudit` 完成；理解 PARTIAL（tab_privs 截断）含义；报告可下载
-- [ ] MySQL：`maaudit` 完成；global_admin / remote_no_tls 结论可解释
-- [ ] SQL Server：资产已登记；`maaudit` 完成；sysadmin 成员结论可解释
-- [ ] PostgreSQL：`maaudit` 完成
-- [ ] Linux：`maaudit`（远程推送）或本地采集导入完成；服务类检查无 UNKNOWN（或原因明确）
-- [ ] Windows：`maaudit`（WinRM）完成；管理员组结论可解释
+- [ ] Oracle：`ma audit` 完成；理解 PARTIAL（tab_privs 截断）含义；报告可下载
+- [ ] MySQL：`ma audit` 完成；global_admin / remote_no_tls 结论可解释
+- [ ] SQL Server：资产已登记；`ma audit` 完成；sysadmin 成员结论可解释
+- [ ] PostgreSQL：`ma audit` 完成
+- [ ] Linux：`ma audit`（远程推送）或本地采集导入完成；服务类检查无 UNKNOWN（或原因明确）
+- [ ] Windows：`ma audit`（WinRM）完成；管理员组结论可解释
 - [ ] HP-UX：远程命令采集或转录流程完成；6 条规则均有结论
 - [ ] Tomcat / Nginx：采集完成（容器为容器内采集）；控制台账号/明文监听结论可解释
 - [ ] WebLogic：目录采集完成；dev_mode / console / 明文监听有结论（run_as_root UNKNOWN 为预期）
-- [ ] IIS：`maaudit` 完成
+- [ ] IIS：`ma audit` 完成
 - [ ] API：apicheck COMPLETE；垂直/水平越权探针有结论；报告已上传且 Word 可下载
 
 报告与闭环
-- [ ] 任选一包：`mareport` 下载的 Word 时间为本地时区、章节完整
-- [ ] `mareportfix` 能打印修复/回滚四步脚本
+- [ ] 任选一包：`ma report` 下载的 Word 时间为本地时区、章节完整
+- [ ] `ma reportfix` 能打印修复/回滚四步脚本
 - [ ] 对任一资产复检一次，复检对比能分出已修复/仍存在/新增
 
 ---
@@ -386,7 +386,7 @@ curl -b <会话Cookie> -o api报告.docx \
 |---|---|
 | ORA-01017 / 登录被拒 | 采集账号口令不对。先用同一口令在目标机验证再跑；错误信息已带中文提示 |
 | MySQL 1045 Access denied | 该**实例**的口令不对（不同实例/版本口令相互独立），核对资产对应的实例 |
-| ma 报「未登录或会话已过期」 | 服务端重启或会话过期，重新 `malogin` |
+| ma 报「未登录或会话已过期」 | 服务端重启或会话过期，重新 `ma login` |
 | 导入返回 duplicate | 包 ID 按秒生成，同秒重复导入/采集会撞 ID；间隔 2 秒重采或重导 |
 | findings 条数多于本轮 FAIL | 评估为追加落库（多次评估各成一轮）；以最新一轮为准（Web 口径），或看 `evaluate` 当轮输出 |
 | Oracle 整包 PARTIAL | tab_privs 5000 行窗口截断（大库常态），收据里有标注；不是失败 |

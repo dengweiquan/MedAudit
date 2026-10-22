@@ -65,11 +65,11 @@ bash /opt/medaudit/pilot/smoke-test.sh http://127.0.0.1:8080
 bash /opt/medaudit/pilot/load-demo.sh http://127.0.0.1:8080
 ```
 
-再人工确认：工作台可打开并完成首次登录改口令（见第 8 节）；「规则」页 59 条；管理页显示本站信息（见第 9 节）。安装包 bin/ 另含工程师 CLI `ma` 命令族（用法见操作手册第 8 节与 docs/cli-guide.md），可在服务端本机先 `malogin` 后做 `masrv` 冒烟。
+再人工确认：工作台可打开并完成首次登录改口令（见第 8 节）；「规则」页 59 条；管理页显示本站信息（见第 9 节）。安装包 bin/ 另含工程师 CLI `ma` 命令族（用法见操作手册第 8 节与 docs/cli-guide.md），可在服务端本机先 `ma login` 后做 `ma srv` 冒烟。
 
 ## 6. 数据与备份
 
-- 平台库备份（首选平台自带在线备份，任选其一）：登录后调 `GET /api/v1/admin/backup`，或用 `masrvbak <备份文件>`（VACUUM INTO 一致性快照）；也可用 `sqlite3 medaudit.db ".backup backup.db"`。**切勿直接 cp 运行中的 medaudit.db 主文件**——平台库为 WAL 模式，未合并的 WAL 事务会丢失，拷出的副本是旧快照；确需文件级拷贝先停服。恢复 = 停服 → 用快照替换 medaudit.db → 启动。证据加密开启时，密钥环（evidence.env）须与库一同保管，丢密钥则证据不可解。
+- 平台库备份（首选平台自带在线备份，任选其一）：登录后调 `GET /api/v1/admin/backup`，或用 `ma srvbak <备份文件>`（VACUUM INTO 一致性快照）；也可用 `sqlite3 medaudit.db ".backup backup.db"`。**切勿直接 cp 运行中的 medaudit.db 主文件**——平台库为 WAL 模式，未合并的 WAL 事务会丢失，拷出的副本是旧快照；确需文件级拷贝先停服。恢复 = 停服 → 用快照替换 medaudit.db → 启动。证据加密开启时，密钥环（evidence.env）须与库一同保管，丢密钥则证据不可解。
 - 回退：保留上一版本安装包与 data 备份即可整包回退；平台库只向前迁移，不做降级迁移。
 - 升级：解压新包后重跑 install.sh（覆盖 bin/web，不动 data），重启服务。
 

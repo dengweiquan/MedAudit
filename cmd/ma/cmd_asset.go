@@ -49,7 +49,7 @@ func cmdAssetShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "maassetshow <id>"); err != nil {
+	if err := p.requirePos(1, "ma assetshow <id>"); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -194,7 +194,7 @@ func cmdAssetAdd(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(2, "maassetadd <类型> <端点> [-i id] [-n 名称] [-u 账号] [-h 医院] [-f labels文件] [-U 回连地址] [-d 中间件目录] [-s 服务清单]"); err != nil {
+	if err := p.requirePos(2, "ma assetadd <类型> <端点> [-i id] [-n 名称] [-u 账号] [-h 医院] [-f labels文件] [-U 回连地址] [-d 中间件目录] [-s 服务清单]"); err != nil {
 		return err
 	}
 	kind, ep := p.pos[0], p.pos[1]
@@ -253,7 +253,7 @@ func cmdAssetMod(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "maassetmod <id> [端点] [-n 名称] [-u 账号] [-f labels文件] [-U 回连地址] [-d 中间件目录] [-s 服务清单]"); err != nil {
+	if err := p.requirePos(1, "ma assetmod <id> [端点] [-n 名称] [-u 账号] [-f labels文件] [-U 回连地址] [-d 中间件目录] [-s 服务清单]"); err != nil {
 		return err
 	}
 	id := p.pos[0]
@@ -331,7 +331,7 @@ func cmdAssetDelete(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "maassetrm <id>"); err != nil {
+	if err := p.requirePos(1, "ma assetrm <id>"); err != nil {
 		return err
 	}
 	c, err := newClient()

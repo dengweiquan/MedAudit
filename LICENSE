@@ -1,111 +1,168 @@
-Business Source License 1.1
+Weixun Source License 1.0
+维讯源码许可证 1.0
 
-License text copyright © 2024 MariaDB plc, All Rights Reserved.
-"Business Source License" is a trademark of MariaDB plc.
+Copyright (c) 2026 Xiamen Weixun Information Technology Co., Ltd.
+（厦门维讯信息科技有限公司）. All rights reserved.
 
-Parameters
+Project direction and planning （项目规划）: Deng WeiQuan （邓伟权）.
+This line records project attribution only. The Licensor and the
+copyright holder of the Licensed Work is Xiamen Weixun Information
+Technology Co., Ltd.; the person named here holds no licensor rights
+under this License by virtue of this line.
+（本行仅为项目署名。许可方与著作权人均为厦门维讯信息科技有限
+公司；署名人不因本行而取得许可方权利。）
 
-Licensor:             厦门维讯信息科技有限公司 (Xiamen Weixun Information
-                      Technology Co., Ltd.)
+=====================================================================
+ENGLISH TEXT (the English text prevails in case of any conflict)
+=====================================================================
 
-Licensed Work:        MedAudit (including the medaudit-server,
-                      medaudit-collector, and the ma command family
-                      programs), version 0.25.0 and later versions
-                      distributed under this License.
+1. Definitions
 
-Additional Use Grant: Personal use, and non-production use by any person
-                      or entity — including evaluation, testing,
-                      development, and laboratory use — is permitted free
-                      of charge. A for-profit organization must obtain a
-                      commercial license from the Licensor before using
-                      the Licensed Work in a production environment,
-                      including running the MedAudit platform for its own
-                      business operations, or using it to provide audit
-                      services to third parties.
+"Licensor" means Xiamen Weixun Information Technology Co., Ltd.
 
-                      个人使用，以及任何主体的非生产用途（包括评估、
-                      测试、开发与实验室环境使用）均可免费进行。营利性
-                      组织在生产环境中使用本软件（包括为其自身业务运行
-                      MedAudit 平台，或利用本软件为第三方提供审计
-                      服务），必须事先取得 Licensor（许可方）的商业
-                      授权。
+"Licensed Work" means MedAudit, including the medaudit-server,
+medaudit-collector and ma programs, in source code and binary form,
+as distributed under this License. Version 0.25.0 of the Licensed
+Work was first made available under the Business Source License 1.1
+and remains governed by that license for copies so obtained; this
+License applies to versions distributed under it, starting with
+version 0.25.0 as re-issued under this License.
 
-Change Date:          Four years from the date this version of the
-                      Licensed Work is first made available.
+"Production Use" means using the Licensed Work in a production
+environment, including running it for an organization's own business
+operations or using it to provide services of any kind to third
+parties.
 
-Change License:       MIT License
+"You" means the person or entity exercising rights under this
+License.
 
-Notice
+2. Grant
 
-The Business Source License (this document, or the "License") is not an
-Open Source license. However, the Licensed Work will eventually be made
-available under an Open Source License, as stated in this License.
+Subject to the terms of this License, the Licensor grants you a
+non-exclusive right to use, copy, modify, create derivative works
+of, and redistribute the Licensed Work, in source or binary form,
+except that Production Use by or for a for-profit organization
+requires a commercial license under Section 3.
 
-Terms
+3. Free use and commercial licensing
 
-The Licensor hereby grants you the right to copy, modify, create
-derivative works, redistribute, and make non-production use of the
-Licensed Work. The Licensor may make an Additional Use Grant, above,
-permitting limited production use.
+(a) Personal use, and non-production use by any person or entity -
+including evaluation, testing, development, and laboratory use - is
+permitted free of charge.
 
-Effective on the Change Date, or the fourth anniversary of the first
-publicly available distribution of a specific version of the Licensed
-Work under this License, whichever comes first, the Licensor hereby
-grants you rights under the terms of the Change License, and the rights
-granted in the paragraph above terminate.
+(b) A for-profit organization must obtain a commercial license from
+the Licensor before any Production Use of the Licensed Work. The
+summary of the commercial terms is in COMMERCIAL-LICENSE.md; contact
+the Licensor at sales@xmweixun.com.
 
-If your use of the Licensed Work does not comply with the requirements
-currently in effect as described in this License, you must purchase a
-commercial license from the Licensor, its affiliated entities, or
-authorized resellers, or you must refrain from using the Licensed Work.
+4. Redistribution conditions
 
-All copies of the original and modified Licensed Work, and derivative
-works of the Licensed Work, are subject to this License. This License
-applies separately for each version of the Licensed Work and the Change
-Date may vary for each version of the Licensed Work released by Licensor.
+Any redistribution of the Licensed Work or of derivative works, in
+whole or in part, must retain this License and all copyright,
+attribution, and other notices contained in the Licensed Work, and
+may be made only under the terms of this License. You may not impose
+further restrictions on the rights granted by this License, and you
+may not use the name of the Licensed Work or of the Licensor to
+imply endorsement of any product or service.
 
-You must conspicuously display this License on each original or modified
-copy of the Licensed Work. If you receive the Licensed Work in original or
-modified form from a third party, the terms and conditions set forth in
-this License apply to your use of that work.
+5. No conversion to open source
 
-Any use of the Licensed Work in violation of this License will
-automatically terminate your rights under this License for the current
-and all other versions of the Licensed Work.
+This License does not convert into any other license, including any
+open source license, and no rights beyond those expressly granted in
+this License arise with the passage of time.
 
-This License does not grant you any right in any trademark or logo of
-Licensor or its affiliates (provided that you may use a trademark or logo
-of Licensor as expressly required by this License).
+6. Termination
 
-TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED WORK IS PROVIDED
-ON AN "AS IS" BASIS. LICENSOR HEREBY DISCLAIMS ALL WARRANTIES AND
-CONDITION, EXPRESS OR IMPLIED, INCLUDING (WITHOUT LIMITATION) WARRANTIES
-OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT,
-AND TITLE.
+If you do not comply with this License, your rights under it
+terminate automatically. Upon termination you must cease the
+non-complying use, or obtain a commercial license covering it.
 
-MariaDB hereby grants you permission to use this License's text to
-license your works, and to refer to it using the trademark "Business
-Source License", as long as you comply with the Covenants of Licensor
-below.
+7. Disclaimer of warranty
 
-Covenants of Licensor
+THE LICENSED WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+express or implied, including but not limited to the warranties of
+merchantability, fitness for a particular purpose, and
+non-infringement.
 
-In consideration of the right to use this License's text and the
-"Business Source License" name and trademark, Licensor covenants to
-MariaDB, and to all other recipients of the licensed work to be provided
-by Licensor:
+8. Limitation of liability
 
-1. To specify as the Change License the GPL Version 2.0 or any later
-   version, or a license that is compatible with GPL Version 2.0 or a
-   later version, where "compatible" means that software provided under
-   the Change License can be included in a program with software provided
-   under GPL Version 2.0 or a later version. Licensor may specify
-   additional Change Licenses without limitation.
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL
+THE LICENSOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, OR
+CONSEQUENTIAL DAMAGES ARISING FROM THE USE OF OR INABILITY TO USE
+THE LICENSED WORK.
 
-2. To either: (a) specify an additional grant of rights to use that does
-   not impose any additional restriction on the right granted in this
-   License, as the Additional Use Grant; or (b) insert the text "None".
+9. Governing law and language
 
-3. To specify a Change Date.
+This License is governed by the laws of the People's Republic of
+China. Any dispute arising from this License shall be submitted to
+the competent people's court at the Licensor's domicile. This
+License is written in English and Chinese; in case of any conflict
+between the two texts, the English text prevails.
 
-4. Not to modify this License in any other way.
+=====================================================================
+中文文本（如与英文文本有冲突，以英文文本为准）
+=====================================================================
+
+1. 定义
+
+「许可方」指厦门维讯信息科技有限公司。
+
+「许可作品」指 MedAudit（包括 medaudit-server、medaudit-collector
+与 ma 程序），含源代码与二进制形式，以本许可证分发者为准。
+许可作品的 0.25.0 版最初系按 Business Source License 1.1
+分发，已按该许可证取得之副本仍受该许可证管辖；本许可证适用
+于按其分发的版本，自按本许可证重新发布的 0.25.0 版起。
+
+「生产使用」指在生产环境中使用许可作品，包括为组织自身业务
+运行许可作品，或利用许可作品向第三方提供任何形式的服务。
+
+「您」指行使本许可证下权利的个人或实体。
+
+2. 授权
+
+在遵守本许可证条款的前提下，许可方授予您非独占的权利：使用、
+复制、修改、创作演绎作品以及再分发许可作品（源代码或二进制形
+式）。但营利性组织的生产使用，须依第 3 条取得商业授权。
+
+3. 免费使用与商业授权
+
+(a) 个人使用，以及任何主体的非生产用途（包括评估、测试、开
+发与实验室环境使用），均可免费进行。
+
+(b) 营利性组织在进行任何生产使用之前，必须向许可方取得商业
+授权。商业条款概要见 COMMERCIAL-LICENSE.md；联系许可方：
+sales@xmweixun.com。
+
+4. 再分发条件
+
+再分发许可作品或其演绎作品（全部或部分）时，必须保留本许可证
+及许可作品中的全部著作权声明、署名与其他声明，且只能按本许可
+证的条款进行。您不得对本许可证授予的权利施加额外限制，也不得
+使用许可作品或许可方的名称暗示对任何产品或服务的背书。
+
+5. 不转换为开源许可
+
+本许可证不转换为任何其他许可证（包括任何开源许可证）；除本
+许可证明示授予的权利外，不因时间推移而产生任何其他权利。
+
+6. 终止
+
+如您不遵守本许可证，您在本许可证下的权利自动终止。终止后，
+您必须停止不合规的使用，或取得覆盖该使用的商业授权。
+
+7. 免责声明
+
+许可作品按「现状」（AS IS）提供，不附任何明示或默示担保，
+包括但不限于适销性、特定用途适用性与不侵权的担保。
+
+8. 责任限制
+
+在适用法律允许的最大范围内，许可方在任何情况下均不对因使用
+或无法使用许可作品而产生的任何直接、间接、附带或后果性损害
+承担责任。
+
+9. 适用法律与语言
+
+本许可证受中华人民共和国法律管辖。因本许可证产生的任何争议，
+应提交许可方住所地有管辖权的人民法院解决。本许可证以英文与
+中文写成；两种文本如有冲突，以英文文本为准。

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// 轻量参数解析：短旗标与位置参数可交错出现（maaudit db-ora-01 -e ORA_PW）。
+// 轻量参数解析：短旗标与位置参数可交错出现（ma audit db-ora-01 -e ORA_PW）。
 // 旗标规格：name 为单字母（或长名），value 表示是否带值，def 为缺省值。
 
 type flagSpec struct {

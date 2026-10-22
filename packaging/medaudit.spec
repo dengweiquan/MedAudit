@@ -8,10 +8,10 @@ AutoReqProv:    no
 
 %description
 数据库/操作系统/中间件权限审计：采集、评估、基线豁免、整改
-修复脚本与 Word 报告。安装后编辑 /etc/medaudit/medaudit.env
-填本站医院并 systemctl restart medaudit-server；Web 默认
-管理员 admin（首登强制改密）。工程师 CLI 为 ma 命令族。
-Oracle 采集另需 Oracle Instant Client（见 medaudit.env 注释）。
+修复脚本与 Word 报告。安装时交互询问本站医院（或事后编辑
+/etc/medaudit/medaudit.env 并 systemctl restart medaudit-server）；
+Web 默认管理员 admin（首登强制改密）。工程师 CLI 为 ma 命令
+（ma <功能>）。全部驱动为纯 Go 实现，零外部依赖。
 
 %prep
 # 负载由 build-packages.sh 组装在 %{_sourcedir}/rootfs
@@ -45,6 +45,22 @@ if ! grep -q '^MEDAUDIT_EVIDENCE_KEY=..*' /etc/medaudit/medaudit.env 2>/dev/null
     echo "MEDAUDIT_EVIDENCE_KEY=$K" >> /etc/medaudit/medaudit.env
   fi
 fi
+# 本站医院：未设置且有交互终端时询问（非交互安装跳过，不阻塞）
+if grep -q '^MEDAUDIT_SITE_HOSPITAL_ID=$' /etc/medaudit/medaudit.env 2>/dev/null && ( : < /dev/tty ) 2>/dev/null; then
+  printf 'medaudit: 请输入本站医院 ID（如 h-001，直接回车跳过）: ' > /dev/tty
+  IFS= read -r MA_HID < /dev/tty || MA_HID=
+  if [ -n "$MA_HID" ]; then
+    printf 'medaudit: 请输入本站医院名称: ' > /dev/tty
+    IFS= read -r MA_HNAME < /dev/tty || MA_HNAME=
+    MA_HID_ESC=$(printf '%s' "$MA_HID" | sed 's|[&|\\]|\\&|g')
+    sed -i "s|^MEDAUDIT_SITE_HOSPITAL_ID=$|MEDAUDIT_SITE_HOSPITAL_ID=$MA_HID_ESC|" /etc/medaudit/medaudit.env
+    if [ -n "$MA_HNAME" ]; then
+      MA_HNAME_ESC=$(printf '%s' "$MA_HNAME" | sed 's|[&|\\]|\\&|g')
+      sed -i "s|^MEDAUDIT_SITE_HOSPITAL_NAME=$|MEDAUDIT_SITE_HOSPITAL_NAME=$MA_HNAME_ESC|" /etc/medaudit/medaudit.env
+    fi
+    echo "medaudit: 本站医院已设置（$MA_HID $MA_HNAME），服务启动时自动登记"
+  fi
+fi
 chmod 640 /etc/medaudit/medaudit.env
 chgrp medaudit /etc/medaudit/medaudit.env 2>/dev/null || true
 if [ -d /run/systemd/system ]; then
@@ -74,46 +90,6 @@ fi
 /lib/systemd/system/medaudit-server.service
 /opt/medaudit
 /usr/bin/ma
-/usr/bin/malogin
-/usr/bin/malogout
-/usr/bin/mawhoami
-/usr/bin/mause
-/usr/bin/masite
-/usr/bin/mauserls
-/usr/bin/mauseradd
-/usr/bin/mauseron
-/usr/bin/mauseroff
-/usr/bin/mauserpw
-/usr/bin/maassetls
-/usr/bin/maassetadd
-/usr/bin/maassetshow
-/usr/bin/maassetmod
-/usr/bin/maassetrm
-/usr/bin/maaudit
-/usr/bin/maeval
-/usr/bin/maoffeval
-/usr/bin/mabundlels
-/usr/bin/mabundlein
-/usr/bin/mabundleshow
-/usr/bin/mabundledrift
-/usr/bin/mabundleeff
-/usr/bin/mafind
-/usr/bin/mareport
-/usr/bin/mareportls
-/usr/bin/mareportshow
-/usr/bin/mareportfix
-/usr/bin/mabasels
-/usr/bin/mabaseshow
-/usr/bin/mabaseadd
-/usr/bin/mabasediff
-/usr/bin/mabaseexempt
-/usr/bin/marulels
-/usr/bin/maruleoff
-/usr/bin/maruleon
-/usr/bin/macorr
-/usr/bin/masum
-/usr/bin/masrv
-/usr/bin/masrvbak
 
 %changelog
 * Thu Oct 22 2026 MedAudit <dengweiquan@gmail.com> - 0.25.0-m23.1

@@ -37,7 +37,7 @@ func cmdServerBackup(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "masrvbak <备份文件>"); err != nil {
+	if err := p.requirePos(1, "ma srvbak <备份文件>"); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -59,7 +59,7 @@ func cmdServerBackup(args []string) error {
 
 // ---------- 离线评估 ----------
 
-// maoffeval：本地加载事实包与（可选）基线文件，以与服务端相同的规则引擎
+// ma offeval：本地加载事实包与（可选）基线文件，以与服务端相同的规则引擎
 // 求值。不访问服务端、不写平台库。
 // 基线文件格式与服务端基线 spec 一致：{"ID":"...","Allows":[...]} 或 {"Allows":[...]}。
 func cmdOffEval(args []string) error {
@@ -69,7 +69,7 @@ func cmdOffEval(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "maoffeval <包.zip> [-b 基线.json] [-o 报告.docx] [-j] [-F]"); err != nil {
+	if err := p.requirePos(1, "ma offeval <包.zip> [-b 基线.json] [-o 报告.docx] [-j] [-F]"); err != nil {
 		return err
 	}
 	b, err := facts.ReadZip(p.pos[0])
