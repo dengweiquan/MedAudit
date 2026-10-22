@@ -2,7 +2,7 @@
 # MedAudit V1 安装包打包脚本
 # 用法: bash package.sh [版本号]
 set -e
-cd /kf/medaudit
+cd "$(dirname "$0")"
 VERSION="${1:-0.1.0-m3}"
 DIST="/tmp/medaudit-dist"
 PKG="$DIST/medaudit-$VERSION"

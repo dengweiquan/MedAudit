@@ -1,0 +1,68 @@
+name: release
+
+# 推送 v* 标签即在 GitHub 托管机上从源码构建 deb/rpm 并创建 Release（挂包）。
+# 说明文案取 release-notes/<标签>.md（无则自动生成）。
+# 版本号目前同时写在 packaging/deb/control、packaging/medaudit.spec 与
+# packaging/build-packages.sh 中，发新版时三处一并 bump（与本地发版流程一致）。
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "已存在的标签（如 v0.25.0-m23），将为其构建并创建/更新 Release"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install rpm tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      - name: Build web frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build deb/rpm packages
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VER="${TAG#v}"
+          bash package.sh "$VER"
+          bash packaging/build-packages.sh "$PWD/out"
+          ls -lh out/
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/*.deb out/*.rpm --clobber
+          else
+            NOTES="release-notes/$TAG.md"
+            if [ -f "$NOTES" ]; then
+              gh release create "$TAG" --title "MedAudit $TAG" --notes-file "$NOTES" out/*.deb out/*.rpm
+            else
+              gh release create "$TAG" --title "MedAudit $TAG" --generate-notes out/*.deb out/*.rpm
+            fi
+          fi
