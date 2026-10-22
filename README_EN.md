@@ -217,10 +217,11 @@ MedAudit is published under the **Weixun Source License 1.0**
 non-production use (evaluation, testing, development, laboratory) are
 free; production use by a for-profit organization requires a commercial
 license obtained in advance. The Licensor is Xiamen
-Weixun Information Technology Co., Ltd. Commercial licensing
-inquiries: **sales@xmweixun.com**.
+Weixun Information Technology Co., Ltd.
 
-Project planning: Deng WeiQuan （邓伟权）.
+Project planning: Deng WeiQuan （邓伟权）
+Commercial licensing: sales@xmweixun.com
+Business cooperation: dengweiquan@gmail.com
 
 See [LICENSE](LICENSE), [LICENSING.md](LICENSING.md), and
 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
