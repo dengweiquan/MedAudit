@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.linux.sudo_nopasswd_all
+version: "1"
+name: sudo 免密全命令授权
+target: os-linux
+risk: high
+description: |
+  非 root 主体持有 NOPASSWD: ALL —— 凭据泄漏即等同无口令 root。
+requires: [account_config]
+remediation: |
+  取消 NOPASSWD 或把命令收窄到具体二进制；确属自动化必需的记入基线。

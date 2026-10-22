@@ -1,0 +1,4 @@
+tftp dgram udp wait root /usr/lbin/tftpd tftpd /var/opt/tftp
+echo stream tcp nowait root internal
+telnet stream tcp nowait root /usr/lbin/telnetd telnetd
+time stream tcp nowait root internal

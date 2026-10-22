@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.linux.root_mismatch
+version: "1"
+name: 服务配置用户与实际运行身份不一致
+target: os-linux
+risk: high
+description: |
+  systemd 配置的 User 为非 root，但进程实际 EUID=0（启动者不等于运行者）。
+requires: [process]
+remediation: |
+  检查服务启动方式与提权路径，按基线修正配置或补例外说明。

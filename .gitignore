@@ -1,0 +1,26 @@
+# runtime data and databases
+/data/
+*.db
+*.db-shm
+*.db-wal
+
+# build outputs
+/bin/
+web/dist/
+web/node_modules/
+*.tar.gz
+*.deb
+*.rpm
+
+# local state, sessions, secrets
+/.medaudit/
+*.env
+session.json
+
+# editor / OS noise
+.DS_Store
+*.swp
+
+# shipped env template is not a secret
+!packaging/medaudit.env
+!*.env.example

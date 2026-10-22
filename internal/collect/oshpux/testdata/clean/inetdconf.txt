@@ -1,0 +1,4 @@
+#echo stream tcp nowait root internal
+#tftp dgram udp wait root /usr/lbin/tftpd tftpd
+time stream tcp nowait root internal
+dtspc stream tcp nowait root /usr/dt/bin/dtspcd dtspcd

@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.oracle.dba_role
+version: "1"
+name: Oracle 账号拥有 DBA 角色
+target: db-oracle
+risk: high
+description: |
+  直接或经角色嵌套获得 DBA 角色（PermissionPath 保留路径）。
+requires: [role_edge]
+remediation: |
+  按最小权限回收 DBA 角色，或记入基线说明业务必需。

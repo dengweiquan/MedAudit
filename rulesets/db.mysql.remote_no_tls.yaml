@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mysql.remote_no_tls
+version: "1"
+name: 远程 MySQL 账号未强制 TLS
+target: db-mysql
+risk: medium
+description: |
+  host='%' 的任意来源账号未要求 SSL（ssl_type 为空），口令与数据可走明文连接。
+requires: [account_config]
+remediation: |
+  对远程账号设置 REQUIRE SSL/X509，或收紧 host 范围；例外记入基线。

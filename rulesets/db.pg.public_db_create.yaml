@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.pg.public_db_create
+version: "1"
+name: PUBLIC 拥有数据库 CREATE 权限
+target: db-postgres
+risk: high
+description: |
+  向 PUBLIC 授予数据库级 CREATE 等于允许任意角色在该库内建模式对象，违背最小权限。
+requires: [privilege]
+remediation: |
+  回收 PUBLIC 的数据库 CREATE，改为按角色显式授权。

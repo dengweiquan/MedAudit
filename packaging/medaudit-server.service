@@ -1,0 +1,15 @@
+[Unit]
+Description=MedAudit Server
+After=network.target
+
+[Service]
+Type=simple
+User=medaudit
+Group=medaudit
+EnvironmentFile=/etc/medaudit/medaudit.env
+WorkingDirectory=/opt/medaudit
+ExecStart=/opt/medaudit/bin/medaudit-server --web-dir /opt/medaudit/web/dist --addr 0.0.0.0:8080
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

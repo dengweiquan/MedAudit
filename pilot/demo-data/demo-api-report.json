@@ -1,0 +1,255 @@
+{
+  "report_id": "apiaudit-20261021-035841",
+  "target": "http://127.0.0.1:19090",
+  "spec_source": "openapi-url:/openapi.json",
+  "started_at": "2026-10-21T03:58:41Z",
+  "finished_at": "2026-10-21T03:58:41Z",
+  "execution": "COMPLETE",
+  "identities": [
+    "anonymous",
+    "alice",
+    "bob",
+    "admin"
+  ],
+  "summary": {
+    "FAIL": 6,
+    "NOT_RUN": 1,
+    "PASS": 19,
+    "UNKNOWN": 0
+  },
+  "checks": [
+    {
+      "endpoint": "GET /api/admin/stats",
+      "identity": "anonymous",
+      "probe": "direct",
+      "expectation": "admin_only",
+      "status": 401,
+      "conclusion": "PASS",
+      "detail": "非管理员被拒"
+    },
+    {
+      "endpoint": "GET /api/admin/stats",
+      "identity": "alice",
+      "probe": "direct",
+      "expectation": "admin_only",
+      "status": 403,
+      "conclusion": "PASS",
+      "detail": "非管理员被拒"
+    },
+    {
+      "endpoint": "GET /api/admin/stats",
+      "identity": "bob",
+      "probe": "direct",
+      "expectation": "admin_only",
+      "status": 403,
+      "conclusion": "PASS",
+      "detail": "非管理员被拒"
+    },
+    {
+      "endpoint": "GET /api/admin/stats",
+      "identity": "admin",
+      "probe": "direct",
+      "expectation": "admin_only",
+      "status": 200,
+      "conclusion": "PASS",
+      "detail": "管理员可达"
+    },
+    {
+      "endpoint": "GET /api/admin/users",
+      "identity": "anonymous",
+      "probe": "direct",
+      "expectation": "admin_only",
+      "status": 401,
+      "conclusion": "PASS",
+      "detail": "非管理员被拒"
+    },
+    {
+      "endpoint": "GET /api/admin/users",
+      "identity": "alice",
+      "probe": "direct",
+      "expectation": "admin_only",
+      "status": 200,
+      "conclusion": "FAIL",
+      "detail": "非管理员身份可达管理员端点（垂直越权）"
+    },
+    {
+      "endpoint": "GET /api/admin/users",
+      "identity": "bob",
+      "probe": "direct",
+      "expectation": "admin_only",
+      "status": 200,
+      "conclusion": "FAIL",
+      "detail": "非管理员身份可达管理员端点（垂直越权）"
+    },
+    {
+      "endpoint": "GET /api/admin/users",
+      "identity": "admin",
+      "probe": "direct",
+      "expectation": "admin_only",
+      "status": 200,
+      "conclusion": "PASS",
+      "detail": "管理员可达"
+    },
+    {
+      "endpoint": "POST /api/notes",
+      "identity": "-",
+      "probe": "readonly-policy",
+      "expectation": "authenticated",
+      "conclusion": "NOT_RUN",
+      "detail": "写方法在默认只读策略下跳过（probe_writes=true 且确认目标为夹具/隔离环境时才探测）"
+    },
+    {
+      "endpoint": "GET /api/profile",
+      "identity": "anonymous",
+      "probe": "direct",
+      "expectation": "authenticated",
+      "status": 401,
+      "conclusion": "PASS",
+      "detail": "匿名被拒"
+    },
+    {
+      "endpoint": "GET /api/profile",
+      "identity": "alice",
+      "probe": "direct",
+      "expectation": "authenticated",
+      "status": 200,
+      "conclusion": "PASS",
+      "detail": "已认证身份可达"
+    },
+    {
+      "endpoint": "GET /api/profile",
+      "identity": "bob",
+      "probe": "direct",
+      "expectation": "authenticated",
+      "status": 200,
+      "conclusion": "PASS",
+      "detail": "已认证身份可达"
+    },
+    {
+      "endpoint": "GET /api/profile",
+      "identity": "admin",
+      "probe": "direct",
+      "expectation": "authenticated",
+      "status": 200,
+      "conclusion": "PASS",
+      "detail": "已认证身份可达"
+    },
+    {
+      "endpoint": "GET /api/public/health",
+      "identity": "anonymous",
+      "probe": "direct",
+      "expectation": "public",
+      "status": 200,
+      "conclusion": "PASS",
+      "detail": "公开端点匿名可达"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "alice",
+      "probe": "self",
+      "expectation": "owner_or_admin",
+      "status": 200,
+      "conclusion": "PASS",
+      "detail": "属主可读自有资源"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "bob",
+      "probe": "self",
+      "expectation": "owner_or_admin",
+      "status": 200,
+      "conclusion": "PASS",
+      "detail": "属主可读自有资源"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "admin",
+      "probe": "self",
+      "expectation": "owner_or_admin",
+      "status": 200,
+      "conclusion": "PASS",
+      "detail": "属主可读自有资源"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "anonymous",
+      "probe": "cross-owner:alice",
+      "expectation": "owner_or_admin",
+      "status": 401,
+      "conclusion": "PASS",
+      "detail": "跨主体被拒"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "bob",
+      "probe": "cross-owner:alice",
+      "expectation": "owner_or_admin",
+      "status": 200,
+      "conclusion": "FAIL",
+      "detail": "跨主体读到 alice 的私有数据（canary 命中，水平越权）"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "admin",
+      "probe": "cross-owner:alice",
+      "expectation": "owner_or_admin",
+      "status": 200,
+      "conclusion": "PASS",
+      "detail": "管理员跨主体访问（模型允许）"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "anonymous",
+      "probe": "cross-owner:bob",
+      "expectation": "owner_or_admin",
+      "status": 401,
+      "conclusion": "PASS",
+      "detail": "跨主体被拒"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "alice",
+      "probe": "cross-owner:bob",
+      "expectation": "owner_or_admin",
+      "status": 200,
+      "conclusion": "FAIL",
+      "detail": "跨主体读到 bob 的私有数据（canary 命中，水平越权）"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "admin",
+      "probe": "cross-owner:bob",
+      "expectation": "owner_or_admin",
+      "status": 200,
+      "conclusion": "PASS",
+      "detail": "管理员跨主体访问（模型允许）"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "anonymous",
+      "probe": "cross-owner:admin",
+      "expectation": "owner_or_admin",
+      "status": 401,
+      "conclusion": "PASS",
+      "detail": "跨主体被拒"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "alice",
+      "probe": "cross-owner:admin",
+      "expectation": "owner_or_admin",
+      "status": 200,
+      "conclusion": "FAIL",
+      "detail": "跨主体读到 admin 的私有数据（canary 命中，水平越权）"
+    },
+    {
+      "endpoint": "GET /api/users/{user_id}",
+      "identity": "bob",
+      "probe": "cross-owner:admin",
+      "expectation": "owner_or_admin",
+      "status": 200,
+      "conclusion": "FAIL",
+      "detail": "跨主体读到 admin 的私有数据（canary 命中，水平越权）"
+    }
+  ]
+}

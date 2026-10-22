@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.windows.svc_account_mismatch
+version: "1"
+name: 服务配置身份与实际进程身份不一致
+target: os-windows
+risk: high
+description: |
+  服务配置的运行身份与进程令牌实际身份不一致；提权驻留的常见迹象。
+requires: [process]
+remediation: |
+  核查服务配置与进程启动链，确认身份变更是否经过变更流程。

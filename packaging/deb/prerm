@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+if [ "$1" = "remove" ] && [ -d /run/systemd/system ]; then
+  systemctl stop medaudit-server 2>/dev/null || true
+  systemctl disable medaudit-server >/dev/null 2>&1 || true
+fi
+exit 0

@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.oracle.cdb_dba_in_pdb
+version: "1"
+name: PDB 容器内授予 DBA 角色
+target: db-oracle
+risk: high
+description: |
+  从 CDB$ROOT 视角可见某个 PDB（CON_ID≠1）内存在 DBA 授予；PDB 本地视角与根容器常规检查都容易漏掉。
+requires: [role_edge]
+remediation: |
+  核实该 PDB 内 DBA 的业务必需性；回收或记入基线（与 db.oracle.dba_role 共用 role/DBA 豁免）。

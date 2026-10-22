@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.pg.dangerous_role_attrs
+version: "1"
+name: PostgreSQL 非超级角色持有危险属性
+target: db-postgres
+risk: high
+description: |
+  CREATEROLE / CREATEDB / REPLICATION / BYPASSRLS 均可用于权限提升或绕过行级安全，应逐个核实。
+requires: [identity]
+remediation: |
+  逐项核实危险属性的业务必需性，非必需即回收；必需的记入基线。

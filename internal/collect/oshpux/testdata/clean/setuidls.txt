@@ -1,0 +1,4 @@
+-r-sr-xr-x 1 root bin 24576 Apr 15 2023 /usr/bin/su
+-r-sr-xr-x 1 root bin 32768 Apr 15 2023 /usr/bin/passwd
+-r-sr-xr-x 1 root bin 16384 Apr 15 2023 /usr/bin/crontab
+-r-xr-sr-x 1 bin sys 8192 Apr 15 2023 /usr/bin/df

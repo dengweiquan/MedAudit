@@ -1,0 +1,31 @@
+#!/bin/sh
+set -e
+case "$1" in
+  configure)
+    # 专用系统用户
+    if ! getent group medaudit >/dev/null; then groupadd --system medaudit; fi
+    if ! getent passwd medaudit >/dev/null; then
+      useradd --system --gid medaudit --home-dir /var/lib/medaudit --shell /usr/sbin/nologin medaudit
+    fi
+    mkdir -p /var/lib/medaudit
+    chown medaudit:medaudit /var/lib/medaudit
+    chmod 750 /var/lib/medaudit
+    # 证据密钥：为空时生成一次（升级不覆盖）
+    ENV_FILE=/etc/medaudit/medaudit.env
+    if [ -f "$ENV_FILE" ] && grep -q '^MEDAUDIT_EVIDENCE_KEY=$' "$ENV_FILE"; then
+      KEY=$(head -c 32 /dev/urandom | base64)
+      sed -i "s|^MEDAUDIT_EVIDENCE_KEY=$|MEDAUDIT_EVIDENCE_KEY=$KEY|" "$ENV_FILE"
+      echo "medaudit: 已生成证据加密密钥到 $ENV_FILE（请备份，丢失则历史证据不可读）"
+    fi
+    [ -f "$ENV_FILE" ] && chmod 640 "$ENV_FILE" && chgrp medaudit "$ENV_FILE" || true
+    if [ -d /run/systemd/system ]; then
+      systemctl daemon-reload || true
+      systemctl enable medaudit-server >/dev/null 2>&1 || true
+      # 首次安装启动、升级重启；启动失败不让安装失败（如端口被占用，看 journalctl -u medaudit-server）
+      systemctl restart medaudit-server 2>/dev/null || systemctl start medaudit-server 2>/dev/null || \
+        echo "medaudit: 服务未启动，填好 /etc/medaudit/medaudit.env 后执行 systemctl start medaudit-server"
+    fi
+    echo "medaudit: Web 入口 http://<本机>:8080（默认 admin，首登强制改密）；工程师 CLI：ma 命令族（ma 查看索引）"
+    ;;
+esac
+exit 0

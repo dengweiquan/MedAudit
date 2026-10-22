@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mysql.grant_option
+version: "1"
+name: MySQL 全局权限带转授权
+target: db-mysql
+risk: medium
+description: |
+  全局权限附带 WITH GRANT OPTION，可扩散授权。
+requires: [privilege]
+remediation: |
+  回收转授权或记入基线。

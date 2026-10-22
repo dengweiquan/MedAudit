@@ -1,0 +1,12 @@
+Package: medaudit
+Version: 0.25.0+m23-1
+Section: admin
+Priority: optional
+Architecture: amd64
+Maintainer: MedAudit <dengweiquan@gmail.com>
+Description: MedAudit 医疗权限审计平台（服务端）
+ 数据库/操作系统/中间件权限审计：采集、评估、基线豁免、整改
+ 修复脚本与 Word 报告。安装后编辑 /etc/medaudit/medaudit.env
+ 填本站医院并 systemctl restart medaudit-server；Web 默认
+ 管理员 admin（首登强制改密）。工程师 CLI 为 ma 命令族。
+ Oracle 采集另需 Oracle Instant Client（见 medaudit.env 注释）。

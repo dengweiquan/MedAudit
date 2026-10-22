@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.pg.public_writable
+version: "1"
+name: PUBLIC 拥有可写对象/模式权限
+target: db-postgres
+risk: high
+description: |
+  PUBLIC 对表拥有 INSERT/UPDATE/DELETE/TRUNCATE 或对模式拥有 CREATE，等同任意连接用户可写。
+requires: [privilege]
+remediation: |
+  回收 PUBLIC 的写权限，改为按应用角色显式授权。

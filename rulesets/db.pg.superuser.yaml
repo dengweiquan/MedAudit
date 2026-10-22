@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.pg.superuser
+version: "1"
+name: PostgreSQL 角色拥有 SUPERUSER
+target: db-postgres
+risk: high
+description: |
+  SUPERUSER 角色可绕过全部权限检查并执行任意系统操作。非内置初始化角色原则上不应持有。
+requires: [identity]
+remediation: |
+  回收 SUPERUSER，改为按需授予细粒度权限；确属业务必需的记入基线。

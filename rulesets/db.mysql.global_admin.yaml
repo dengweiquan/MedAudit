@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mysql.global_admin
+version: "1"
+name: MySQL 账号持有全局管理权限
+target: db-mysql
+risk: high
+description: |
+  全局范围（*.*）的管理类权限：SUPER/SYSTEM_USER/FILE/RELOAD/SHUTDOWN/PROCESS。
+requires: [privilege]
+remediation: |
+  按最小权限回收全局管理权限，或记入基线说明业务必需。

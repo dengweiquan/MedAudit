@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.oracle.any_privilege
+version: "1"
+name: Oracle ANY 类系统权限
+target: db-oracle
+risk: medium
+description: |
+  如 SELECT ANY TABLE 等 ANY 类权限作用范围广。
+requires: [privilege]
+remediation: |
+  按最小权限细化到对象级授权，或记入基线。

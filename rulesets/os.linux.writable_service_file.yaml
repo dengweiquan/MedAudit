@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.linux.writable_service_file
+version: "1"
+name: 服务加载文件可被低权主体修改
+target: os-linux
+risk: high
+description: |
+  服务可执行文件或单元文件本身可被 other/group 写；正常数据/日志目录可写不在此列（只看 d0）。
+requires: [file_perm]
+remediation: |
+  收紧文件属主与模式，确保低权主体不能修改高权服务加载内容。

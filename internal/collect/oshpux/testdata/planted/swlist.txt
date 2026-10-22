@@ -1,0 +1,3 @@
+# swlist
+B.11.31 HP-UX 11i v3
+  OE-Ent-2023 bundle

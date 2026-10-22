@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mssql.control_server
+version: "1"
+name: SQL Server 显式 CONTROL SERVER 授权
+target: db-sqlserver
+risk: high
+description: |
+  显式 GRANT CONTROL SERVER（非固定角色路径）。
+requires: [privilege]
+remediation: |
+  回收显式高权或记入基线。

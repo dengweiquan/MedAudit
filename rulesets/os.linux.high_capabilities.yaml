@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.linux.high_capabilities
+version: "1"
+name: 非 root 进程持有高能力
+target: os-linux
+risk: high
+description: |
+  EUID 非 0 但有效能力集非空的进程；非 root 高能力不能简单判通过，需基线解释。
+requires: [process]
+remediation: |
+  确认业务必需的能力并记入基线，或降权运行。

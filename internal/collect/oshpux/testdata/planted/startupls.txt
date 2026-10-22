@@ -1,0 +1,4 @@
+-rw-r--r-- 1 root sys 2456 Mar 3 2023 /etc/inetd.conf
+drwxr-xr-x 2 root sys 8192 Sep 12 2023 /sbin/init.d
+-rwxrwxr-x 1 root sys 4321 Sep 12 2023 /sbin/init.d/hisapp
+drwxr-xr-x 2 root sys 8192 Sep 12 2023 /etc/rc.config.d

@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medaudit.local/contracts/v1/factbundle.schema.json",
+  "title": "MedAudit FactBundle v1",
+  "description": "采集器输出的版本化事实包。超时/截断/缺失/权限不足必须保留字段状态，不得转为空权限或安全默认值。",
+  "type": "object",
+  "required": ["schema_version", "bundle_id", "plan_id", "collector", "collected_at", "scope", "identities", "facts", "receipts"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "v1"},
+    "bundle_id": {"type": "string", "minLength": 1},
+    "plan_id": {"type": "string", "minLength": 1},
+    "collector": {
+      "type": "object",
+      "required": ["name", "version", "adapter", "adapter_version"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "adapter": {"type": "string", "enum": ["os-linux", "os-windows", "db-oracle", "db-sqlserver", "db-mysql", "db-postgres", "mw-tomcat", "mw-nginx", "mw-weblogic", "mw-iis"]},
+        "adapter_version": {"type": "string"}
+      }
+    },
+    "collected_at": {
+      "type": "object",
+      "required": ["started", "finished"],
+      "properties": {
+        "started": {"type": "string", "format": "date-time"},
+        "finished": {"type": "string", "format": "date-time"}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "required": ["hospital_id", "asset_id", "target_type"],
+      "properties": {
+        "hospital_id": {"type": "string"},
+        "asset_id": {"type": "string"},
+        "target_type": {"type": "string", "enum": ["os-linux", "os-windows", "db-oracle", "db-sqlserver", "db-mysql", "db-postgres", "mw-tomcat", "mw-nginx", "mw-weblogic", "mw-iis"]},
+        "target_version": {"type": "string"},
+        "instance": {"type": "string"},
+        "container": {"type": "string"},
+        "profile": {"type": "string"},
+        "window": {"type": "string"}
+      }
+    },
+    "identities": {
+      "type": "object",
+      "description": "采集身份、被核查身份、应用关联来源必须分开，禁止合并为单个 user 字段",
+      "required": ["collector_identity", "target_identity"],
+      "properties": {
+        "collector_identity": {"type": "string", "description": "执行采集的账号/身份"},
+        "target_identity": {"type": "string", "description": "被核查的应用/服务账号"},
+        "observed_session_identity": {"type": "string"},
+        "app_identity_source": {"type": "string", "enum": ["config", "session", "process_map", "manual", "unknown"]}
+      }
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fact_id", "kind", "subject", "status", "source"],
+        "properties": {
+          "fact_id": {"type": "string"},
+          "kind": {"type": "string", "enum": ["identity", "role_edge", "privilege", "account_config", "process", "file_perm", "service_config"]},
+          "subject": {"type": "string", "description": "对象稳定标识"},
+          "status": {"type": "string", "enum": ["observed", "permission_denied", "unsupported", "inconsistent", "truncated", "timeout"]},
+          "source": {"type": "string"},
+          "attributes": {"type": "object"},
+          "permission_path": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "权限来源路径，如 主体->角色->权限"
+          },
+          "scope": {"type": "string"},
+          "activation": {"type": "string", "enum": ["default", "conditional", "observed_active", "not_activated", "unknown"]},
+          "grantable": {"type": "boolean"}
+        }
+      }
+    },
+    "receipts": {
+      "type": "array",
+      "description": "每条采集模板的查询收据",
+      "items": {
+        "type": "object",
+        "required": ["template_id", "template_version", "started", "finished", "status"],
+        "properties": {
+          "template_id": {"type": "string"},
+          "template_version": {"type": "string"},
+          "param_digest": {"type": "string"},
+          "started": {"type": "string", "format": "date-time"},
+          "finished": {"type": "string", "format": "date-time"},
+          "duration_ms": {"type": "integer", "minimum": 0},
+          "row_count": {"type": "integer", "minimum": 0},
+          "truncated": {"type": "boolean"},
+          "status": {"type": "string", "enum": ["ok", "partial", "failed", "denied"]},
+          "error_stage": {"type": "string"},
+          "visibility": {"type": "string"},
+          "evidence_ref": {"type": "string"}
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {"type": "string", "enum": ["COMPLETE", "PARTIAL", "FAILED"]}
+      }
+    },
+    "evidence_digest": {"type": "string"}
+  }
+}

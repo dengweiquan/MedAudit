@@ -1,0 +1,4 @@
+root::0:root
+sys::3:root,adm
+dba::102:oracle
+users::20:hisuser

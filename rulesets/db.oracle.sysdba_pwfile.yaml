@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.oracle.sysdba_pwfile
+version: "1"
+name: Oracle 密码文件 SYSDBA 授权
+target: db-oracle
+risk: high
+description: |
+  V$PWFILE_USERS 中的 SYSDBA/SYSOPER 授权；DBA 角色不等于 SYSDBA，单独建模。
+requires: [privilege]
+remediation: |
+  确认管理授权必要性，OSDBA 等 OS 认证来源另行核查。

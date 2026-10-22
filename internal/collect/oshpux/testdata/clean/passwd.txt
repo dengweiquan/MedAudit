@@ -1,0 +1,9 @@
+root:*:0:3::/:/sbin/sh
+daemon:*:1:5::/:/sbin/sh
+bin:*:2:2::/usr/bin:/sbin/sh
+sys:*:3:3::/:
+adm:*:4:4::/var/adm:/sbin/sh
+lp:*:9:7::/var/spool/lp:/sbin/sh
+nobody:*:60001:60001::/:/sbin/sh
+oracle:x:104:102:Oracle:/u01/oracle:/usr/bin/ksh
+hisuser:x:210:20:HIS User:/home/hisuser:/usr/bin/ksh
