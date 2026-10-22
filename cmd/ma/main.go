@@ -16,6 +16,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"medaudit/internal/license"
 )
 
 const version = "0.25.0-m23"
@@ -152,8 +155,8 @@ func main() {
 		return
 	}
 	name := args[0]
-	if name == "version" {
-		fmt.Println("ma", version)
+	if name == "version" || name == "-V" {
+		fmt.Print(license.VersionBlock("ma", version, time.Now()))
 		return
 	}
 	fn, ok := commands[name]

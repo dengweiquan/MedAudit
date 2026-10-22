@@ -13,8 +13,19 @@ import (
 	"sync"
 	"time"
 
+	"medaudit/internal/license"
 	"medaudit/internal/rules"
 )
+
+// licenseGate 授权版门控：审计执行（产生新数据）前校验许可证；
+// 免费版直接放行，临期/宽限把提醒写入日志后放行，不可用则拦截。
+func licenseGate() error {
+	warns, err := license.Gate(time.Now())
+	for _, w := range warns {
+		fmt.Fprintf(os.Stderr, "[license] %s\n", w)
+	}
+	return err
+}
 
 // ConnConfig 数据库连接参数（非机密部分），登记在 assets.labels 的 JSON 中。
 // 口令永不落库：审计时由用户在页面输入，仅经子进程环境变量传递给采集器。
@@ -48,6 +59,9 @@ var auditMu sync.Mutex // 一键审计串行执行（子进程环境与目标库
 // 调采集器真采集 → 导入 → 评估 → 生成报告。口令仅存在于本次子进程环境，不落库、不落配置。
 func RunDBAudit(ctx context.Context, db *sql.DB, reg *rules.Registry, kr *EvidenceKeyring,
 	collectorBin, assetID, password, baselineID, createdBy string) (*AuditRunResult, error) {
+	if err := licenseGate(); err != nil {
+		return nil, err
+	}
 
 	var hospitalID, kind string
 	var labels sql.NullString

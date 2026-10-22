@@ -176,6 +176,9 @@ func importEvaluateReport(db *sql.DB, reg *rules.Registry, kr *EvidenceKeyring,
 func RunRemoteAudit(ctx context.Context, db *sql.DB, reg *rules.Registry, kr *EvidenceKeyring,
 	linuxBin, winBin string, tokens *TokenStore,
 	assetID, password, baselineID, createdBy string) (*RemoteAuditResult, error) {
+	if err := licenseGate(); err != nil {
+		return nil, err
+	}
 
 	var hospitalID, kind string
 	var labels sql.NullString

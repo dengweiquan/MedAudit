@@ -13,8 +13,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"medaudit/internal/facts"
+	"medaudit/internal/license"
 	"medaudit/internal/platform"
 	"medaudit/internal/rules"
 )
@@ -26,7 +28,20 @@ var authSessions *platform.SessionStore
 func main() {
 	webDir := flag.String("web-dir", "web/dist", "前端构建产物目录")
 	addr := flag.String("addr", "127.0.0.1:8080", "监听地址")
+	ver := flag.Bool("V", false, "打印版本信息并退出")
 	flag.Parse()
+	if *ver {
+		fmt.Print(license.VersionBlock("medaudit-server", version, time.Now()))
+		return
+	}
+	if license.Edition == "licensed" {
+		st := license.Evaluate(time.Now())
+		if st.Usable && st.File != nil {
+			fmt.Printf("授权版：授权给 %s（有效期至 %s）\n", st.File.Licensee, st.Expires)
+		} else {
+			fmt.Printf("授权版：许可证不可用（%s），审计执行将被拦截\n", license.ReasonString(st.Reason))
+		}
+	}
 
 	var db *sql.DB
 	if dbPath := os.Getenv("MEDAUDIT_PLATFORM_DB"); dbPath != "" {

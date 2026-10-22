@@ -27,6 +27,7 @@ import (
 	"medaudit/internal/collect/db/sqlserver"
 	"medaudit/internal/collect/mw"
 	"medaudit/internal/facts"
+	"medaudit/internal/license"
 )
 
 const version = "0.25.0-m23"
@@ -63,10 +64,27 @@ func autoBundleName(kind string) string {
 	return fmt.Sprintf("bundle-%s-%s.zip", kind, time.Now().UTC().Format("20060102-150405"))
 }
 
+// gateCheck 授权版门控：采集产包（产生新数据）前调用；
+// 免费版直接放行，提醒打印到 stderr，不可用返回拦截文案。
+func gateCheck() error {
+	warns, err := license.Gate(time.Now())
+	for _, w := range warns {
+		fmt.Fprintln(os.Stderr, w)
+	}
+	return err
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)
+	}
+	switch os.Args[1] {
+	case "os", "hpux", "mw", "apicheck":
+		if err := gateCheck(); err != nil {
+			fmt.Fprintln(os.Stderr, "错误:", err)
+			os.Exit(1)
+		}
 	}
 	var err error
 	switch os.Args[1] {
@@ -82,8 +100,8 @@ func main() {
 		err = runAPICheck(os.Args[2:])
 	case "bundle":
 		err = runBundle(os.Args[2:])
-	case "version", "-v", "--version":
-		fmt.Println(version)
+	case "version", "-v", "--version", "-V":
+		fmt.Print(license.VersionBlock("medaudit-collector", version, time.Now()))
 	default:
 		usage()
 		os.Exit(2)
@@ -193,6 +211,11 @@ func runDB(args []string) error {
 	pos, err := splitPos(fs, args)
 	if err != nil {
 		return err
+	}
+	if !preflight {
+		if err := gateCheck(); err != nil {
+			return err
+		}
 	}
 	if configPath == "" && len(pos) > 0 {
 		configPath = pos[0]

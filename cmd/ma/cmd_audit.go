@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"medaudit/internal/license"
 )
 
 // ---------- 审计执行 ----------
@@ -51,6 +53,13 @@ func printAuditResult(label string, r *auditRunResult) {
 }
 
 func cmdAudit(args []string) error {
+	if warns, err := license.Gate(time.Now()); err != nil {
+		return err
+	} else {
+		for _, w := range warns {
+			fmt.Fprintln(os.Stderr, w)
+		}
+	}
 	p, err := parseArgs(args, []flagSpec{
 		{name: "b", value: true}, {name: "e", value: true},
 		{name: "f", value: true}, {name: "F"},

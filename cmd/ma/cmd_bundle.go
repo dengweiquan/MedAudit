@@ -178,7 +178,7 @@ func cmdBundleEffective(args []string) error {
 		} `json:"roles"`
 		Privileges []struct {
 			Privilege string   `json:"privilege"`
-			Direct    bool     `direct`
+			Direct    bool     `json:"direct"`
 			Via       []string `json:"via"`
 		} `json:"privileges"`
 	}
