@@ -139,6 +139,13 @@ func (s *SessionStore) DeleteUser(username string) {
 	}
 }
 
+// Clear 吊销全部会话（一键清场时调用，M27）。
+func (s *SessionStore) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.m = make(map[string]sessionEntry)
+}
+
 // ---------- M20 用户管理 ----------
 
 // UserInfo 用户列表行（不含口令哈希）。

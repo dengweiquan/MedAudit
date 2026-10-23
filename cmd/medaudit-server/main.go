@@ -21,7 +21,7 @@ import (
 	"medaudit/internal/rules"
 )
 
-const version = "0.26.0-m25"
+const version = "0.27.0-m27"
 
 var authSessions *platform.SessionStore
 
@@ -282,6 +282,7 @@ func main() {
 		sessions := platform.NewSessionStore()
 		registerAuthRoutes(mux, db, sessions)
 		registerUserRoutes(mux, db, sessions) // M20 用户管理
+		registerAdminRoutes(mux, db, sessions) // M27 一键清场
 		authSessions = sessions
 		if collectorWinBin != "" {
 			fmt.Fprintf(os.Stderr, "远程推送（WinRM）已启用（Windows 采集器: %s）\n", collectorWinBin)

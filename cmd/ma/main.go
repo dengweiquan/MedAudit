@@ -21,7 +21,7 @@ import (
 	"medaudit/internal/license"
 )
 
-const version = "0.26.0-m25"
+const version = "0.27.0-m27"
 
 var flagServer string
 
@@ -51,6 +51,9 @@ var cmdList = []cmdDef{
 	{"useron", "ma useron <name> — 启用用户", func(a []string) error { return cmdUserDisabled(a, false) }},
 	{"useroff", "ma useroff <name> — 禁用用户", func(a []string) error { return cmdUserDisabled(a, true) }},
 	{"userpw", "ma userpw <name> [-e 口令环境变量] — 重置口令", cmdUserPassword},
+	// 医院（客户）
+	{"hosls", "ma hosls [-j] — 医院（客户）列表", cmdHospitalList},
+	{"hosadd", "ma hosadd <id> [-n 名称] — 登记医院（客户）", cmdHospitalAdd},
 	// 审计对象
 	{"assetls", "ma assetls [-k 类型] [-j] — 资产列表", cmdAssetList},
 	{"assetadd", "ma assetadd <类型> <端点> [-i id] [-n 名称] [-u 账号] [-h 医院] [-f labels文件] — 登记资产", cmdAssetAdd},
@@ -87,6 +90,7 @@ var cmdList = []cmdDef{
 	{"sum", "ma sum — 医院风险汇总", cmdSummary},
 	{"srv", "ma srv — 服务端状态", cmdServerStatus},
 	{"srvbak", "ma srvbak <备份文件> — 平台库在线备份", cmdServerBackup},
+	{"srvreset", "ma srvreset [-o 备份文件] [-y] — 一键清场（新客户现场：先备份，清全部数据，用户恢复默认 admin）", cmdServerReset},
 }
 
 var commands = func() map[string]func([]string) error {
@@ -106,9 +110,9 @@ func printIndex() {
 		title    string
 		from, to int
 	}{
-		{"会话与上下文", 0, 5}, {"平台账号", 5, 10}, {"审计对象", 10, 15},
-		{"审计执行与评估", 15, 18}, {"事实包", 18, 23}, {"问题与报告", 23, 28},
-		{"基线与规则", 28, 36}, {"关联、汇总、服务端", 36, len(cmdList)},
+		{"会话与上下文", 0, 5}, {"平台账号", 5, 10}, {"医院（客户）", 10, 12},
+		{"审计对象", 12, 17}, {"审计执行与评估", 17, 20}, {"事实包", 20, 25},
+		{"问题与报告", 25, 30}, {"基线与规则", 30, 38}, {"关联、汇总、服务端", 38, len(cmdList)},
 	}
 	_ = group
 	for _, g := range groups {

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"medaudit/internal/facts"
 	"medaudit/internal/platform"
@@ -54,6 +57,62 @@ func cmdServerBackup(args []string) error {
 	sum := sha256.Sum256(raw)
 	fmt.Printf("平台库快照已下载到 %s（%d 字节，sha256 %s…）\n", p.pos[0], len(raw), hex.EncodeToString(sum[:])[:16])
 	fmt.Println("恢复方法：停服 → 用该文件替换平台库文件 → 启服（见 docs/cli-guide.md 运维节）。")
+	return nil
+}
+
+// ma srvreset：一键清场（新客户现场交接）。先在线备份到本地文件
+// （备份失败即中止，绝不裸清），再调服务端清场接口；清场后全部
+// 会话被吊销，本地会话文件一并清除，须以默认 admin 重新登录。
+func cmdServerReset(args []string) error {
+	p, err := parseArgs(args, []flagSpec{{name: "o", value: true}, {name: "y"}})
+	if err != nil {
+		return err
+	}
+	c, err := newClient()
+	if err != nil {
+		return err
+	}
+	fmt.Println("一键清场：将删除全部医院、资产、事实包、问题、报告、基线、规则启停与用户数据；")
+	fmt.Println("用户恢复为默认 admin（口令 admin@123，首登强制改密），全部会话吊销；许可文件与服务端配置不动。")
+	if !p.has("y") {
+		fmt.Fprint(os.Stderr, "确认清场？输入 WIPE 继续：")
+		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		if strings.TrimSpace(line) != "WIPE" {
+			fmt.Println("已取消")
+			return nil
+		}
+	}
+	_, raw, err := c.do("GET", "/api/v1/admin/backup", nil)
+	if err != nil {
+		return fmt.Errorf("清场前备份失败，已中止: %w", err)
+	}
+	bak := p.str("o")
+	if bak == "" {
+		bak = "medaudit-before-wipe-" + time.Now().Format("20060102-150405") + ".db"
+	}
+	if err := os.WriteFile(bak, raw, 0o600); err != nil {
+		return err
+	}
+	sum := sha256.Sum256(raw)
+	fmt.Printf("清场前备份已保存到 %s（%d 字节，sha256 %s…）\n", bak, len(raw), hex.EncodeToString(sum[:])[:16])
+	var out struct {
+		Status       string           `json:"status"`
+		Deleted      map[string]int64 `json:"deleted"`
+		SiteHospital string           `json:"site_hospital"`
+	}
+	if err := c.postJSON("/api/v1/admin/wipe", map[string]any{}, &out); err != nil {
+		return err
+	}
+	var total int64
+	for _, n := range out.Deleted {
+		total += n
+	}
+	clearSession()
+	fmt.Printf("清场完成：共删除 %d 行；本地会话已清除。\n", total)
+	if out.SiteHospital != "" {
+		fmt.Printf("本站医院 %s 已按配置重新登记。\n", out.SiteHospital)
+	}
+	fmt.Println("请用 ma login admin 重新登录（口令 admin@123，首登强制改密）。")
 	return nil
 }
 

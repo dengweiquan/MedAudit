@@ -30,7 +30,7 @@ import (
 	"medaudit/internal/license"
 )
 
-const version = "0.26.0-m25"
+const version = "0.27.0-m27"
 
 // splitPos 让 flag 与位置参数可交错：反复 Parse 并逐个取走位置参数。
 func splitPos(fs *flag.FlagSet, args []string) ([]string, error) {
