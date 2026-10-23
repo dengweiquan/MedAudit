@@ -46,7 +46,7 @@ func parseArgs(args []string, specs []flagSpec) (*parsedArgs, error) {
 			}
 			spec, ok := byName[name]
 			if !ok {
-				return nil, fmt.Errorf("未知旗标 -%s", name)
+				return nil, fmt.Errorf(T("未知旗标 -%s", "unknown flag -%s"), name)
 			}
 			p.set[spec.name] = true
 			if !spec.value {
@@ -60,7 +60,7 @@ func parseArgs(args []string, specs []flagSpec) (*parsedArgs, error) {
 				continue
 			}
 			if i+1 >= len(args) {
-				return nil, fmt.Errorf("旗标 -%s 需要一个值", name)
+				return nil, fmt.Errorf(T("旗标 -%s 需要一个值", "flag -%s needs a value"), name)
 			}
 			p.vals[spec.name] = args[i+1]
 			i += 2
@@ -77,7 +77,7 @@ func (p *parsedArgs) has(name string) bool   { return p.set[name] }
 
 func (p *parsedArgs) requirePos(n int, usage string) error {
 	if len(p.pos) < n {
-		return fmt.Errorf("用法：%s", usage)
+		return fmt.Errorf("%s%s", T("用法：", "Usage: "), usage)
 	}
 	return nil
 }

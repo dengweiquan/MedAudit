@@ -25,7 +25,7 @@ func findAsset(c *client, id string) (*assetRow, error) {
 			return &rows[i], nil
 		}
 	}
-	return nil, fmt.Errorf("资产 %s 不存在", id)
+	return nil, fmt.Errorf(T("资产 %s 不存在", "asset %s not found"), id)
 }
 
 func fetchBundles(c *client) ([]bundleSummary, error) {
@@ -46,5 +46,5 @@ func findBundle(c *client, id string) (*bundleSummary, error) {
 			return &rows[i], nil
 		}
 	}
-	return nil, fmt.Errorf("事实包 %s 不存在", id)
+	return nil, fmt.Errorf(T("事实包 %s 不存在", "bundle %s not found"), id)
 }

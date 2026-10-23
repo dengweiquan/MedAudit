@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -59,7 +60,7 @@ func clearSession() {
 func setContextHospital(h string) error {
 	s, err := loadSession()
 	if err != nil {
-		return fmt.Errorf("尚无会话：先 ma login")
+		return errors.New(T("尚无会话：先 ma login", "no session yet: run ma login first"))
 	}
 	s.Hospital = h
 	return saveSession(s)
@@ -97,7 +98,7 @@ func newClient() (*client, error) {
 	}
 	if u, p := os.Getenv("MEDAUDIT_USER"), os.Getenv("MEDAUDIT_PASS"); u != "" && p != "" {
 		if err := c.login(u, p); err != nil {
-			return nil, fmt.Errorf("环境变量凭据自动登录失败: %w", err)
+			return nil, fmt.Errorf(T("环境变量凭据自动登录失败: %w", "auto-login with environment credentials failed: %w"), err)
 		}
 		return c, nil
 	}
@@ -127,7 +128,7 @@ func (c *client) do(method, path string, body any) (int, []byte, error) {
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode == http.StatusUnauthorized && !strings.HasSuffix(path, "/auth/login") {
-		return resp.StatusCode, raw, fmt.Errorf("未登录或会话已过期：先运行 ma login（%s）", c.base)
+		return resp.StatusCode, raw, fmt.Errorf(T("未登录或会话已过期：先运行 ma login（%s）", "not logged in or session expired: run ma login first (%s)"), c.base)
 	}
 	if resp.StatusCode >= 400 {
 		return resp.StatusCode, raw, fmt.Errorf("%s %s -> %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(raw)))
@@ -193,7 +194,7 @@ func (c *client) login(user, pass string) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("登录失败 %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf(T("登录失败 %d: %s", "login failed %d: %s"), resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	for _, ck := range resp.Cookies() {
 		if ck.Name == "medaudit_session" {
@@ -205,7 +206,7 @@ func (c *client) login(user, pass string) error {
 			return saveSession(s)
 		}
 	}
-	return fmt.Errorf("登录响应未包含会话 Cookie")
+	return errors.New(T("登录响应未包含会话 Cookie", "login response did not include a session cookie"))
 }
 
 func (c *client) username() string {
@@ -247,7 +248,7 @@ func (c *client) contextHospital(override string) (string, error) {
 	if h := c.siteHospitalID(); h != "" {
 		return h, nil
 	}
-	return "", fmt.Errorf("未设定当前医院：先 ma use <医院ID>（多院/实验室实例需要；单院部署自动取本站）")
+	return "", errors.New(T("未设定当前医院：先 ma use <医院ID>（多院/实验室实例需要；单院部署自动取本站）", "no current hospital set: run ma use <hospital-id> first (needed on multi-hospital/lab instances; single-site deployments use the site hospital automatically)"))
 }
 
 // ---------- 口令 ----------
@@ -268,7 +269,7 @@ func readPassword(prompt string) (string, error) {
 func envPassword(envVar string) (string, error) {
 	v := os.Getenv(envVar)
 	if v == "" {
-		return "", fmt.Errorf("环境变量 %s 未设置或为空", envVar)
+		return "", fmt.Errorf(T("环境变量 %s 未设置或为空", "environment variable %s is not set or is empty"), envVar)
 	}
 	return v, nil
 }

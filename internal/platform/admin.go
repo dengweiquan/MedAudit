@@ -45,6 +45,88 @@ func CreateHospital(db *sql.DB, id, name string) error {
 	return nil
 }
 
+// HospitalDataCounts 统计某医院名下的各类数据行数（删除预览/回执用）。
+func HospitalDataCounts(db *sql.DB, id string) (map[string]int64, error) {
+	counts := map[string]int64{}
+	byHospital := []string{"assets", "fact_bundles", "findings", "reports",
+		"correlation_reports", "collection_plans", "baselines", "audit_events",
+		"exceptions", "role_bindings"}
+	for _, t := range byHospital {
+		var n int64
+		if err := db.QueryRow(`SELECT COUNT(*) FROM "`+t+`" WHERE hospital_id = ?`, id).Scan(&n); err != nil {
+			return nil, err
+		}
+		counts[t] = n
+	}
+	byBundle := []string{"fact_bundle_evidence"}
+	for _, t := range byBundle {
+		var n int64
+		if err := db.QueryRow(`SELECT COUNT(*) FROM "`+t+`" WHERE bundle_id IN (SELECT id FROM fact_bundles WHERE hospital_id = ?)`, id).Scan(&n); err != nil {
+			return nil, err
+		}
+		counts[t] = n
+	}
+	byFinding := []string{"reviews", "retests", "remediations"}
+	for _, t := range byFinding {
+		var n int64
+		if err := db.QueryRow(`SELECT COUNT(*) FROM "`+t+`" WHERE finding_id IN (SELECT id FROM findings WHERE hospital_id = ?)`, id).Scan(&n); err != nil {
+			return nil, err
+		}
+		counts[t] = n
+	}
+	return counts, nil
+}
+
+// DeleteHospital 删除一家医院及其全部数据（M28）：单事务按外键
+// 子→父序级联删除，返回各表删除行数；医院不存在时报错。
+// api_audit_reports 无医院归属列、不在删除范围；rule_toggles 为
+// 本站（部署）级配置，亦不动。
+func DeleteHospital(db *sql.DB, id string) (map[string]int64, error) {
+	var exists int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM hospitals WHERE id = ?`, id).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if exists == 0 {
+		return nil, fmt.Errorf("医院 %s 不存在", id)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	deleted := map[string]int64{}
+	steps := []struct{ label, query string }{
+		{"reviews", `DELETE FROM reviews WHERE finding_id IN (SELECT id FROM findings WHERE hospital_id = ?)`},
+		{"retests", `DELETE FROM retests WHERE finding_id IN (SELECT id FROM findings WHERE hospital_id = ?)`},
+		{"remediations", `DELETE FROM remediations WHERE finding_id IN (SELECT id FROM findings WHERE hospital_id = ?)`},
+		{"exceptions", `DELETE FROM exceptions WHERE hospital_id = ?`},
+		{"findings", `DELETE FROM findings WHERE hospital_id = ?`},
+		{"fact_bundle_evidence", `DELETE FROM fact_bundle_evidence WHERE bundle_id IN (SELECT id FROM fact_bundles WHERE hospital_id = ?)`},
+		{"fact_bundles", `DELETE FROM fact_bundles WHERE hospital_id = ?`},
+		{"reports", `DELETE FROM reports WHERE hospital_id = ?`},
+		{"correlation_reports", `DELETE FROM correlation_reports WHERE hospital_id = ?`},
+		{"audit_events", `DELETE FROM audit_events WHERE hospital_id = ?`},
+		{"collection_plans", `DELETE FROM collection_plans WHERE hospital_id = ?`},
+		{"baselines", `DELETE FROM baselines WHERE hospital_id = ?`},
+		{"role_bindings", `DELETE FROM role_bindings WHERE hospital_id = ?`},
+		{"assets", `DELETE FROM assets WHERE hospital_id = ?`},
+		{"hospitals", `DELETE FROM hospitals WHERE id = ?`},
+	}
+	for _, s := range steps {
+		res, err := tx.Exec(s.query, id)
+		if err != nil {
+			return nil, fmt.Errorf("删除 %s 失败: %w", s.label, err)
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			deleted[s.label] = n
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return deleted, nil
+}
+
 // ---- 资产登记（M6） ----
 
 // CreateAsset 正式登记资产（医院须已存在）。

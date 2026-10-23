@@ -28,9 +28,9 @@ func cmdServerStatus(args []string) error {
 	if err := c.getJSON("/api/v1/health", &h); err != nil {
 		return err
 	}
-	fmt.Printf("服务端 %s：%s，版本 %s\n", c.base, h.Status, h.Version)
+	fmt.Printf(T("服务端 %s：%s，版本 %s\n", "Server %s: %s, version %s\n"), c.base, h.Status, h.Version)
 	if u := c.username(); u != "" {
-		fmt.Printf("当前会话用户：%s\n", u)
+		fmt.Printf(T("当前会话用户：%s\n", "Current session user: %s\n"), u)
 	}
 	return nil
 }
@@ -40,7 +40,7 @@ func cmdServerBackup(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "ma srvbak <备份文件>"); err != nil {
+	if err := p.requirePos(1, T("ma srvbak <备份文件>", "ma srvbak <backup-file>")); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -55,8 +55,8 @@ func cmdServerBackup(args []string) error {
 		return err
 	}
 	sum := sha256.Sum256(raw)
-	fmt.Printf("平台库快照已下载到 %s（%d 字节，sha256 %s…）\n", p.pos[0], len(raw), hex.EncodeToString(sum[:])[:16])
-	fmt.Println("恢复方法：停服 → 用该文件替换平台库文件 → 启服（见 docs/cli-guide.md 运维节）。")
+	fmt.Printf(T("平台库快照已下载到 %s（%d 字节，sha256 %s…）\n", "Platform database snapshot downloaded to %s (%d bytes, sha256 %s...)\n"), p.pos[0], len(raw), hex.EncodeToString(sum[:])[:16])
+	fmt.Println(T("恢复方法：停服 → 用该文件替换平台库文件 → 启服（见 docs/cli-guide.md 运维节）。", "To restore: stop the service, replace the platform database file with this file, then start the service (see the operations section of docs/cli-guide.md)."))
 	return nil
 }
 
@@ -72,19 +72,19 @@ func cmdServerReset(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("一键清场：将删除全部医院、资产、事实包、问题、报告、基线、规则启停与用户数据；")
-	fmt.Println("用户恢复为默认 admin（口令 admin@123，首登强制改密），全部会话吊销；许可文件与服务端配置不动。")
+	fmt.Println(T("一键清场：将删除全部医院、资产、事实包、问题、报告、基线、规则启停与用户数据；", "One-step reset: this deletes ALL hospitals, assets, bundles, findings, reports, baselines, rule toggles and user data;"))
+	fmt.Println(T("用户恢复为默认 admin（口令 admin@123，首登强制改密），全部会话吊销；许可文件与服务端配置不动。", "users are restored to the default admin (password admin@123, must change at first login) and all sessions are revoked; the license file and server configuration are untouched."))
 	if !p.has("y") {
-		fmt.Fprint(os.Stderr, "确认清场？输入 WIPE 继续：")
+		fmt.Fprint(os.Stderr, T("确认清场？输入 WIPE 继续：", "Confirm reset: type WIPE to continue: "))
 		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		if strings.TrimSpace(line) != "WIPE" {
-			fmt.Println("已取消")
+			fmt.Println(T("已取消", "Cancelled"))
 			return nil
 		}
 	}
 	_, raw, err := c.do("GET", "/api/v1/admin/backup", nil)
 	if err != nil {
-		return fmt.Errorf("清场前备份失败，已中止: %w", err)
+		return fmt.Errorf(T("清场前备份失败，已中止: %w", "pre-reset backup failed, aborted: %w"), err)
 	}
 	bak := p.str("o")
 	if bak == "" {
@@ -94,7 +94,7 @@ func cmdServerReset(args []string) error {
 		return err
 	}
 	sum := sha256.Sum256(raw)
-	fmt.Printf("清场前备份已保存到 %s（%d 字节，sha256 %s…）\n", bak, len(raw), hex.EncodeToString(sum[:])[:16])
+	fmt.Printf(T("清场前备份已保存到 %s（%d 字节，sha256 %s…）\n", "Pre-reset backup saved to %s (%d bytes, sha256 %s...)\n"), bak, len(raw), hex.EncodeToString(sum[:])[:16])
 	var out struct {
 		Status       string           `json:"status"`
 		Deleted      map[string]int64 `json:"deleted"`
@@ -108,11 +108,11 @@ func cmdServerReset(args []string) error {
 		total += n
 	}
 	clearSession()
-	fmt.Printf("清场完成：共删除 %d 行；本地会话已清除。\n", total)
+	fmt.Printf(T("清场完成：共删除 %d 行；本地会话已清除。\n", "Reset complete: %d rows deleted; local session cleared.\n"), total)
 	if out.SiteHospital != "" {
-		fmt.Printf("本站医院 %s 已按配置重新登记。\n", out.SiteHospital)
+		fmt.Printf(T("本站医院 %s 已按配置重新登记。\n", "Site hospital %s re-registered from configuration.\n"), out.SiteHospital)
 	}
-	fmt.Println("请用 ma login admin 重新登录（口令 admin@123，首登强制改密）。")
+	fmt.Println(T("请用 ma login admin 重新登录（口令 admin@123，首登强制改密）。", "Log in again with ma login admin (password admin@123, must change at first login)."))
 	return nil
 }
 
@@ -128,12 +128,12 @@ func cmdOffEval(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "ma offeval <包.zip> [-b 基线.json] [-o 报告.docx] [-j] [-F]"); err != nil {
+	if err := p.requirePos(1, T("ma offeval <包.zip> [-b 基线.json] [-o 报告.docx] [-j] [-F]", "ma offeval <bundle.zip> [-b baseline.json] [-o report.docx] [-j] [-F]")); err != nil {
 		return err
 	}
 	b, err := facts.ReadZip(p.pos[0])
 	if err != nil {
-		return fmt.Errorf("读取事实包失败: %w", err)
+		return fmt.Errorf(T("读取事实包失败: %w", "failed to read the bundle: %w"), err)
 	}
 	var baseline *rules.Baseline
 	if p.str("b") != "" {
@@ -143,7 +143,7 @@ func cmdOffEval(args []string) error {
 		}
 		var bl rules.Baseline
 		if err := jsonUnmarshal(raw, &bl); err != nil {
-			return fmt.Errorf("基线解析失败: %w", err)
+			return fmt.Errorf(T("基线解析失败: %w", "failed to parse the baseline: %w"), err)
 		}
 		baseline = &bl
 	}
@@ -156,19 +156,19 @@ func cmdOffEval(args []string) error {
 	if p.str("o") != "" {
 		raw, err := platform.RenderEvalDocx(b, results)
 		if err != nil {
-			return fmt.Errorf("生成 Word 失败: %w", err)
+			return fmt.Errorf(T("生成 Word 失败: %w", "failed to generate the Word report: %w"), err)
 		}
 		if err := os.WriteFile(p.str("o"), raw, 0o644); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "离线 Word 报告已写入 %s\n", p.str("o"))
+		fmt.Fprintf(os.Stderr, T("离线 Word 报告已写入 %s\n", "Offline Word report written to %s\n"), p.str("o"))
 	}
 	if p.has("j") {
 		if err := printJSON(results); err != nil {
 			return err
 		}
 	} else {
-		fmt.Printf("事实包 %s（%s / %s，执行 %s）：共 %d 条 — PASS %d、FAIL %d、UNKNOWN %d、NOT_RUN %d、NOT_APPLICABLE %d\n",
+		fmt.Printf(T("事实包 %s（%s / %s，执行 %s）：共 %d 条 — PASS %d、FAIL %d、UNKNOWN %d、NOT_RUN %d、NOT_APPLICABLE %d\n", "Bundle %s (%s / %s, execution %s): %d results — PASS %d, FAIL %d, UNKNOWN %d, NOT_RUN %d, NOT_APPLICABLE %d\n"),
 			b.BundleID, b.Scope.HospitalID, b.Scope.AssetID, b.Execution, len(results),
 			counts[facts.ConclusionPass], counts[facts.ConclusionFail], counts[facts.ConclusionUnknown],
 			counts[facts.ConclusionNotRun], counts[facts.ConclusionNotApplicable])
@@ -179,7 +179,7 @@ func cmdOffEval(args []string) error {
 		}
 	}
 	if p.has("F") && counts[facts.ConclusionFail] > 0 {
-		return &exitError{code: 2, msg: fmt.Sprintf("存在 %d 条 FAIL", counts[facts.ConclusionFail])}
+		return &exitError{code: 2, msg: fmt.Sprintf(T("存在 %d 条 FAIL", "%d FAIL findings"), counts[facts.ConclusionFail])}
 	}
 	return nil
 }

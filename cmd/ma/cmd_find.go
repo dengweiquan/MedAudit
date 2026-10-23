@@ -18,7 +18,7 @@ func cmdFindings(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "ma find <包id> [-c 结论] [-r 规则] [-j] [-o 清单.csv]"); err != nil {
+	if err := p.requirePos(1, T("ma find <包id> [-c 结论] [-r 规则] [-j] [-o 清单.csv]", "ma find <bundle-id> [-c conclusion] [-r rule] [-j] [-o list.csv]")); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -43,7 +43,7 @@ func cmdFindings(args []string) error {
 		if err := writeFindingsCSV(p.str("o"), out); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "CSV 已写入 %s（%d 行）\n", p.str("o"), len(out))
+		fmt.Fprintf(os.Stderr, T("CSV 已写入 %s（%d 行）\n", "CSV written to %s (%d rows)\n"), p.str("o"), len(out))
 	}
 	if p.has("j") {
 		return printJSON(out)
@@ -51,7 +51,7 @@ func cmdFindings(args []string) error {
 	for _, r := range out {
 		fmt.Printf("[%s] %s · %s — %s\n", r.Conclusion, r.RuleID, r.Subject, r.detailText())
 	}
-	fmt.Printf("共 %d 条\n", len(out))
+	fmt.Printf(T("共 %d 条\n", "%d in total\n"), len(out))
 	return nil
 }
 
@@ -111,9 +111,9 @@ func cmdCorrelate(args []string) error {
 			ids = append(ids, latest[a].ID)
 		}
 		if len(ids) < 2 || len(ids) > 12 {
-			return fmt.Errorf("自动选取得到 %d 个包（需 2–12）：请显式给包 ID", len(ids))
+			return fmt.Errorf(T("自动选取得到 %d 个包（需 2–12）：请显式给包 ID", "auto-selection produced %d bundles (need 2-12): give bundle IDs explicitly"), len(ids))
 		}
-		fmt.Fprintf(os.Stderr, "自动选取 %s 各资产最新包共 %d 个\n", hosp, len(ids))
+		fmt.Fprintf(os.Stderr, T("自动选取 %s 各资产最新包共 %d 个\n", "Auto-selected the latest bundle of each asset in %s: %d bundles\n"), hosp, len(ids))
 	}
 	var detail struct {
 		ReportID  string `json:"report_id"`
@@ -135,7 +135,7 @@ func cmdCorrelate(args []string) error {
 	if err := c.postJSON("/api/v1/correlations", map[string]any{"bundle_ids": ids, "created_by": c.username()}, &detail); err != nil {
 		return err
 	}
-	fmt.Printf("关联报告 %s：图 %d 节点/%d 边，提权路径 %d 条\n", detail.ReportID, detail.Result.Nodes, detail.Result.Edges, detail.PathCount)
+	fmt.Printf(T("关联报告 %s：图 %d 节点/%d 边，提权路径 %d 条\n", "Correlation report %s: graph %d nodes/%d edges, %d privilege paths\n"), detail.ReportID, detail.Result.Nodes, detail.Result.Edges, detail.PathCount)
 	for _, pth := range detail.Result.Paths {
 		chain := pth.Source
 		for _, h := range pth.Hops {
@@ -163,7 +163,7 @@ func cmdSummary(args []string) error {
 	} else {
 		want = c.siteHospitalID()
 	}
-	fmt.Printf("%-16s %5s %5s %7s %7s %7s %s\n", "医院", "资产", "事实包", "FAIL", "未闭环", "UNKNOWN", "关联路径")
+	fmt.Printf("%-16s %5s %5s %7s %7s %7s %s\n", T("医院", "HOSPITAL"), T("资产", "ASSETS"), T("事实包", "BUNDLES"), "FAIL", T("未闭环", "OPEN"), "UNKNOWN", T("关联路径", "CORR PATHS"))
 	for _, h := range rows {
 		if want != "" && h.HospitalID != want {
 			continue

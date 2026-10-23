@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -24,7 +25,7 @@ func rowToFile(r baselineRow) (*baselineFile, error) {
 		Allows []baselineAllow `json:"allows"`
 	}
 	if err := json.Unmarshal([]byte(r.Spec), &spec); err != nil {
-		return nil, fmt.Errorf("基线 %s 的 spec 解析失败: %w", r.ID, err)
+		return nil, fmt.Errorf(T("基线 %s 的 spec 解析失败: %w", "failed to parse the spec of baseline %s: %w"), r.ID, err)
 	}
 	return &baselineFile{ID: r.ID, HospitalID: r.HospitalID, Target: r.Target, Allows: spec.Allows}, nil
 }
@@ -49,7 +50,7 @@ func cmdBaselineList(args []string) error {
 	if p.has("j") {
 		return printJSON(rows)
 	}
-	fmt.Printf("%-28s %-18s %-14s %s\n", "基线", "医院", "目标", "放行条数")
+	fmt.Printf("%-28s %-18s %-14s %s\n", T("基线", "BASELINE"), T("医院", "HOSPITAL"), T("目标", "TARGET"), T("放行条数", "ALLOWS"))
 	for _, r := range rows {
 		bf, err := rowToFile(r)
 		n := 0
@@ -58,7 +59,7 @@ func cmdBaselineList(args []string) error {
 		}
 		fmt.Printf("%-28s %-18s %-14s %d\n", r.ID, r.HospitalID, r.Target, n)
 	}
-	fmt.Printf("共 %d 条基线（医院 %s）\n", len(rows), hosp)
+	fmt.Printf(T("共 %d 条基线（医院 %s）\n", "%d baselines in total (hospital %s)\n"), len(rows), hosp)
 	return nil
 }
 
@@ -67,7 +68,7 @@ func cmdBaselineGet(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "ma baseshow <id> [-o 文件] [-h 医院]"); err != nil {
+	if err := p.requirePos(1, T("ma baseshow <id> [-o 文件] [-h 医院]", "ma baseshow <id> [-o file] [-h hospital]")); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -93,14 +94,14 @@ func cmdBaselineGet(args []string) error {
 				if err := os.WriteFile(p.str("o"), raw, 0o644); err != nil {
 					return err
 				}
-				fmt.Printf("基线 %s 已导出到 %s（%d 条放行）\n", r.ID, p.str("o"), len(bf.Allows))
+				fmt.Printf(T("基线 %s 已导出到 %s（%d 条放行）\n", "Baseline %s exported to %s (%d allows)\n"), r.ID, p.str("o"), len(bf.Allows))
 				return nil
 			}
 			fmt.Println(string(raw))
 			return nil
 		}
 	}
-	return fmt.Errorf("基线 %s 不存在（医院 %s）", p.pos[0], hosp)
+	return fmt.Errorf(T("基线 %s 不存在（医院 %s）", "baseline %s not found (hospital %s)"), p.pos[0], hosp)
 }
 
 func cmdBaselineApply(args []string) error {
@@ -113,7 +114,7 @@ func cmdBaselineApply(args []string) error {
 		file = p.pos[0]
 	}
 	if file == "" {
-		return fmt.Errorf("用法：ma baseadd -f 基线.json")
+		return errors.New(T("用法：ma baseadd -f 基线.json", "Usage: ma baseadd -f baseline.json"))
 	}
 	raw, err := os.ReadFile(file)
 	if err != nil {
@@ -121,10 +122,10 @@ func cmdBaselineApply(args []string) error {
 	}
 	var bf baselineFile
 	if err := json.Unmarshal(raw, &bf); err != nil {
-		return fmt.Errorf("基线文件解析失败: %w", err)
+		return fmt.Errorf(T("基线文件解析失败: %w", "failed to parse the baseline file: %w"), err)
 	}
 	if bf.ID == "" {
-		return fmt.Errorf("基线文件缺 id")
+		return errors.New(T("基线文件缺 id", "the baseline file has no id"))
 	}
 	c, err := newClient()
 	if err != nil {
@@ -144,7 +145,7 @@ func cmdBaselineApply(args []string) error {
 	if err := c.postJSON("/api/v1/baselines", bf, &out); err != nil {
 		return err
 	}
-	fmt.Printf("基线 %s 已登记（%d 条放行）\n", bf.ID, len(bf.Allows))
+	fmt.Printf(T("基线 %s 已登记（%d 条放行）\n", "Baseline %s registered (%d allows)\n"), bf.ID, len(bf.Allows))
 	return nil
 }
 
@@ -156,7 +157,7 @@ func loadBaselineSource(c *client, src, hospital string) (*baselineFile, error) 
 		}
 		var bf baselineFile
 		if err := json.Unmarshal(raw, &bf); err != nil {
-			return nil, fmt.Errorf("%s 解析失败: %w", src, err)
+			return nil, fmt.Errorf(T("%s 解析失败: %w", "failed to parse %s: %w"), src, err)
 		}
 		return &bf, nil
 	}
@@ -169,7 +170,7 @@ func loadBaselineSource(c *client, src, hospital string) (*baselineFile, error) 
 			return rowToFile(r)
 		}
 	}
-	return nil, fmt.Errorf("基线 %s 不存在（医院 %s）", src, hospital)
+	return nil, fmt.Errorf(T("基线 %s 不存在（医院 %s）", "baseline %s not found (hospital %s)"), src, hospital)
 }
 
 func allowKey(a baselineAllow) string {
@@ -181,7 +182,7 @@ func cmdBaselineDiff(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(2, "ma basediff <基线A> <基线B>（ID 或 .json 文件）"); err != nil {
+	if err := p.requirePos(2, T("ma basediff <基线A> <基线B>（ID 或 .json 文件）", "ma basediff <baseline-A> <baseline-B> (IDs or .json files)")); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -208,7 +209,7 @@ func cmdBaselineDiff(args []string) error {
 	for _, x := range fb.Allows {
 		setB[allowKey(x)] = x
 	}
-	fmt.Printf("基线差异 %s（%d 条）→ %s（%d 条）\n", fa.ID, len(fa.Allows), fb.ID, len(fb.Allows))
+	fmt.Printf(T("基线差异 %s（%d 条）→ %s（%d 条）\n", "Baseline diff %s (%d allows) -> %s (%d allows)\n"), fa.ID, len(fa.Allows), fb.ID, len(fb.Allows))
 	only := 0
 	for k, x := range setB {
 		if _, ok := setA[k]; !ok {
@@ -223,7 +224,7 @@ func cmdBaselineDiff(args []string) error {
 		}
 	}
 	if only == 0 {
-		fmt.Println("  无差异")
+		fmt.Println(T("  无差异", "  no differences"))
 	}
 	return nil
 }
@@ -244,12 +245,12 @@ func cmdBaselineExempt(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "ma baseexempt <finding-id> [-b 基线] [-y] [原因…]"); err != nil {
+	if err := p.requirePos(1, T("ma baseexempt <finding-id> [-b 基线] [-y] [原因…]", "ma baseexempt <finding-id> [-b baseline] [-y] [reason...]")); err != nil {
 		return err
 	}
 	findingID, err := strconv.ParseInt(p.pos[0], 10, 64)
 	if err != nil {
-		return fmt.Errorf("finding-id 须为数字（问题清单 ma find 输出的 id）")
+		return errors.New(T("finding-id 须为数字（问题清单 ma find 输出的 id）", "finding-id must be numeric (the id shown by ma find)"))
 	}
 	reason := strings.Join(p.pos[1:], " ")
 	c, err := newClient()
@@ -261,9 +262,9 @@ func cmdBaselineExempt(args []string) error {
 		return err
 	}
 	if !pv.Supported {
-		return fmt.Errorf("规则 %s 不支持基线豁免（可使用 ma ruleoff 整类关闭）", pv.RuleID)
+		return fmt.Errorf(T("规则 %s 不支持基线豁免（可使用 ma ruleoff 整类关闭）", "rule %s does not support baseline exemption (use ma ruleoff to disable the whole check)"), pv.RuleID)
 	}
-	fmt.Printf("问题：%s · %s\n将加入的放行项（按证据推导）：\n", pv.RuleID, pv.Subject)
+	fmt.Printf(T("问题：%s · %s\n将加入的放行项（按证据推导）：\n", "Finding: %s · %s\nAllow entries to add (derived from evidence):\n"), pv.RuleID, pv.Subject)
 	for _, a := range pv.Allows {
 		fmt.Printf("  %s · %s = %s（scope %q）\n", a.Subject, a.Kind, a.Value, a.Scope)
 	}
@@ -290,21 +291,21 @@ func cmdBaselineExempt(args []string) error {
 	} else if len(matching) == 1 {
 		baselineID = matching[0]
 	} else if len(matching) > 1 {
-		return fmt.Errorf("该目标有多条基线（%s）：用 -b 指定一条", strings.Join(matching, "、"))
+		return fmt.Errorf(T("该目标有多条基线（%s）：用 -b 指定一条", "this target has multiple baselines (%s): pick one with -b"), strings.Join(matching, T("、", ", ")))
 	} else {
 		newID = "bl-exempt-" + pv.Target
 	}
 	target := baselineID
 	if target == "" {
-		target = newID + "（新建）"
+		target = newID + T("（新建）", " (new)")
 	}
-	fmt.Printf("目标基线：%s（医院 %s · 目标 %s）\n", target, pv.HospitalID, pv.Target)
+	fmt.Printf(T("目标基线：%s（医院 %s · 目标 %s）\n", "Target baseline: %s (hospital %s · target %s)\n"), target, pv.HospitalID, pv.Target)
 	if !p.has("y") {
-		fmt.Fprint(os.Stderr, "确认加入？[y/N] ")
+		fmt.Fprint(os.Stderr, T("确认加入？[y/N] ", "Add to the baseline? [y/N] "))
 		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		line = strings.ToLower(strings.TrimSpace(line))
 		if line != "y" && line != "yes" {
-			fmt.Println("已取消")
+			fmt.Println(T("已取消", "Cancelled"))
 			return nil
 		}
 	}
@@ -322,11 +323,11 @@ func cmdBaselineExempt(args []string) error {
 	if err := c.postJSON("/api/v1/baselines/exempt", body, &res); err != nil {
 		return err
 	}
-	fmt.Printf("已加入基线 %s（新增 %d 条", res.BaselineID, len(res.Added))
+	fmt.Printf(T("已加入基线 %s（新增 %d 条", "Added to baseline %s (%d new"), res.BaselineID, len(res.Added))
 	if res.Skipped > 0 {
-		fmt.Printf("，%d 条已存在跳过", res.Skipped)
+		fmt.Printf(T("，%d 条已存在跳过", ", %d already present, skipped"), res.Skipped)
 	}
-	fmt.Println("）。用该基线重新评估（ma eval -b）后生效。")
+	fmt.Println(T("）。用该基线重新评估（ma eval -b）后生效。", "). Re-evaluate with this baseline (ma eval -b) to take effect."))
 	return nil
 }
 
@@ -358,17 +359,17 @@ func cmdRuleList(args []string) error {
 	if p.has("j") {
 		return printJSON(map[string]any{"rules": rules, "disabled": toggles})
 	}
-	fmt.Printf("%-38s %-10s %-8s %s\n", "规则", "目标", "状态", "关闭原因（留痕）")
+	fmt.Printf("%-38s %-10s %-8s %s\n", T("规则", "RULE"), T("目标", "TARGET"), T("状态", "STATUS"), T("关闭原因（留痕）", "DISABLE REASON (audit trail)"))
 	for _, r := range rules {
-		st := "启用"
+		st := T("启用", "enabled")
 		note := ""
 		if t, ok := off[r.ID]; ok {
-			st = "已关闭"
+			st = T("已关闭", "disabled")
 			note = fmt.Sprintf("%s（%s · %s）", t.Reason, t.UpdatedBy, t.UpdatedAt)
 		}
 		fmt.Printf("%-38s %-10s %-8s %s\n", r.ID, r.Target, st, note)
 	}
-	fmt.Printf("共 %d 条规则，已关闭 %d 条\n", len(rules), len(off))
+	fmt.Printf(T("共 %d 条规则，已关闭 %d 条\n", "%d rules in total, %d disabled\n"), len(rules), len(off))
 	return nil
 }
 
@@ -378,10 +379,10 @@ func cmdRuleSet(args []string, enabled bool) error {
 		return err
 	}
 	if enabled {
-		if err := p.requirePos(1, "ma ruleon <规则id>"); err != nil {
+		if err := p.requirePos(1, T("ma ruleon <规则id>", "ma ruleon <rule-id>")); err != nil {
 			return err
 		}
-	} else if err := p.requirePos(2, "ma ruleoff <规则id> <原因…>"); err != nil {
+	} else if err := p.requirePos(2, T("ma ruleoff <规则id> <原因…>", "ma ruleoff <rule-id> <reason...>")); err != nil {
 		return err
 	}
 	id := p.pos[0]
@@ -395,9 +396,9 @@ func cmdRuleSet(args []string, enabled bool) error {
 		return err
 	}
 	if enabled {
-		fmt.Printf("规则 %s 已开启\n", id)
+		fmt.Printf(T("规则 %s 已开启\n", "Rule %s enabled\n"), id)
 	} else {
-		fmt.Printf("规则 %s 已关闭（本站）：新评估将跳过该项，报告不体现\n", id)
+		fmt.Printf(T("规则 %s 已关闭（本站）：新评估将跳过该项，报告不体现\n", "Rule %s disabled (this site): new evaluations will skip it and reports will not show it\n"), id)
 	}
 	return nil
 }

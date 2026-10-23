@@ -33,11 +33,11 @@ func cmdBundleList(args []string) error {
 	if p.has("j") {
 		return printJSON(out)
 	}
-	fmt.Printf("%-38s %-12s %-18s %-12s %-9s %s\n", "BUNDLE", "医院", "资产", "适配器", "执行", "事实数")
+	fmt.Printf("%-38s %-12s %-18s %-12s %-9s %s\n", "BUNDLE", T("医院", "HOSPITAL"), T("资产", "ASSET"), T("适配器", "ADAPTER"), T("执行", "EXECUTION"), T("事实数", "FACTS"))
 	for _, b := range out {
 		fmt.Printf("%-38s %-12s %-18s %-12s %-9s %d\n", b.ID, b.HospitalID, b.AssetID, b.Adapter, b.Execution, b.FactCount)
 	}
-	fmt.Printf("共 %d 个事实包\n", len(out))
+	fmt.Printf(T("共 %d 个事实包\n", "%d bundles in total\n"), len(out))
 	return nil
 }
 
@@ -46,7 +46,7 @@ func cmdBundleImport(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "ma bundlein <文件.zip>"); err != nil {
+	if err := p.requirePos(1, T("ma bundlein <文件.zip>", "ma bundlein <file.zip>")); err != nil {
 		return err
 	}
 	raw, err := os.ReadFile(p.pos[0])
@@ -64,7 +64,7 @@ func cmdBundleImport(args []string) error {
 	}
 	var out map[string]any
 	_ = json.Unmarshal(respBody, &out)
-	fmt.Printf("导入结果 %d：%v\n", status, out)
+	fmt.Printf(T("导入结果 %d：%v\n", "Import result %d: %v\n"), status, out)
 	return nil
 }
 
@@ -73,7 +73,7 @@ func cmdBundleShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "ma bundleshow <包id> [-j]"); err != nil {
+	if err := p.requirePos(1, T("ma bundleshow <包id> [-j]", "ma bundleshow <bundle-id> [-j]")); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -87,7 +87,7 @@ func cmdBundleShow(args []string) error {
 	if p.has("j") {
 		return printJSON(d)
 	}
-	fmt.Printf("事实包 %s\n  医院 %s · 方案 %s · 资产 %s · 适配器 %s（采集器 %s）\n  执行 %s · 导入 %s · 事实 %d 条\n",
+	fmt.Printf(T("事实包 %s\n  医院 %s · 方案 %s · 资产 %s · 适配器 %s（采集器 %s）\n  执行 %s · 导入 %s · 事实 %d 条\n", "Bundle %s\n  Hospital %s · Plan %s · Asset %s · Adapter %s (collector %s)\n  Execution %s · Imported %s · %d facts\n"),
 		d.ID, d.HospitalID, d.PlanID, d.AssetID, d.Adapter, d.CollectorVersion, d.Execution, d.ImportedAt, d.FactCount)
 	kinds := make([]string, 0, len(d.CountsByKind))
 	for k := range d.CountsByKind {
@@ -98,17 +98,17 @@ func cmdBundleShow(args []string) error {
 	for _, k := range kinds {
 		parts = append(parts, fmt.Sprintf("%s %d", k, d.CountsByKind[k]))
 	}
-	fmt.Printf("  事实构成：%s\n", strings.Join(parts, " · "))
-	fmt.Printf("  收据 %d 张：\n", len(d.Receipts))
+	fmt.Printf(T("  事实构成：%s\n", "  Fact composition: %s\n"), strings.Join(parts, " · "))
+	fmt.Printf(T("  收据 %d 张：\n", "  %d receipts:\n"), len(d.Receipts))
 	for _, r := range d.Receipts {
 		extra := ""
 		if r.Truncated {
-			extra += " [截断]"
+			extra += T(" [截断]", " [truncated]")
 		}
 		if r.ErrorStage != "" {
-			extra += " [阶段 " + r.ErrorStage + "]"
+			extra += T(" [阶段 ", " [stage ") + r.ErrorStage + "]"
 		}
-		fmt.Printf("    %-28s %-8s %6d 行%s\n", r.TemplateID, r.Status, r.RowCount, extra)
+		fmt.Printf(T("    %-28s %-8s %6d 行%s\n", "    %-28s %-8s %6d rows%s\n"), r.TemplateID, r.Status, r.RowCount, extra)
 	}
 	return nil
 }
@@ -118,7 +118,7 @@ func cmdBundleDrift(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(2, "ma bundledrift <新包> <旧包>"); err != nil {
+	if err := p.requirePos(2, T("ma bundledrift <新包> <旧包>", "ma bundledrift <new-bundle> <old-bundle>")); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -146,7 +146,7 @@ func cmdBundleDrift(args []string) error {
 	if err := c.getJSON(path, &rep); err != nil {
 		return err
 	}
-	fmt.Printf("漂移 %s 相对 %s：新增 %d、消失 %d，其中新增授权/角色关系 %d 项需关注\n",
+	fmt.Printf(T("漂移 %s 相对 %s：新增 %d、消失 %d，其中新增授权/角色关系 %d 项需关注\n", "Drift %s vs %s: %d added, %d removed; %d newly added grant/role relations need attention\n"),
 		rep.CompareID, rep.BaseID, rep.AddedTotal, rep.RemovedTotal, rep.Attention)
 	for _, it := range rep.Added {
 		fmt.Printf("  + [%s] %s — %s\n", it.Category, it.Subject, it.Detail)
@@ -162,7 +162,7 @@ func cmdBundleEffective(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "ma bundleeff <包id> [-j]"); err != nil {
+	if err := p.requirePos(1, T("ma bundleeff <包id> [-j]", "ma bundleeff <bundle-id> [-j]")); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -189,14 +189,14 @@ func cmdBundleEffective(args []string) error {
 		return printJSON(rows)
 	}
 	for _, e := range rows {
-		kind := "主体"
+		kind := T("主体", "principal")
 		if e.IsRole {
-			kind = "角色"
+			kind = T("角色", "role")
 		}
-		fmt.Printf("%s（%s）：有效角色 %d，有效权限 %d\n", e.Subject, kind, len(e.Roles), len(e.Privileges))
+		fmt.Printf(T("%s（%s）：有效角色 %d，有效权限 %d\n", "%s (%s): %d effective roles, %d effective privileges\n"), e.Subject, kind, len(e.Roles), len(e.Privileges))
 		for _, pr := range e.Privileges {
 			if !pr.Direct {
-				fmt.Printf("    派生权限 %s（经 %s）\n", pr.Privilege, strings.Join(pr.Via, " → "))
+				fmt.Printf(T("    派生权限 %s（经 %s）\n", "    derived privilege %s (via %s)\n"), pr.Privilege, strings.Join(pr.Via, " → "))
 			}
 		}
 	}

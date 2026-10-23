@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 )
@@ -25,7 +26,7 @@ func cmdLogin(args []string) error {
 	c := &client{base: serverBase(), hc: httpClient()}
 	pass := os.Getenv("MEDAUDIT_PASS")
 	if pass == "" {
-		pw, err := readPassword(fmt.Sprintf("%s 的口令: ", user))
+		pw, err := readPassword(fmt.Sprintf(T("%s 的口令: ", "Password for %s: "), user))
 		if err != nil {
 			return err
 		}
@@ -34,7 +35,7 @@ func cmdLogin(args []string) error {
 	if err := c.login(user, pass); err != nil {
 		return err
 	}
-	fmt.Printf("已登录 %s（服务端 %s，会话存 ~/.medaudit/session.json）\n", user, c.base)
+	fmt.Printf(T("已登录 %s（服务端 %s，会话存 ~/.medaudit/session.json）\n", "Logged in as %s (server %s, session stored in ~/.medaudit/session.json)\n"), user, c.base)
 	return nil
 }
 
@@ -44,7 +45,7 @@ func cmdLogout(args []string) error {
 		_, _, _ = c.do("POST", "/api/v1/auth/logout", map[string]string{})
 	}
 	clearSession()
-	fmt.Println("已注销并清除本地会话")
+	fmt.Println(T("已注销并清除本地会话", "Logged out and local session cleared"))
 	return nil
 }
 
@@ -55,23 +56,23 @@ func cmdWhoami(args []string) error {
 	}
 	u := c.username()
 	if u == "" {
-		return fmt.Errorf("未登录或会话已过期：先运行 ma login")
+		return errors.New(T("未登录或会话已过期：先运行 ma login", "not logged in or session expired: run ma login first"))
 	}
 	hosp := ""
 	if s, err := loadSession(); err == nil {
 		hosp = s.Hospital
 	}
-	src := "本站（服务端给定）"
+	src := T("本站（服务端给定）", "site hospital (set by the server)")
 	if hosp == "" {
 		hosp = c.siteHospitalID()
 		if hosp == "" {
-			hosp = "（未设定，多院实例请 ma use 指定）"
+			hosp = T("（未设定，多院实例请 ma use 指定）", "(not set; on multi-hospital instances use ma use)")
 			src = ""
 		}
 	} else {
-		src = "ma use 设定"
+		src = T("ma use 设定", "set by ma use")
 	}
-	fmt.Printf("%s @ %s\n当前医院：%s %s\n", u, c.base, hosp, src)
+	fmt.Printf(T("%s @ %s\n当前医院：%s %s\n", "%s @ %s\nCurrent hospital: %s %s\n"), u, c.base, hosp, src)
 	return nil
 }
 
@@ -86,7 +87,7 @@ func cmdUse(args []string) error {
 	if err := setContextHospital(p.pos[0]); err != nil {
 		return err
 	}
-	fmt.Printf("当前医院上下文已设为 %s\n", p.pos[0])
+	fmt.Printf(T("当前医院上下文已设为 %s\n", "Current hospital context set to %s\n"), p.pos[0])
 	return nil
 }
 
@@ -103,10 +104,10 @@ func cmdSite(args []string) error {
 		return err
 	}
 	if site.HospitalID == "" {
-		fmt.Println("本站未初始化（多院/开发模式）：用 ma use <医院ID> 设定当前医院上下文")
+		fmt.Println(T("本站未初始化（多院/开发模式）：用 ma use <医院ID> 设定当前医院上下文", "Site not initialized (multi-hospital/dev mode): set the current hospital context with ma use <hospital-id>"))
 		return nil
 	}
-	fmt.Printf("本站医院：%s（%s）\n", site.HospitalID, site.Name)
+	fmt.Printf(T("本站医院：%s（%s）\n", "Site hospital: %s (%s)\n"), site.HospitalID, site.Name)
 	return nil
 }
 
@@ -121,19 +122,19 @@ func cmdUserList(args []string) error {
 	if err := c.getJSON("/api/v1/users", &rows); err != nil {
 		return err
 	}
-	fmt.Printf("%-24s %-8s %-10s %s\n", "用户名", "状态", "强制改密", "创建时间")
+	fmt.Printf("%-24s %-8s %-10s %s\n", T("用户名", "USERNAME"), T("状态", "STATUS"), T("强制改密", "MUST CHANGE"), T("创建时间", "CREATED"))
 	for _, u := range rows {
-		st := "正常"
+		st := T("正常", "active")
 		if u.Disabled {
-			st = "已禁用"
+			st = T("已禁用", "disabled")
 		}
-		mc := "否"
+		mc := T("否", "no")
 		if u.MustChangePwd {
-			mc = "是"
+			mc = T("是", "yes")
 		}
 		fmt.Printf("%-24s %-8s %-10s %s\n", u.Username, st, mc, u.CreatedAt)
 	}
-	fmt.Printf("共 %d 个用户\n", len(rows))
+	fmt.Printf(T("共 %d 个用户\n", "%d users in total\n"), len(rows))
 	return nil
 }
 
@@ -142,11 +143,11 @@ func cmdUserAdd(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "ma useradd <name> [-e 口令环境变量]"); err != nil {
+	if err := p.requirePos(1, T("ma useradd <name> [-e 口令环境变量]", "ma useradd <name> [-e password-env]")); err != nil {
 		return err
 	}
 	name := p.pos[0]
-	pw, err := userPassword(p.str("e"), fmt.Sprintf("新用户 %s 的初始口令: ", name))
+	pw, err := userPassword(p.str("e"), fmt.Sprintf(T("新用户 %s 的初始口令: ", "Initial password for new user %s: "), name))
 	if err != nil {
 		return err
 	}
@@ -158,7 +159,7 @@ func cmdUserAdd(args []string) error {
 	if err := c.postJSON("/api/v1/users", map[string]string{"username": name, "password": pw}, &out); err != nil {
 		return err
 	}
-	fmt.Printf("用户 %s 已创建（首登强制改密）\n", name)
+	fmt.Printf(T("用户 %s 已创建（首登强制改密）\n", "User %s created (must change password at first login)\n"), name)
 	return nil
 }
 
@@ -167,11 +168,11 @@ func cmdUserPassword(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "ma userpw <name> [-e 口令环境变量]"); err != nil {
+	if err := p.requirePos(1, T("ma userpw <name> [-e 口令环境变量]", "ma userpw <name> [-e password-env]")); err != nil {
 		return err
 	}
 	name := p.pos[0]
-	pw, err := userPassword(p.str("e"), fmt.Sprintf("用户 %s 的新口令: ", name))
+	pw, err := userPassword(p.str("e"), fmt.Sprintf(T("用户 %s 的新口令: ", "New password for user %s: "), name))
 	if err != nil {
 		return err
 	}
@@ -182,7 +183,7 @@ func cmdUserPassword(args []string) error {
 	if _, _, err := c.do("PUT", "/api/v1/users/"+escapePath(name)+"/password", map[string]string{"password": pw}); err != nil {
 		return err
 	}
-	fmt.Printf("用户 %s 的口令已重置（其全部会话已吊销，首登强制改密）\n", name)
+	fmt.Printf(T("用户 %s 的口令已重置（其全部会话已吊销，首登强制改密）\n", "Password for user %s reset (all its sessions revoked; must change at first login)\n"), name)
 	return nil
 }
 
@@ -207,9 +208,9 @@ func cmdUserDisabled(args []string, disabled bool) error {
 		return err
 	}
 	if disabled {
-		fmt.Printf("用户 %s 已禁用（其全部会话已吊销）\n", name)
+		fmt.Printf(T("用户 %s 已禁用（其全部会话已吊销）\n", "User %s disabled (all its sessions revoked)\n"), name)
 	} else {
-		fmt.Printf("用户 %s 已启用\n", name)
+		fmt.Printf(T("用户 %s 已启用\n", "User %s enabled\n"), name)
 	}
 	return nil
 }

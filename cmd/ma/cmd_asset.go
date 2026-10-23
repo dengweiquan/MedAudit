@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -32,7 +33,7 @@ func cmdAssetList(args []string) error {
 	if p.has("j") {
 		return printJSON(out)
 	}
-	fmt.Printf("%-18s %-12s %-12s %-22s %s\n", "资产", "医院", "类型", "名称", "端点")
+	fmt.Printf("%-18s %-12s %-12s %-22s %s\n", T("资产", "ASSET"), T("医院", "HOSPITAL"), T("类型", "KIND"), T("名称", "NAME"), T("端点", "ENDPOINT"))
 	for _, a := range out {
 		ep := ""
 		if a.Endpoint != nil {
@@ -40,7 +41,7 @@ func cmdAssetList(args []string) error {
 		}
 		fmt.Printf("%-18s %-12s %-12s %-22s %s\n", a.ID, a.HospitalID, a.Kind, a.Name, ep)
 	}
-	fmt.Printf("共 %d 个资产\n", len(out))
+	fmt.Printf(T("共 %d 个资产\n", "%d assets in total\n"), len(out))
 	return nil
 }
 
@@ -67,14 +68,14 @@ func cmdAssetShow(args []string) error {
 	if a.Labels != nil {
 		labels = *a.Labels
 	}
-	fmt.Printf("资产 %s\n  医院 %s · 类型 %s · 名称 %s\n  端点 %s\n", a.ID, a.HospitalID, a.Kind, a.Name, ep)
+	fmt.Printf(T("资产 %s\n  医院 %s · 类型 %s · 名称 %s\n  端点 %s\n", "Asset %s\n  Hospital %s · Kind %s · Name %s\n  Endpoint %s\n"), a.ID, a.HospitalID, a.Kind, a.Name, ep)
 	if labels != "" {
 		var pretty any
 		if err := json.Unmarshal([]byte(labels), &pretty); err == nil {
 			raw, _ := json.MarshalIndent(pretty, "  ", "  ")
-			fmt.Printf("  参数 %s\n", string(raw))
+			fmt.Printf(T("  参数 %s\n", "  Labels %s\n"), string(raw))
 		} else {
-			fmt.Printf("  参数 %s\n", labels)
+			fmt.Printf(T("  参数 %s\n", "  Labels %s\n"), labels)
 		}
 	}
 	return nil
@@ -129,7 +130,7 @@ func buildAssetLabels(kind, ep, user, serverURL, mwHome, services string) (strin
 	if spec, ok := dbKinds[kind]; ok {
 		i := strings.LastIndex(ep, "/")
 		if i <= 0 || i == len(ep)-1 {
-			return "", "", "", fmt.Errorf("数据库端点格式：host[:port]/%s，如 10.0.0.11:1521/HISDB", map[bool]string{true: "服务名", false: "库名"}[spec.nameIsService])
+			return "", "", "", fmt.Errorf(T("数据库端点格式：host[:port]/%s，如 10.0.0.11:1521/HISDB", "database endpoint format: host[:port]/%s, e.g. 10.0.0.11:1521/HISDB"), map[bool]string{true: T("服务名", "service name"), false: T("库名", "database name")}[spec.nameIsService])
 		}
 		host, port := splitHostPort(ep[:i], spec.defaultPort)
 		conn := map[string]any{"engine": spec.engine, "host": host, "port": port}
@@ -194,7 +195,7 @@ func cmdAssetAdd(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(2, "ma assetadd <类型> <端点> [-i id] [-n 名称] [-u 账号] [-h 医院] [-f labels文件] [-U 回连地址] [-d 中间件目录] [-s 服务清单]"); err != nil {
+	if err := p.requirePos(2, T("ma assetadd <类型> <端点> [-i id] [-n 名称] [-u 账号] [-h 医院] [-f labels文件] [-U 回连地址] [-d 中间件目录] [-s 服务清单]", "ma assetadd <kind> <endpoint> [-i id] [-n name] [-u account] [-h hospital] [-f labels-file] [-U server-url] [-d mw-home] [-s services]")); err != nil {
 		return err
 	}
 	kind, ep := p.pos[0], p.pos[1]
@@ -221,7 +222,7 @@ func cmdAssetAdd(args []string) error {
 		}
 		var probe map[string]any
 		if err := json.Unmarshal(raw, &probe); err != nil {
-			return fmt.Errorf("labels 文件不是合法 JSON: %w", err)
+			return fmt.Errorf(T("labels 文件不是合法 JSON: %w", "labels file is not valid JSON: %w"), err)
 		}
 		labels = string(raw)
 		if endpoint == "" {
@@ -231,7 +232,7 @@ func cmdAssetAdd(args []string) error {
 	id := p.str("i")
 	if id == "" {
 		if hostPart == "" {
-			return fmt.Errorf("端点为 - 时须用 -i 指定资产 ID")
+			return errors.New(T("端点为 - 时须用 -i 指定资产 ID", "when the endpoint is -, the asset ID must be given with -i"))
 		}
 		id = kind + "-" + sanitizeIDPart(hostPart)
 	}
@@ -244,7 +245,7 @@ func cmdAssetAdd(args []string) error {
 	if err := c.postJSON("/api/v1/assets", body, &out); err != nil {
 		return err
 	}
-	fmt.Printf("资产 %s 已登记（%s · %s · %s）\n", id, hospital, kind, endpoint)
+	fmt.Printf(T("资产 %s 已登记（%s · %s · %s）\n", "Asset %s registered (%s · %s · %s)\n"), id, hospital, kind, endpoint)
 	return nil
 }
 
@@ -253,7 +254,7 @@ func cmdAssetMod(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, "ma assetmod <id> [端点] [-n 名称] [-u 账号] [-f labels文件] [-U 回连地址] [-d 中间件目录] [-s 服务清单]"); err != nil {
+	if err := p.requirePos(1, T("ma assetmod <id> [端点] [-n 名称] [-u 账号] [-f labels文件] [-U 回连地址] [-d 中间件目录] [-s 服务清单]", "ma assetmod <id> [endpoint] [-n name] [-u account] [-f labels-file] [-U server-url] [-d mw-home] [-s services]")); err != nil {
 		return err
 	}
 	id := p.pos[0]
@@ -284,7 +285,7 @@ func cmdAssetMod(args []string) error {
 		}
 		var probe map[string]any
 		if err := json.Unmarshal(raw, &probe); err != nil {
-			return fmt.Errorf("labels 文件不是合法 JSON: %w", err)
+			return fmt.Errorf(T("labels 文件不是合法 JSON: %w", "labels file is not valid JSON: %w"), err)
 		}
 		labels = string(raw)
 	} else if len(p.pos) > 1 {
@@ -322,7 +323,7 @@ func cmdAssetMod(args []string) error {
 	if _, _, err := c.do("PUT", "/api/v1/assets/"+escapePath(id), body); err != nil {
 		return err
 	}
-	fmt.Printf("资产 %s 已更新\n", id)
+	fmt.Printf(T("资产 %s 已更新\n", "Asset %s updated\n"), id)
 	return nil
 }
 
@@ -341,6 +342,6 @@ func cmdAssetDelete(args []string) error {
 	if _, _, err := c.do("DELETE", "/api/v1/assets/"+escapePath(p.pos[0]), nil); err != nil {
 		return err
 	}
-	fmt.Printf("资产 %s 已删除（登记移除；历史事实包/报告保留）\n", p.pos[0])
+	fmt.Printf(T("资产 %s 已删除（登记移除；历史事实包/报告保留）\n", "Asset %s deleted (registration removed; history bundles/reports kept)\n"), p.pos[0])
 	return nil
 }
