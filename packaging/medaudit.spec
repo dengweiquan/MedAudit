@@ -3,7 +3,10 @@ Version:        @RPM_VERSION@
 Release:        @RPM_RELEASE@
 Summary:        MedAudit 医疗权限审计平台（服务端）
 License:        Proprietary
-BuildArch:      x86_64
+# 架构不在此声明：由构建目标决定（缺省本机架构；跨架构构建用
+# rpmbuild --target，见 packaging/build-packages.sh）。BuildArch 与
+# --target 跨架构在本机 rpm 上触发 "No compatible architectures"，
+# 产物架构改为由打包脚本在构建后核验兜底。
 AutoReqProv:    no
 
 %description

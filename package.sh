@@ -1,6 +1,7 @@
 #!/bin/bash
 # MedAudit V1 安装包打包脚本
 # 用法: bash package.sh <版本号，如 0.26.0-m25>（必填，与 build-packages.sh 同值）
+# 目标架构缺省本机架构；GOARCH=arm64 时交叉编译 arm64 包（鲲鹏/飞腾）。
 set -e
 cd "$(dirname "$0")"
 VERSION="${1:-}"
@@ -10,10 +11,19 @@ VERSION="${1:-}"
 for f in cmd/medaudit-server/main.go cmd/ma/main.go cmd/medaudit-collector/main.go; do
   grep -q "const version = \"$VERSION\"" "$f" || { echo "版本不一致：$f 的 const version 不是 $VERSION，请先同步三处版本常量"; exit 1; }
 done
+# 目标架构（M26 arm64 支持）：缺省本机架构；GOARCH=arm64 交叉编译
+# arm64（鲲鹏/飞腾）。Windows 采集器/ma.exe 始终 windows/amd64——
+# 它们运行在被审计的 Windows 主机上，与服务端架构无关（构建处显式钉死）。
+TARCH="${GOARCH:-$(go env GOARCH)}"
+case "$TARCH" in
+  amd64|arm64) ;;
+  *) echo "不支持的 GOARCH: $TARCH（仅 amd64 / arm64）"; exit 1 ;;
+esac
+export GOARCH="$TARCH"
 DIST="/tmp/medaudit-dist"
 PKG="$DIST/medaudit-$VERSION"
 
-echo "=== 打包 MedAudit $VERSION ==="
+echo "=== 打包 MedAudit $VERSION（$TARCH）==="
 rm -rf "$DIST"
 mkdir -p "$PKG"/{bin,migrations-sqlite,rulesets,queries,web,docs,pilot}
 
@@ -23,11 +33,11 @@ go build -o "$PKG/bin/medaudit-collector" ./cmd/medaudit-collector
 go build -o "$PKG/bin/medaudit-fixture" ./cmd/medaudit-fixture
 
 echo "--- 交叉编译 Windows 采集器 ---"
-GOOS=windows go build -o "$PKG/bin/medaudit-collector.exe" ./cmd/medaudit-collector
+GOOS=windows GOARCH=amd64 go build -o "$PKG/bin/medaudit-collector.exe" ./cmd/medaudit-collector
 
 echo "--- 工程师 CLI（Linux + Windows）---"
 go build -o "$PKG/bin/ma" ./cmd/ma
-GOOS=windows go build -o "$PKG/bin/ma.exe" ./cmd/ma
+GOOS=windows GOARCH=amd64 go build -o "$PKG/bin/ma.exe" ./cmd/ma
 
 echo "--- 复制前端/迁移/规则/SQL 模板 ---"
 cp -r web/dist "$PKG/web/"
@@ -79,6 +89,8 @@ chmod +x "$PKG/install.sh"
 
 echo "--- 打包 ---"
 cd "$DIST"
-tar czf "medaudit-$VERSION.tar.gz" "medaudit-$VERSION"
-ls -lh "medaudit-$VERSION.tar.gz"
+TARNAME="medaudit-$VERSION.tar.gz"
+[ "$TARCH" = "arm64" ] && TARNAME="medaudit-$VERSION-arm64.tar.gz"
+tar czf "$TARNAME" "medaudit-$VERSION"
+ls -lh "$TARNAME"
 echo "=== 完成 ==="

@@ -2,7 +2,7 @@ Package: medaudit
 Version: @DEB_VERSION@
 Section: admin
 Priority: optional
-Architecture: amd64
+Architecture: @DEB_ARCH@
 Maintainer: MedAudit <dengweiquan@gmail.com>
 Description: MedAudit 医疗权限审计平台（服务端）
  数据库/操作系统/中间件权限审计：采集、评估、基线豁免、整改

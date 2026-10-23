@@ -50,6 +50,8 @@ jobs:
           VER="${TAG#v}"
           bash package.sh "$VER"
           bash packaging/build-packages.sh "$PWD/out" "$VER"
+          GOARCH=arm64 bash package.sh "$VER"
+          GOARCH=arm64 bash packaging/build-packages.sh "$PWD/out" "$VER"
           ls -lh out/
 
       - name: Create or update GitHub Release

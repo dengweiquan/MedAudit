@@ -86,7 +86,10 @@ the `medaudit` system user, generates the evidence encryption key
 historical evidence unreadable), interactively asks for this site's
 hospital (skipped when there is no terminal), and registers and starts
 the systemd service. Both packages have zero external dependencies
-(static Go binaries; no runtime needs to be preinstalled).
+(static Go binaries; no runtime needs to be preinstalled). Releases
+also provide **arm64 packages** (for ARM64 servers such as Kunpeng /
+Feiteng): the architecture segment of the file name is `arm64` (deb)
+/ `aarch64` (rpm); installation is identical.
 
 **Option 2 — build from source:**
 
