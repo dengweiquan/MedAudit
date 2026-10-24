@@ -73,6 +73,7 @@ type Config struct {
 	Expectations  []Expectation `yaml:"expectations"`
 	ProbeWrites   bool          `yaml:"probe_writes"` // 默认 false：写方法只登记 NOT_RUN
 	TimeoutSecond int           `yaml:"timeout_seconds"`
+	Replay        *ReplayConfig `yaml:"replay"`       // M31：会话重放探针；留空则不跑重放
 }
 
 // LoadConfig 读取 YAML 配置并做基本校验。
@@ -110,6 +111,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if c.TimeoutSecond <= 0 {
 		c.TimeoutSecond = 10
+	}
+	if err := c.validateReplay(); err != nil {
+		return nil, err
 	}
 	return &c, nil
 }

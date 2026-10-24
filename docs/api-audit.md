@@ -24,3 +24,27 @@ cmd/medaudit-fixture（127.0.0.1:19090）：已知坏用例（水平越权 /api/
 - 同一身份只能看到自己的资源时，无法区分“接口有鉴权”与“后端静态返回”，靠 canary 命中才判 FAIL。
 - 对象/资源 ID 的属主映射由配置 owns 提供，HAR 路径的 {id} 与 OpenAPI 参数名不一致时需在配置中对齐。
 - 发现项的逐项复核（finding review）与报告导出集成是后续（M4-4）工作；当前报告以独立表存档可查。
+
+## 会话重放探针（M31）
+
+差分探测测权限设计对不对；重放探针测偷来的凭证好不好用，即会话失效
+机制（登出、过期、改密、吊销）是否真实生效。探针不获取凭证，只重放
+给定凭证；凭证走 identities 的 HeadersEnv，不落配置文件。
+
+apicheck YAML 新增 `replay` 段（留空则不跑重放，行为与现版一致）：
+
+```yaml
+replay:
+  sessions:
+    - name: alice-logged-out
+      identity: alice
+      invalidated: logged_out  # logged_out | expired | password_changed | revoked
+      note: "登出后捕获的会话"
+  endpoints: []  # 留空 = 全部 GET 端点；也可指定 "GET /api/..." 清单
+```
+
+判定（保守，证据不足一律 UNKNOWN）：重放返回 2xx → FAIL（失效会话仍
+被接受）；401/403/404 → PASS（失效会话被拒）；其他状态 / 传输错误 →
+UNKNOWN；路径参数无 owns 样本 → UNKNOWN。写方法默认登记 NOT_RUN，
+`probe_writes=true` 且确认目标为隔离环境时才发出。重放检查计入同一
+报告的 Checks 与 Summary，上传与 Word 渲染路径不变。

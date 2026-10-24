@@ -130,6 +130,10 @@ func Run(ctx context.Context, cfg *Config) (*Report, error) {
 		}
 	}
 
+	if cfg.Replay != nil {
+		r.runReplay(ctx, ops)
+	}
+
 	rep := &Report{
 		ReportID:   "apiaudit-" + started.Format("20060102-150405"),
 		Target:     cfg.BaseURL,
