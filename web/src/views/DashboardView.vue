@@ -178,7 +178,8 @@ async function load() {
     rulesCount.value = ru.length - off
     const byAsset = new Map<string, number>()
     const byBundle = new Map<string, number>()
-    for (const a of as) {
+    // 顶部合计须与所选医院一致：用过滤后的资产算，勿用原始全院数组。
+    for (const a of assets.value) {
       const lb = latestBundleOf(bs, a.id)
       if (!lb) { byAsset.set(a.id, 0); continue }
       let fail = 0
