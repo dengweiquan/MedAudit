@@ -2,7 +2,9 @@ package oracle
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,6 +66,8 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 目标库版本探针：低版本字典缺列时启用兼容模板（M29，见 compatTemplate）。
+	verNum := probeVersion(ctx, db)
 
 	seq := 0
 	nextID := func() string { seq++; return fmt.Sprintf("ora-fact-%06d", seq) }
@@ -119,6 +123,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 			cdbTemplates = append(cdbTemplates, t)
 			continue
 		}
+		t = compatTemplate(t, verNum)
 		mapFn := mapTemplate(t.ID, b, nextID)
 		if err := run(t, mapFn); err != nil {
 			return finish(b, failed, err)
@@ -126,7 +131,9 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 	}
 
 	// CDB 跨容器模板：仅当连接位于 CDB$ROOT 时才跑（探针：SYS_CONTEXT CON_NAME）。
-	if len(cdbTemplates) > 0 {
+	// CDB 自 12.1 起才存在：已知低版本库直接跳过探针——其在 11g 上
+	// 必然报错，不应把整包执行标 FAILED（M29）。
+	if len(cdbTemplates) > 0 && (verNum == 0 || verNum >= 121) {
 		rStart := time.Now()
 		rc := facts.Receipt{
 			TemplateID: "ora.cdb_context", TemplateVersion: "1",
@@ -150,6 +157,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		b.Receipts = append(b.Receipts, rc)
 		if perr == nil && conName == "CDB$ROOT" {
 			for _, t := range cdbTemplates {
+				t = compatTemplate(t, verNum)
 				mapFn := mapTemplate(t.ID, b, nextID)
 				if err := run(t, mapFn); err != nil {
 					return finish(b, failed, err)
@@ -350,6 +358,59 @@ func mapTemplate(tid string, b *facts.FactBundle, nextID func() string) func(*db
 			}
 		}
 	}
+}
+
+// probeVersion 查 v$instance 版本，编码为 major*10+minor（11.2→112、
+// 12.2→122、19.0→190）。失败或不可解析返回 0，表示版本未知：不启用
+// 兼容替换，模板错误如实暴露。
+func probeVersion(ctx context.Context, db *sql.DB) int {
+	var v string
+	qctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := db.QueryRowContext(qctx, "SELECT version FROM v$instance").Scan(&v); err != nil {
+		return 0
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) < 2 {
+		return 0
+	}
+	maj, e1 := strconv.Atoi(parts[0])
+	min, e2 := strconv.Atoi(parts[1])
+	if e1 != nil || e2 != nil {
+		return 0
+	}
+	return maj*10 + min
+}
+
+// compatTemplate 低版本兼容（M29）：目标库数据字典缺少高版本列时，
+// 以语义等价的常量列替换——缺失的授权类型在该版本根本不存在，对
+// 每个主体恒为未授予，常量即事实。替换后模板版本标 +compat，收据
+// 可审计；替换锚点不在 SQL 中时不改动（错误将如实暴露）。
+//   - DBA_ROLE_PRIVS.DELEGATE_OPTION 自 12.2 起（映射层不消费该列，
+//     以 'NO' 占位无信息损失）；
+//   - V$PWFILE_USERS 的 SYSBACKUP/SYSDG/SYSKM 自 12.1 起。
+func compatTemplate(t Template, verNum int) Template {
+	swap := func(old, repl string) {
+		if strings.Contains(t.SQL, old) {
+			t.SQL = strings.Replace(t.SQL, old, repl, 1)
+			if !strings.HasSuffix(t.Version, "+compat") {
+				t.Version += "+compat"
+			}
+		}
+	}
+	switch t.ID {
+	case "ora.role_privs":
+		if verNum > 0 && verNum < 122 {
+			swap("DELEGATE_OPTION AS delegate_option", "'NO' AS delegate_option")
+		}
+	case "ora.pwfile_users":
+		if verNum > 0 && verNum < 121 {
+			swap("SYSBACKUP AS sysbackup", "'FALSE' AS sysbackup")
+			swap("SYSDG AS sysdg", "'FALSE' AS sysdg")
+			swap("SYSKM AS syskm", "'FALSE' AS syskm")
+		}
+	}
+	return t
 }
 
 // emitTransitiveEdges 计算角色传递闭包并输出传递边事实。

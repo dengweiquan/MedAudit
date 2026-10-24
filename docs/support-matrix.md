@@ -18,7 +18,7 @@
 | SQL Server 2019 | 兼容项 | ✅ 已验证 | 2019 容器：260 facts / 7 收据 / COMPLETE（与 2022 同量级，7 模板全跑） |
 | Oracle 19c | ✅ | 已验证 | 6246 facts / PARTIAL（5000 行上限诚实截断）；CDB 普通用户 6204 facts / PARTIAL |
 | PostgreSQL 16 | M4 新增 | ✅ 已验证 | 16.15 容器：67 facts / 8 收据 / COMPLETE（低权专用账号）；对象级 ACL 仅覆盖连接库，集群角色/库级为全量 |
-| Oracle 11g | 非目标 | 未验证 |  kf03 有 11g 容器，仅作环境备用 |
+| Oracle 11g | ✅ | 已验证（M29） | 11.2.0.3 单实例（zemr）6121 facts / PARTIAL（tab_privs 5000 行截断）；低版本兼容模板：DELEGATE_OPTION（12.2 起）、SYSBACKUP/SYSDG/SYSKM（12.1 起）以等价常量列替代、CDB 模板在 12.1 前跳过 |
 
 ## 认证方式
 
