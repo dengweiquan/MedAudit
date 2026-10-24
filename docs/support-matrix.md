@@ -7,6 +7,7 @@
 | Linux（systemd） | ✅ | 已验证 | kf7 实测：cron.service 10 facts / COMPLETE |
 | Windows Server 2019 | ✅ | ✅ 已验证 | KVM 虚机 win2019-test 实测：1086 facts / COMPLETE；含 SQL Server 2019 Express + Windows 认证采集。用户 2026-10-20 决定：以 2019 作为 Windows 主验收平台（替代 2022） |
 | Windows Server 2022 | — | 未验证 | 用户 2026-10-20 决定以 2019 替代主验收，不再等待 ISO；如未来提供 ISO 可补测 |
+| HP-UX 11i v3 | — | 转录验证（未实机） | M21 转录夹具：8 FAIL 金标；SSH 推送实采待可达真机；用户 2026-10-24 定先等 |
 
 ## 数据库目标
 
