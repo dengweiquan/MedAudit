@@ -448,6 +448,14 @@ export const api = {
     post<ExemptResult>('/api/v1/baselines/exempt', body),
   removeBaselineAllow: (body: { baseline_id: string; subject: string; kind: string; value: string; scope: string }) =>
     post<{ status: string; removed: number }>('/api/v1/baselines/remove-allow', body),
+  updateBaseline: (id: string, allows: unknown[]) =>
+    req<{ status: string; id: string }>(`/api/v1/baselines/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allows }),
+    }),
+  deleteBaseline: (id: string) =>
+    req<{ status: string; id: string }>(`/api/v1/baselines/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   rules: () => req<Rule[]>('/api/v1/rules'),
   reports: () => req<ReportRow[]>('/api/v1/reports'),
   createReport: (body: { hospital_id: string; plan_id: string; bundle_id: string; created_by: string }) =>

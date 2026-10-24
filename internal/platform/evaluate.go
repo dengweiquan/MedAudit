@@ -30,6 +30,43 @@ func CreateBaseline(db *sql.DB, id, hospitalID, target string, allows []rules.Ba
 	return err
 }
 
+// UpdateBaselineAllows 整体替换基线的放行项（基线页编辑），版本号 +1。
+// ID、医院、目标锁定不变；重复放行项按四元组去重；已存问题与报告不动。
+func UpdateBaselineAllows(db *sql.DB, id string, allows []rules.BaselineAllow) error {
+	spec, err := json.Marshal(map[string]any{"allows": dedupeAllows(allows)})
+	if err != nil {
+		return err
+	}
+	res, err := db.Exec(`UPDATE baselines SET spec = ?, version = version + 1 WHERE id = ?`, string(spec), id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("基线不存在: %s", id)
+	}
+	return nil
+}
+
+// DeleteBaseline 删除整条基线（基线页删除）；仅影响以后评估，已存问题与报告不动。
+func DeleteBaseline(db *sql.DB, id string) error {
+	res, err := db.Exec(`DELETE FROM baselines WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("基线不存在: %s", id)
+	}
+	return nil
+}
+
 // LoadBaseline 读取基线并转为 rules.Baseline。
 func LoadBaseline(db *sql.DB, id string) (*rules.Baseline, error) {
 	var b rules.Baseline

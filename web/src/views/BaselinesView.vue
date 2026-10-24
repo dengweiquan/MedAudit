@@ -10,7 +10,7 @@
     </div>
     <div v-if="error" class="error">{{ error }}</div>
     <table v-else-if="baselines.length">
-      <thead><tr><th>ID</th><th>目标</th><th>版本</th><th>允许清单（allows）</th></tr></thead>
+      <thead><tr><th>ID</th><th>目标</th><th>版本</th><th>允许清单（allows）</th><th>操作</th></tr></thead>
       <tbody>
         <tr v-for="b in baselines" :key="b.id">
           <td>{{ b.id }}</td><td>{{ b.target }}</td><td>{{ b.version }}</td>
@@ -21,6 +21,10 @@
             </div>
             <span v-if="!allowsOf(b).length" class="todo">（空）</span>
           </td>
+          <td>
+            <button class="btn small" title="编辑这条基线的放行项" @click="startEdit(b)">编辑</button>
+            <button class="btn small" title="删除整条基线" @click="deleteBaselineRow(b)">删除</button>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -28,16 +32,17 @@
   </div>
 
   <div class="card">
-    <h2>新建基线</h2>
+    <h2>{{ editingId ? `编辑基线 ${editingId}` : '新建基线' }}</h2>
+    <p class="todo" v-if="editingId" style="margin:6px 0">编辑只改放行项：基线 ID、医院、目标锁定不动；保存后版本号 +1，已存的问题与报告不动，之后的评估用新放行项。</p>
     <div class="form-grid">
-      <label>基线 ID<input v-model="form.id" placeholder="bl-prod-1" /></label>
+      <label>基线 ID<input v-model="form.id" placeholder="bl-prod-1" :disabled="!!editingId" /></label>
       <label>医院
-        <select v-model="form.hospital_id">
+        <select v-model="form.hospital_id" :disabled="!!editingId">
           <option v-for="h in hospitals" :key="h.id" :value="h.id">{{ h.id }}</option>
         </select>
       </label>
       <label>目标
-        <select v-model="form.target">
+        <select v-model="form.target" :disabled="!!editingId">
           <option v-for="t in targets" :key="t" :value="t">{{ t }}</option>
         </select>
       </label>
@@ -69,7 +74,9 @@
         placeholder='[{"subject":"root@localhost","kind":"privilege","value":"SUPER","scope":"*.*","reason":"测试环境管理"}]'></textarea>
     </details>
     <div class="inline-form" style="margin-top:8px">
-      <button class="btn primary" @click="create">创建基线</button>
+      <button class="btn primary" v-if="!editingId" @click="create">创建基线</button>
+      <button class="btn primary" v-if="editingId" @click="saveEdit">保存修改</button>
+      <button class="btn" v-if="editingId" @click="cancelEdit">取消编辑</button>
       <span class="msg" v-if="msg">{{ msg }}</span>
       <span class="msg err" v-if="err">{{ err }}</span>
     </div>
@@ -205,6 +212,58 @@ async function create() {
     hospitalId.value = form.value.hospital_id
     await load()
   } catch (e) { err.value = e instanceof Error ? e.message : '创建失败' }
+}
+
+// 编辑：只改放行项，ID/医院/目标锁定；保存整体替换，版本 +1。
+const editingId = ref('')
+function startEdit(b: BaselineRow) {
+  msg.value = ''; err.value = ''
+  editingId.value = b.id
+  form.value.id = b.id
+  form.value.hospital_id = b.hospital_id
+  form.value.target = b.target
+  form.value.allowsText = ''
+  draftAllows.value = allowsOf(b).map(a => ({ ...a }))
+  const opts = KIND_OPTIONS[b.target] ?? []
+  draft.value = { subject: '', kind: opts[0]?.v ?? 'privilege', value: '', scope: '', reason: draft.value.reason }
+  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
+}
+function cancelEdit() {
+  editingId.value = ''
+  form.value.id = ''
+  form.value.allowsText = ''
+  form.value.target = 'db-mysql'
+  form.value.hospital_id = hospitalId.value
+  draftAllows.value = []
+  draft.value = { subject: '', kind: 'privilege', value: '', scope: '', reason: draft.value.reason }
+  msg.value = ''; err.value = ''
+}
+async function saveEdit() {
+  msg.value = ''; err.value = ''
+  let allows: unknown[]
+  if (form.value.allowsText.trim()) {
+    try { allows = JSON.parse(form.value.allowsText) }
+    catch { err.value = 'allows 不是合法 JSON'; return }
+  } else {
+    allows = draftAllows.value
+  }
+  if (!allows.length) { err.value = '至少保留一条放行项（要整条去掉请用删除）'; return }
+  try {
+    await api.updateBaseline(editingId.value, allows)
+    msg.value = `基线 ${editingId.value} 已修改（版本 +1）`
+    cancelEdit()
+    await load()
+  } catch (e) { err.value = e instanceof Error ? e.message : '修改失败' }
+}
+async function deleteBaselineRow(b: BaselineRow) {
+  if (!confirm(`确定删除整条基线 ${b.id}？已存的问题与报告不动，之后的评估不再用它豁免。`)) return
+  msg.value = ''; err.value = ''
+  try {
+    await api.deleteBaseline(b.id)
+    if (editingId.value === b.id) cancelEdit()
+    msg.value = `基线 ${b.id} 已删除`
+    await load()
+  } catch (e) { err.value = e instanceof Error ? e.message : '删除失败' }
 }
 
 onMounted(async () => {

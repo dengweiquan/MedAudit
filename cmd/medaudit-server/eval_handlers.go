@@ -246,6 +246,40 @@ func registerEvalRoutes(mux *http.ServeMux, db *sql.DB, reg *rules.Registry) {
 		writeJSON(w, map[string]any{"status": "ok", "removed": n})
 	})
 
+	// PUT /api/v1/baselines/{id} 修改放行项（整体替换，版本+1；ID/医院/目标不动）；
+	// DELETE /api/v1/baselines/{id} 删除整条基线（已存问题与报告不动）。
+	// 注意：/api/v1/baselines/exempt 等精确路径优先于此前缀，不受影响。
+	mux.HandleFunc("/api/v1/baselines/", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(r.URL.Path, "/api/v1/baselines/")
+		if id == "" || strings.Contains(id, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case http.MethodPut:
+			var req struct {
+				Allows []rules.BaselineAllow `json:"allows"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "请求解析失败", http.StatusBadRequest)
+				return
+			}
+			if err := platform.UpdateBaselineAllows(db, id, req.Allows); err != nil {
+				http.Error(w, "修改基线失败: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, map[string]string{"status": "ok", "id": id})
+		case http.MethodDelete:
+			if err := platform.DeleteBaseline(db, id); err != nil {
+				http.Error(w, "删除基线失败: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, map[string]string{"status": "ok", "id": id})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	// GET /api/v1/rules
 	mux.HandleFunc("/api/v1/rules", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, reg.Rules())
