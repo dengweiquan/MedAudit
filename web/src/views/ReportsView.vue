@@ -135,7 +135,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow } from '../api'
 import { fmtLocal } from '../util'
-import { reviewerName } from '../store'
+import { reviewerName, filterByHospital } from '../store'
 
 const bundles = ref<BundleSummary[]>([])
 const assets = ref<Asset[]>([])
@@ -200,9 +200,9 @@ async function copyText(t: string) {
 
 async function load() {
   try {
-    reports.value = await api.reports()
-    bundles.value = await api.bundles()
-    try { assets.value = await api.assets() } catch { assets.value = [] }
+    reports.value = filterByHospital(await api.reports())
+    bundles.value = filterByHospital(await api.bundles())
+    try { assets.value = filterByHospital(await api.assets()) } catch { assets.value = [] }
     try {
       const me = await api.me()
       if (me.username) createdBy.value = me.username

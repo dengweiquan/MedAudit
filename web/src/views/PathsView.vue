@@ -62,6 +62,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type BundleSummary, type CorrelationDetail, type CorrelationSummary } from '../api'
 import { fmtLocal } from '../util'
+import { filterByHospital } from '../store'
 
 const bundles = ref<BundleSummary[]>([])
 const history = ref<CorrelationSummary[]>([])
@@ -78,8 +79,8 @@ function bundlesByHospital(h: string): BundleSummary[] {
 
 async function load() {
   try {
-    bundles.value = await api.bundles()
-    history.value = await api.correlations()
+    bundles.value = filterByHospital(await api.bundles())
+    history.value = filterByHospital(await api.correlations())
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
 }
 
@@ -88,7 +89,7 @@ async function run() {
   running.value = true
   try {
     detail.value = await api.runCorrelation(selected.value)
-    history.value = await api.correlations()
+    history.value = filterByHospital(await api.correlations())
   } catch (e) { runErr.value = e instanceof Error ? e.message : '分析失败' }
   running.value = false
 }

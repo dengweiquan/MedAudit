@@ -73,7 +73,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type AuditRunResult, type BaselineRow, type BundleSummary, type ConnConfig } from '../api'
 import { engineOfKind, kindCategory } from '../categories'
-import { goto, gotoAsset, reviewerName } from '../store'
+import { goto, gotoAsset, reviewerName, filterByHospital } from '../store'
 import { exportLatestReport, latestBundleOf, latestFail, fmtLocal} from '../util'
 
 const assets = ref<Asset[]>([])
@@ -119,9 +119,9 @@ async function refreshFails() {
 
 async function load() {
   try {
-    assets.value = await api.assets()
-    bundles.value = await api.bundles()
-    const hs = await api.hospitals()
+    assets.value = filterByHospital(await api.assets())
+    bundles.value = filterByHospital(await api.bundles())
+    const hs = filterByHospital(await api.hospitals())
     for (const h of hs) {
       if (!(h.id in baselinesMap.value)) {
         try { baselinesMap.value[h.id] = await api.baselines(h.id) } catch { baselinesMap.value[h.id] = [] }
@@ -167,7 +167,7 @@ async function runAudit() {
       created_by: auditForm.value.created_by || undefined,
     })
     auditForm.value.password = ''
-    bundles.value = await api.bundles()
+    bundles.value = filterByHospital(await api.bundles())
     await refreshFails()
   } catch (e) {
     auditErr.value = e instanceof Error ? e.message : '审计失败'

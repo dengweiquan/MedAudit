@@ -14,7 +14,7 @@
         <tr><td>医院名称</td><td>{{ site.name }}</td></tr>
       </tbody>
     </table>
-    <div class="todo">本平台为单院部署：本站医院在系统初始化时给定，本页不提供多医院管理。登记的所有对象自动归属本站。如需变更本站信息，由工程师修改服务端初始化参数（MEDAUDIT_SITE_HOSPITAL_ID / NAME）后重启服务。</div>
+    <div class="todo">本平台为单院部署：本站医院在系统初始化时给定，本页不提供多医院管理。登记的所有对象自动归属本站。如需变更本站信息，由工程师修改服务端初始化参数（MEDAUDIT_SITE_HOSPITAL_ID / NAME）后重启服务。当前查看医院已锁定为本站，工作台与各类别页只显示本站信息。</div>
   </div>
 
   <div class="card" v-else>
@@ -31,6 +31,17 @@
       <button class="btn primary" @click="createHospital">新建医院</button>
     </div>
     <div class="todo">本站尚未初始化（当前为多院开发/测试模式）。客户部署在初始化时给定本站医院后，本节自动变为「本站信息」。名称为 auto-created:* 的是导入时自动生成的占位登记。</div>
+  </div>
+
+  <div class="card" v-if="!site?.hospital_id">
+    <h2>当前查看医院</h2>
+    <div class="inline-form">
+      <select v-model="viewHospital" @change="onViewHospitalChange">
+        <option value="">全部医院</option>
+        <option v-for="h in hospitals" :key="h.id" :value="h.id">{{ h.id }}（{{ h.name }}）</option>
+      </select>
+      <span class="todo">选择后，工作台、数据库、操作系统、中间件、业务接口、审计记录、问题、报告、复检对比、关联分析只显示该医院的信息；刷新、换页后仍然有效。切回「全部医院」恢复全量。规则页不受影响（规则启停为本站级）。下方登记表单的医院缺省值跟随当前选择。</span>
+    </div>
   </div>
 
   <div class="card" v-if="unclassified.length">
@@ -157,6 +168,7 @@
 
   <div class="card">
     <h2>资产总表（{{ assets.length }}）</h2>
+    <div class="todo" v-if="viewHospital">当前只显示 {{ viewHospital }} 的资产；切回「全部医院」可见全部。</div>
     <div class="inline-form" v-if="delSelected.size" style="margin-bottom:8px">
       <span>已选 {{ delSelected.size }} 条</span>
       <button class="btn small" @click="batchDelete">批量删除</button>
@@ -246,6 +258,14 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { api, type Asset, type BundleSummary, type ConnConfig, type Hospital, type SiteInfo, type UserRow } from '../api'
 import { DB_ENGINES, engineOfKind, kindCategory } from '../categories'
 import { loadSite, fmtLocal} from '../util'
+import { selectedHospital, setHospital, filterByHospital } from '../store'
+
+// 当前查看医院（管理页的选择器即全局筛选的唯一入口）。
+const viewHospital = ref('')
+async function onViewHospitalChange() {
+  setHospital(viewHospital.value)
+  await load()
+}
 
 const site = ref<SiteInfo | null>(null)
 
@@ -299,14 +319,24 @@ async function load() {
   try {
     site.value = await loadSite()
     hospitals.value = await api.hospitals()
-    assets.value = await api.assets()
-    try { bundles.value = await api.bundles() } catch { bundles.value = [] }
+    // 单院锁定本站；多院模式下已删医院的残留选择清回全部。
+    if (site.value?.hospital_id) setHospital(site.value.hospital_id)
+    else if (selectedHospital.id && !hospitals.value.some(h => h.id === selectedHospital.id)) setHospital('')
+    viewHospital.value = selectedHospital.id
+    const allAssets = await api.assets()
+    assets.value = filterByHospital(allAssets)
+    try { bundles.value = filterByHospital(await api.bundles()) } catch { bundles.value = [] }
     try { users.value = await api.users() } catch { users.value = [] }
     if (site.value?.hospital_id) {
       // 单院部署：登记自动归属本站
       dbForm.value.hospital_id = site.value.hospital_id
       osForm.value.hospital_id = site.value.hospital_id
       mwForm.value.hospital_id = site.value.hospital_id
+    } else if (viewHospital.value) {
+      // 多院模式：登记表单缺省跟随当前查看医院
+      dbForm.value.hospital_id = viewHospital.value
+      osForm.value.hospital_id = viewHospital.value
+      mwForm.value.hospital_id = viewHospital.value
     }
     for (const a of assets.value) if (kindCategory(a.kind) === 'unknown') fixKind[a.id] = 'host'
     if (!dbForm.value.hospital_id && hospitals.value.length) dbForm.value.hospital_id = hospitals.value[0].id

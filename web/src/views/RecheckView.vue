@@ -55,7 +55,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BundleSummary, type Finding } from '../api'
-import { goto, nav } from '../store'
+import { goto, nav, filterByHospital } from '../store'
 import { bundlesOfAsset, exportLatestReport, latestFail, fmtLocal} from '../util'
 
 const assets = ref<Asset[]>([])
@@ -139,8 +139,8 @@ async function doExport() {
 
 onMounted(async () => {
   try {
-    assets.value = await api.assets()
-    bundles.value = await api.bundles()
+    assets.value = filterByHospital(await api.assets())
+    bundles.value = filterByHospital(await api.bundles())
     const wanted = nav.assetId
     assetId.value = (wanted && candidates.value.some(a => a.id === wanted)) ? wanted : (candidates.value[0]?.id ?? '')
     await compare()

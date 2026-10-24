@@ -73,7 +73,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BundleSummary, type Hospital, type ReportRow, type SiteInfo } from '../api'
 import { kindCategory, type CategoryKey } from '../categories'
-import { goto, gotoAsset } from '../store'
+import { goto, gotoAsset, selectedHospital, filterByHospital } from '../store'
 import { bundleCategory, exportLatestReport, latestBundleOf, latestFail, loadSite, fmtLocal} from '../util'
 
 const site = ref<SiteInfo | null>(null)
@@ -121,7 +121,7 @@ const problemAssets = computed(() => [...failByAsset.value.values()].filter(f =>
 const openFail = computed(() => [...failByAsset.value.values()].reduce((s, f) => s + f, 0))
 
 const hospitalRows = computed<HospRow[]>(() => hospitals.value
-  .filter(h => !site.value?.hospital_id || h.id === site.value.hospital_id)
+  .filter(h => !selectedHospital.id || h.id === selectedHospital.id)
   .map(h => {
   const hs = assets.value.filter(a => a.hospital_id === h.id)
   let problem = 0, fail = 0, lastAt = '', audited = 0
@@ -171,7 +171,7 @@ async function load() {
     const [bs, as, hs, rs, ru] = await Promise.all([
       api.bundles(), api.assets(), api.hospitals(), api.reports(), api.rules(),
     ])
-    bundles.value = bs; assets.value = as; hospitals.value = hs; reports.value = rs
+    bundles.value = filterByHospital(bs); assets.value = filterByHospital(as); hospitals.value = hs; reports.value = filterByHospital(rs)
     // 启用规则 = 规则总数 − 本站已关闭数（M17 规则启停）
     let off = 0
     try { off = (await api.ruleToggles()).filter(t => !t.enabled).length } catch { off = 0 }

@@ -11,6 +11,7 @@
       </div>
       <span class="badge" v-if="health"><span class="dot"></span>运行正常<span class="ver">{{ health.version }}</span></span>
       <span class="badge off" v-else><span class="dot"></span>连接中…</span>
+      <span class="todo" v-if="hospitalLabel" style="margin-left:12px">当前医院：{{ hospitalLabel }} <button class="btn small" :disabled="mustChange" @click="goto('admin')">管理页切换</button></span>
       <span class="userbox">
         <span class="user-name">{{ username }}</span>
         <button class="btn small" :disabled="mustChange" @click="showPw = !showPw">修改口令</button>
@@ -57,9 +58,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
-import { api, type Health } from './api'
-import { nav, goto } from './store'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { api, type Health, type Hospital } from './api'
+import { nav, goto, selectedHospital, setHospital } from './store'
+import { loadSite } from './util'
 import LoginView from './views/LoginView.vue'
 import SiteFooter from './components/SiteFooter.vue'
 import DashboardView from './views/DashboardView.vue'
@@ -97,11 +99,30 @@ const authState = ref<'checking' | 'in' | 'out'>('checking')
 const username = ref('')
 const health = ref<Health | null>(null)
 
+// 顶栏当前医院指示（只显示、不在这里选，切换去管理页）。
+// selectedHospital 是 reactive，管理页改动后各页重挂载时读到新值；
+// 顶栏本身需在登录后校验一次：单院锁定本站，已删医院的残留选择清回全部。
+const hospitals = ref<Hospital[]>([])
+const hospitalLabel = computed(() => {
+  if (!selectedHospital.id) return '全部医院'
+  const h = hospitals.value.find(x => x.id === selectedHospital.id)
+  return h ? `${h.id}（${h.name}）` : selectedHospital.id
+})
+async function resolveHospital() {
+  try {
+    hospitals.value = await api.hospitals()
+    const site = await loadSite()
+    if (site.hospital_id) { setHospital(site.hospital_id); return }
+    if (selectedHospital.id && !hospitals.value.some(h => h.id === selectedHospital.id)) setHospital('')
+  } catch { /* 医院列表取不到时保留当前选择，不挡登录 */ }
+}
+
 function onLogin(user: string) {
   username.value = user
   authState.value = 'in'
   void refreshHealth()
   void checkMustChange()
+  void resolveHospital()
 }
 
 // M20：must_change_pwd 时强制先改密（挡住导航与全部视图）
@@ -160,6 +181,7 @@ onMounted(async () => {
     authState.value = 'in'
     mustChange.value = !!me.must_change_pwd
     if (mustChange.value) showPw.value = true
+    await resolveHospital()
   } catch {
     authState.value = 'out'
   }

@@ -183,7 +183,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { api, type BaselineRow, type BundleSummary, type ExemptionPreview, type Finding, type RemediationRow, type RetestRow, type Rule } from '../api'
-import { nav, reviewerName, saveReviewerName } from '../store'
+import { nav, reviewerName, saveReviewerName, filterByHospital } from '../store'
 import { latestRunFindings, fmtLocal, baselineKindLabel } from '../util'
 
 const bundles = ref<BundleSummary[]>([])
@@ -367,12 +367,14 @@ async function doRemediation(f: Finding) {
 
 onMounted(async () => {
   try {
-    bundles.value = await api.bundles()
+    bundles.value = filterByHospital(await api.bundles())
     try {
       const rs = await api.rules()
       rulesMap.value = new Map(rs.map(r => [r.ID, r]))
     } catch { /* 无规则说明时降级为仅原始详情 */ }
-    bundleId.value = nav.bundleId || (bundles.value[0]?.id ?? '')
+    bundleId.value = (nav.bundleId && bundles.value.some(b => b.id === nav.bundleId))
+      ? nav.bundleId
+      : (bundles.value[0]?.id ?? '')
     await load()
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
 })

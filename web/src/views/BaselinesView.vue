@@ -79,6 +79,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { selectedHospital } from '../store'
 import { api, type BaselineRow, type Hospital } from '../api'
 import { reviewerName } from '../store'
 import { loadSite, baselineKindLabel } from '../util'
@@ -210,9 +211,11 @@ onMounted(async () => {
   try {
     hospitals.value = await api.hospitals()
     const site = await loadSite()
-    const pick = (site.hospital_id && hospitals.value.some(h => h.id === site.hospital_id))
-      ? site.hospital_id
-      : hospitals.value[0]?.id ?? ''
+    const pick = (selectedHospital.id && hospitals.value.some(h => h.id === selectedHospital.id))
+      ? selectedHospital.id
+      : (site.hospital_id && hospitals.value.some(h => h.id === site.hospital_id))
+        ? site.hospital_id
+        : hospitals.value[0]?.id ?? ''
     if (pick) {
       hospitalId.value = pick
       form.value.hospital_id = pick

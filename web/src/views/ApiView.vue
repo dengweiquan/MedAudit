@@ -72,6 +72,7 @@ import { computed, onMounted, ref } from 'vue'
 import { api, type ApiAuditCheck, type ApiAuditSummary, type Asset, type Hospital } from '../api'
 import { fmtLocal } from '../util'
 import { kindCategory } from '../categories'
+import { selectedHospital, filterByHospital } from '../store'
 
 const hospitals = ref<Hospital[]>([])
 const assets = ref<Asset[]>([])
@@ -89,9 +90,17 @@ const targets = computed(() => assets.value.filter(a => kindCategory(a.kind) ===
 async function load() {
   try {
     hospitals.value = await api.hospitals()
-    assets.value = await api.assets()
-    list.value = await api.apiAudits()
-    if (!form.value.hospital_id && hospitals.value.length) form.value.hospital_id = hospitals.value[0].id
+    assets.value = filterByHospital(await api.assets())
+    // api_audit_reports 本身无医院归属列：按目标地址匹配本院已登记的接口资产；
+    // 未登记资产的报告在选定医院时不出现，切回全部医院可见。
+    const allAudits = await api.apiAudits()
+    if (selectedHospital.id) {
+      const eps = new Set(assets.value.filter(a => kindCategory(a.kind) === 'api').map(a => a.endpoint).filter(Boolean))
+      list.value = allAudits.filter(a => eps.has(a.target))
+    } else {
+      list.value = allAudits
+    }
+    if (!form.value.hospital_id) form.value.hospital_id = selectedHospital.id || hospitals.value[0]?.id || ''
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
 }
 

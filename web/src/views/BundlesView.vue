@@ -138,7 +138,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BaselineRow, type BundleSummary, type DriftReport, type EffectiveEntry, type Fact } from '../api'
-import { goto } from '../store'
+import { goto, filterByHospital } from '../store'
 import { latestFail, fmtLocal} from '../util'
 
 const bundles = ref<BundleSummary[]>([])
@@ -206,8 +206,8 @@ const selectedBaseline = ref<Record<string, string>>({})
 
 async function load() {
   try {
-    bundles.value = await api.bundles()
-    try { assets.value = await api.assets() } catch { assets.value = [] }
+    bundles.value = filterByHospital(await api.bundles())
+    try { assets.value = filterByHospital(await api.assets()) } catch { assets.value = [] }
     const hospitals = [...new Set(bundles.value.map(b => b.hospital_id))]
     for (const h of hospitals) {
       if (!(h in baselinesMap.value)) {

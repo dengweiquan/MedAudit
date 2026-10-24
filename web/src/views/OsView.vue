@@ -54,7 +54,7 @@ import { computed, onMounted, ref } from 'vue'
 import { api, parseRemote, type Asset, type BundleSummary } from '../api'
 import RemoteAuditCard from '../components/RemoteAuditCard.vue'
 import { kindCategory } from '../categories'
-import { goto, gotoAsset } from '../store'
+import { goto, gotoAsset, filterByHospital } from '../store'
 import { exportLatestReport, latestBundleOf, latestFail, fmtLocal} from '../util'
 
 const assets = ref<Asset[]>([])
@@ -110,8 +110,8 @@ async function doExport(a: Asset) {
 
 async function load() {
   try {
-    assets.value = await api.assets()
-    bundles.value = await api.bundles()
+    assets.value = filterByHospital(await api.assets())
+    bundles.value = filterByHospital(await api.bundles())
     await refreshFails()
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
 }
