@@ -8,7 +8,7 @@
 // 两种构建：免费版（默认，Edition=free）与授权版（构建时
 // -ldflags "-X medaudit/internal/license.Edition=licensed"）。
 // 授权版在「产生新数据」的操作（审计执行/采集产包）前校验许可证：
-// 文件默认 /etc/medaudit.license，环境变量 MEDAUDIT_LICENSE 可覆盖；
+// 文件默认 /etc/medaudit/medaudit.license，环境变量 MEDAUDIT_LICENSE 可覆盖；
 // Ed25519 验签（公钥嵌入）；过期 30 天内为宽限期（放行+警告），
 // 剩余 ≤30 天临期提醒（放行），其余不可用情形拦截。
 // 文案与 altrootdisk 现行口径一致（中英随语言环境切换）。
@@ -33,7 +33,7 @@ const PublicKeyB64 = "WpzDCluvYnz6lsGBQclpHJojP+LrMiAYYX1J7CJPbZE="
 
 const (
 	ContactEmail  = "sales@xmweixun.com"
-	DefaultPath   = "/etc/medaudit.license"
+	DefaultPath   = "/etc/medaudit/medaudit.license"
 	EnvPath       = "MEDAUDIT_LICENSE"
 	GraceDays     = 30
 	RemindDays    = 30
