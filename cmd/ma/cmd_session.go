@@ -9,9 +9,25 @@ import (
 // ---------- 会话与上下文 ----------
 
 func cmdLogin(args []string) error {
-	p, err := parseArgs(args, nil)
+	p, err := parseArgs(args, []flagSpec{{name: "t", value: true}})
 	if err != nil {
 		return err
+	}
+	c := &client{base: serverBase(), hc: httpClient()}
+	// M32：令牌登录优先（-t 优先于环境变量；令牌恒为 admin；建议走环境变量，避免进 shell 历史）。
+	if tok := p.vals["t"]; tok != "" {
+		if err := c.loginToken(tok); err != nil {
+			return err
+		}
+		fmt.Printf(T("已登录 admin（令牌，服务端 %s，会话存 ~/.medaudit/session.json）\n", "Logged in as admin (token, server %s, session stored in ~/.medaudit/session.json)\n"), c.base)
+		return nil
+	}
+	if tok := os.Getenv("MEDAUDIT_TOKEN"); tok != "" {
+		if err := c.loginToken(tok); err != nil {
+			return err
+		}
+		fmt.Printf(T("已登录 admin（令牌，服务端 %s，会话存 ~/.medaudit/session.json）\n", "Logged in as admin (token, server %s, session stored in ~/.medaudit/session.json)\n"), c.base)
+		return nil
 	}
 	user := ""
 	if len(p.pos) > 0 {
@@ -23,7 +39,6 @@ func cmdLogin(args []string) error {
 	if user == "" {
 		user = "admin"
 	}
-	c := &client{base: serverBase(), hc: httpClient()}
 	pass := os.Getenv("MEDAUDIT_PASS")
 	if pass == "" {
 		pw, err := readPassword(fmt.Sprintf(T("%s 的口令: ", "Password for %s: "), user))

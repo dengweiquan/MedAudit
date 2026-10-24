@@ -18,3 +18,13 @@
   去重，但不验证投递者身份）。试点现场如需收紧，可在反向代理层为这两个路径单独
   加源地址限制，或保持服务回环绑定 + 堡垒机转发（见部署指南）。
 - Cookie 未设 Secure（内网 HTTP 部署）；现场走 HTTPS 反代时建议在反代层终结 TLS。
+
+## 超级令牌（M32）
+
+POST /api/v1/auth/login 接受 {token}（与 {username,password} 二选一）；
+令牌等同 admin，失败同走登录限速。令牌管理端点（需登录会话）：
+POST /api/v1/auth/token（生成/轮换，返回原文一次）、
+POST /api/v1/auth/token/disable（停用）。轮换与停用即吊销 admin 全部
+会话（与管理员重置口令同口径）。令牌哈希存 auth_tokens 表（迁移 010），
+单行 name='super'；令牌铸造与用户管理同口径（M20 无 RBAC 设计），
+只要求登录会话。

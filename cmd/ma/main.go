@@ -21,7 +21,7 @@ import (
 	"medaudit/internal/license"
 )
 
-const version = "0.31.0-m31"
+const version = "0.32.0-m32"
 
 var flagServer string
 
@@ -46,6 +46,8 @@ var cmdList = []cmdDef{
 	{"login", "ma login [user] — 登录（口令交互输入）", "ma login [user] — log in (password prompted)", cmdLogin},
 	{"logout", "ma logout — 注销并清除本地会话", "ma logout — log out and clear the local session", cmdLogout},
 	{"whoami", "ma whoami — 当前会话与上下文", "ma whoami — current session and context", cmdWhoami},
+	{"token", "ma token — 生成/轮换超级令牌（原文只显示一次，请妥善保存；轮换即吊销 admin 全部会话）", "ma token — generate/rotate the super token (shown only once; save it; rotation revokes all admin sessions)", cmdToken},
+	{"tokenoff", "ma tokenoff — 停用超级令牌（之后令牌登录被拒；admin 会话已吊销）", "ma tokenoff — disable the super token (token logins rejected afterwards; admin sessions revoked)", cmdTokenOff},
 	{"use", "ma use [hospital] — 查看/设置当前医院上下文", "ma use [hospital] — show/set the current hospital context", cmdUse},
 	{"site", "ma site — 本站医院信息", "ma site — this site's hospital info", cmdSite},
 	// 平台账号

@@ -209,6 +209,36 @@ func (c *client) login(user, pass string) error {
 	return errors.New(T("登录响应未包含会话 Cookie", "login response did not include a session cookie"))
 }
 
+// loginToken 令牌登录（M32）：令牌等同 admin；成功后会话与口令登录一致。
+func (c *client) loginToken(token string) error {
+	raw, _ := json.Marshal(map[string]string{"token": token})
+	req, err := http.NewRequest(http.MethodPost, c.base+"/api/v1/auth/login", bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf(T("令牌登录失败 %d: %s", "token login failed %d: %s"), resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	for _, ck := range resp.Cookies() {
+		if ck.Name == "medaudit_session" {
+			c.cookie = ck.Value
+			s := &sessionFile{Server: c.base, Username: "admin", Cookie: ck.Value}
+			if old, err := loadSession(); err == nil && old.Server == c.base {
+				s.Hospital = old.Hospital // 同服务端重登录保留医院上下文
+			}
+			return saveSession(s)
+		}
+	}
+	return errors.New(T("登录响应未包含会话 Cookie", "login response did not include a session cookie"))
+}
+
 func (c *client) username() string {
 	var me struct {
 		Username string `json:"username"`

@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -77,9 +78,30 @@ func registerAuthRoutes(mux *http.ServeMux, db *sql.DB, sessions *platform.Sessi
 		var req struct {
 			Username string `json:"username"`
 			Password string `json:"password"`
+			Token    string `json:"token"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "请求解析失败", http.StatusBadRequest)
+			return
+		}
+		// M32：令牌登录与口令登录二选一；令牌等同 admin，失败同走限速。
+		if req.Token != "" {
+			if !guard.allow(r, "__token") {
+				http.Error(w, "尝试过于频繁，请 5 分钟后再试", http.StatusTooManyRequests)
+				return
+			}
+			if !platform.AuthenticateSuperToken(db, req.Token) {
+				guard.fail(r, "__token")
+				http.Error(w, "令牌无效", http.StatusUnauthorized)
+				return
+			}
+			guard.success(r, "__token")
+			tok := sessions.Create(platform.DefaultAdminUser)
+			http.SetCookie(w, &http.Cookie{
+				Name: sessionCookieName, Value: tok, Path: "/",
+				HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 12 * 3600,
+			})
+			writeJSON(w, map[string]string{"username": platform.DefaultAdminUser})
 			return
 		}
 		if !guard.allow(r, req.Username) {
@@ -98,6 +120,44 @@ func registerAuthRoutes(mux *http.ServeMux, db *sql.DB, sessions *platform.Sessi
 			HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 12 * 3600,
 		})
 		writeJSON(w, map[string]string{"username": req.Username})
+	})
+
+	// M32：超级令牌铸造/停用（需登录会话；Web 只接受令牌登录，不提供铸造入口）。
+	mux.HandleFunc("/api/v1/auth/token", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		actor := currentUser(r, sessions)
+		if actor == "" {
+			http.Error(w, "未登录", http.StatusUnauthorized)
+			return
+		}
+		tok, err := platform.GenerateSuperToken(db, sessions)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		log.Printf("[token-admin] %s 生成/轮换超级令牌（admin 会话已吊销）", actor)
+		writeJSON(w, map[string]string{"token": tok})
+	})
+
+	mux.HandleFunc("/api/v1/auth/token/disable", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		actor := currentUser(r, sessions)
+		if actor == "" {
+			http.Error(w, "未登录", http.StatusUnauthorized)
+			return
+		}
+		if err := platform.DisableSuperToken(db, sessions); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		log.Printf("[token-admin] %s 停用超级令牌（admin 会话已吊销）", actor)
+		writeJSON(w, map[string]string{"status": "ok"})
 	})
 
 	mux.HandleFunc("/api/v1/auth/logout", func(w http.ResponseWriter, r *http.Request) {

@@ -283,3 +283,19 @@ ma offeval bundle.zip -o 离线报告.docx                # 本地评估出 Word
 | `MEDAUDIT_PW` | ma audit 目标口令（次于 `-e`，先于交互输入） |
 | `MEDAUDIT_HOSPITAL` | 采集器医院缺省 |
 | `MEDAUDIT_HPUX_PASSWORD` | 采集器 hpux 子命令口令缺省来源 |
+
+## 超级令牌（M32）
+
+服务端会话在进程内存，重启即失效；超级令牌是第二种登录凭证，与用户
+名密码并存，重启后仍然有效。令牌等同 admin，原文只在生成时显示一次，
+服务端只存 bcrypt 哈希。
+
+| 命令 | 说明 |
+| ---- | ---- |
+| `ma token` | 生成/轮换超级令牌（需登录会话；轮换后旧令牌立即失效，admin 全部会话已吊销） |
+| `ma tokenoff` | 停用超级令牌（之后令牌登录被拒；admin 全部会话已吊销；可再生成） |
+| `ma login -t <令牌>` | 令牌登录（恒为 admin）；建议走环境变量 `MEDAUDIT_TOKEN`，避免进 shell 历史 |
+| `MEDAUDIT_TOKEN=<令牌> ma login` | 环境变量令牌登录（优先于口令流程；`-t` 优先于环境变量） |
+
+Web 登录页选“令牌登录”即可用令牌登录；令牌铸造只经 ma CLI，
+Web 不提供铸造入口。未生成前令牌登录一律失败（无默认令牌）。
