@@ -109,6 +109,53 @@ func TestOracleDBARole(t *testing.T) {
 	}
 }
 
+func TestLinuxHighCapabilitiesDetail(t *testing.T) {
+	proc := func(attrs map[string]string) facts.Fact {
+		return facts.Fact{FactID: "f-p1", Kind: facts.FactProcess, Subject: "kf7/bootid/609/1795",
+			Status: facts.StatusObserved, Attributes: attrs}
+	}
+	hit := func(fs []facts.Fact) (bool, string) {
+		for _, r := range DefaultRegistry().Evaluate(testBundle(facts.TargetOSLinux, fs), &Baseline{}) {
+			if r.RuleID == "os.linux.high_capabilities" && r.Conclusion == facts.ConclusionFail {
+				return true, r.Detail
+			}
+		}
+		return false, ""
+	}
+	// 完整程序身份：进程名、PID、服务、程序路径、EUID、能力缺一不可
+	found, detail := hit([]facts.Fact{proc(map[string]string{
+		"role": "nonroot-with-caps", "comm": "sshd", "exe": "/usr/sbin/sshd",
+		"unit": "sshd.service", "euid": "1000", "caps": "[CAP_AUDIT_CONTROL]",
+	})})
+	if !found {
+		t.Fatal("高能力进程未被检出")
+	}
+	if want := "进程 sshd（PID 609，服务 sshd.service，程序 /usr/sbin/sshd）以非 root 身份（EUID 1000）持有能力：[CAP_AUDIT_CONTROL]"; detail != want {
+		t.Fatalf("文案不符：got %q want %q", detail, want)
+	}
+	// 缺失项省略，不留空括号
+	found, detail = hit([]facts.Fact{proc(map[string]string{
+		"role": "nonroot-with-caps", "comm": "agent", "caps": "[CAP_SYS_ADMIN]",
+	})})
+	if !found {
+		t.Fatal("缺失项进程未被检出")
+	}
+	if want := "进程 agent（PID 609）以非 root 身份持有能力：[CAP_SYS_ADMIN]"; detail != want {
+		t.Fatalf("文案不符：got %q want %q", detail, want)
+	}
+	// 基线仍按 Subject + caps 键豁免，不受文案影响
+	bl := &Baseline{Allows: []BaselineAllow{
+		{Subject: "kf7/bootid/609/1795", Kind: "identity", Value: "caps:[CAP_SYS_ADMIN]"},
+	}}
+	for _, r := range DefaultRegistry().Evaluate(testBundle(facts.TargetOSLinux, []facts.Fact{proc(map[string]string{
+		"role": "nonroot-with-caps", "comm": "agent", "caps": "[CAP_SYS_ADMIN]",
+	})}), bl) {
+		if r.RuleID == "os.linux.high_capabilities" && r.Conclusion == facts.ConclusionFail {
+			t.Fatal("基线豁免失效")
+		}
+	}
+}
+
 func TestLinuxRootMismatch(t *testing.T) {
 	proc := func(attrs map[string]string) facts.Fact {
 		return facts.Fact{FactID: "f-p1", Kind: facts.FactProcess, Subject: "h/boot/1/1",

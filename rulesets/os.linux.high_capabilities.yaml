@@ -1,6 +1,6 @@
 # MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
 id: os.linux.high_capabilities
-version: "1"
+version: "2"
 name: 非 root 进程持有高能力
 target: os-linux
 risk: high

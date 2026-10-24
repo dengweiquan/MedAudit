@@ -37,6 +37,40 @@ func rootMismatchDetail(f facts.Fact, cfgUser string) string {
 	return fmt.Sprintf("进程 %s 配置用户 %s，但实际 EUID=0", f.Attributes["comm"], configuredUserDisplay(cfgUser))
 }
 
+// procCapsDetail 高能力进程的问题文案（M33）：只写能力名看不出是哪个程序，
+// 故带上程序身份——进程名、PID（取自 proc_key 主体第 3 段）、服务单元、程序路径、EUID。
+// 缺失项自动省略；基线匹配仍用 Subject + caps 键，不受文案影响。
+func procCapsDetail(f facts.Fact) string {
+	name := f.Attributes["comm"]
+	exe := f.Attributes["exe"]
+	if name == "" {
+		name = exe
+	}
+	if name == "" {
+		name = "未知程序"
+	}
+	var paren []string
+	if parts := strings.Split(f.Subject, "/"); len(parts) == 4 && parts[2] != "" {
+		paren = append(paren, "PID "+parts[2])
+	}
+	if unit := f.Attributes["unit"]; unit != "" {
+		paren = append(paren, "服务 "+unit)
+	}
+	if exe != "" && exe != name {
+		paren = append(paren, "程序 "+exe)
+	}
+	out := "进程 " + name
+	if len(paren) > 0 {
+		out += "（" + strings.Join(paren, "，") + "）"
+	}
+	if euid := f.Attributes["euid"]; euid != "" {
+		out += "以非 root 身份（EUID " + euid + "）"
+	} else {
+		out += "以非 root 身份"
+	}
+	return out + "持有能力：" + f.Attributes["caps"]
+}
+
 // DefaultRegistry 返回注册了 M2 内置规则的注册表。
 func DefaultRegistry() *Registry {
 	r := NewRegistry()
@@ -113,7 +147,7 @@ var builtinRules = []builtinRule{
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.linux.high_capabilities", Version: "1",
+			ID: "os.linux.high_capabilities", Version: "2",
 			Name:        "非 root 进程持有高能力",
 			Target:      facts.TargetOSLinux,
 			Description: "EUID 非 0 但有效能力集非空的进程；非 root 高能力不能简单判通过，需基线解释。",
@@ -132,7 +166,7 @@ var builtinRules = []builtinRule{
 				}
 				hits = append(hits, CheckHit{
 					Subject:  f.Subject,
-					Detail:   fmt.Sprintf("非 root 进程持有能力：%s", f.Attributes["caps"]),
+					Detail:   procCapsDetail(f),
 					Evidence: []string{f.FactID},
 				})
 			}

@@ -40,7 +40,7 @@
                 <tbody>
                   <template v-for="s in visibleSubjects(g)" :key="g.ruleId + '|' + s.subject">
                     <tr class="clickable" @click="toggleSubject(g.ruleId, s.subject)">
-                      <td>{{ s.subject }}</td>
+                      <td>{{ subjectLabel(s.subject) }}<div class="todo" v-if="subjectLabel(s.subject) !== s.subject">{{ s.subject }}</div></td>
                       <td>{{ s.rows.length }}</td>
                       <td><span v-for="c in subjectConclusions(s.rows)" :key="c" class="concl" :class="'c-' + c" style="margin-right:4px">{{ c }}</span></td>
                       <td>{{ openSubject === g.ruleId + '|' + s.subject ? '收起' : '明细' }}</td>
@@ -102,7 +102,13 @@
                                   </template>
 
                                   <h3>判定详情</h3>
-                                  <pre>{{ pretty(f.detail) }}</pre>
+                                  <div v-if="detailInfo(f)">
+                                    <p><b>问题：</b>{{ detailInfo(f)?.detail }}</p>
+                                    <p v-if="detailInfo(f)?.evidence?.length"><b>证据：</b>{{ detailInfo(f)?.evidence.join('、') }}</p>
+                                    <p v-if="detailInfo(f)?.missing"><b>缺失：</b>{{ detailInfo(f)?.missing }}</p>
+                                    <p v-if="detailInfo(f)?.risk"><b>风险：</b>{{ detailInfo(f)?.risk }}</p>
+                                  </div>
+                                  <pre v-else>{{ pretty(f.detail) }}</pre>
 
                                   <h3>人工复核</h3>
                                   <div class="inline-form">
@@ -214,6 +220,22 @@ function detailText(f: Finding): string {
     const d = JSON.parse(f.detail) as { detail?: string }
     return d.detail ?? ''
   } catch { return '' }
+}
+// M33：proc_key 形主体（主机/启动 ID/PID/启动时间）只显示进程 PID，完整键仍在下方小字保留。
+function subjectLabel(subject: string): string {
+  const parts = subject.split('/')
+  if (parts.length === 4 && /^\d+$/.test(parts[2]) && /^\d+$/.test(parts[3])) {
+    return `进程 PID ${parts[2]}`
+  }
+  return subject
+}
+// M33：判定详情分项解析（detail/evidence/missing/risk），替代原始 JSON 直出。
+function detailInfo(f: Finding): { detail?: string; evidence?: string[]; missing?: string; risk?: string } | null {
+  try {
+    const d = JSON.parse(f.detail) as { detail?: string; evidence?: string[]; missing?: string; risk?: string }
+    if (d && typeof d === 'object' && ('detail' in d || 'evidence' in d)) return d
+    return null
+  } catch { return null }
 }
 function bundleLabel(b: BundleSummary): string {
   return `${b.asset_id} · ${fmtLocal(b.imported_at)}（${b.id}）`
