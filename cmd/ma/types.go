@@ -10,7 +10,9 @@ type evalSummary struct {
 	Unknown        int    `json:"unknown"`
 	NotApplicable  int    `json:"not_applicable"`
 	NotRun         int    `json:"not_run"`
-	FindingsStored int    `json:"findings_stored"`
+	FindingsStored   int      `json:"findings_stored"`
+	BaselineMode     string   `json:"baseline_mode"`
+	BaselinesApplied []string `json:"baselines_applied"`
 }
 
 type auditRunResult struct {

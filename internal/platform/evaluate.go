@@ -112,42 +112,126 @@ func ListBaselines(db *sql.DB, hospitalID string) ([]BaselineRow, error) {
 
 // EvaluationSummary 评估摘要。
 type EvaluationSummary struct {
-	BundleID      string `json:"bundle_id"`
-	Total         int    `json:"total"`
-	Pass          int    `json:"pass"`
-	Fail          int    `json:"fail"`
-	Unknown       int    `json:"unknown"`
-	NotApplicable int    `json:"not_applicable"`
-	NotRun        int    `json:"not_run"`
-	Findings      int    `json:"findings_stored"`
+	BundleID         string   `json:"bundle_id"`
+	Total            int      `json:"total"`
+	Pass             int      `json:"pass"`
+	Fail             int      `json:"fail"`
+	Unknown          int      `json:"unknown"`
+	NotApplicable    int      `json:"not_applicable"`
+	NotRun           int      `json:"not_run"`
+	Findings         int      `json:"findings_stored"`
+	BaselineMode     string   `json:"baseline_mode"`              // auto | baseline | bare
+	BaselinesApplied []string `json:"baselines_applied,omitempty"` // 本次实际套用的基线 ID
 }
 
 // EvaluateBundle 对已导入的事实包执行规则评估，非 PASS 结论存入 findings。
+// baselineID 为空 = 裸评；指定 ID = 只用该基线。远程审计等显式调用走本函数，
+// 语义不变；在线评估（Web/ma 默认）走 EvaluateBundleAuto。
 func EvaluateBundle(db *sql.DB, reg *rules.Registry, bundleID, baselineID string) (*EvaluationSummary, error) {
-	var raw string
-	var hospitalID string
-	err := db.QueryRow(`SELECT bundle, hospital_id FROM fact_bundles WHERE id = ?`, bundleID).
-		Scan(&raw, &hospitalID)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("事实包 %s 不存在", bundleID)
-	}
+	raw, hospitalID, _, err := loadBundleMeta(db, bundleID)
 	if err != nil {
 		return nil, err
 	}
-	var b facts.FactBundle
-	if err := json.Unmarshal([]byte(raw), &b); err != nil {
-		return nil, err
-	}
 	var baseline *rules.Baseline
+	mode := "bare"
 	if baselineID != "" {
 		baseline, err = LoadBaseline(db, baselineID)
 		if err != nil {
 			return nil, fmt.Errorf("基线加载失败: %w", err)
 		}
+		mode = "baseline"
 	} else {
 		baseline = &rules.Baseline{}
 	}
+	return evaluateCore(db, reg, bundleID, raw, hospitalID, baseline, mode, nil)
+}
 
+// EvaluateBundleAuto 在线评估（M35 自动屏蔽）：
+//   baselineID 指定 → 只用该基线（显式选择，语义不变）；
+//   bare=true → 裸评（不套用任何基线，保留裸评对比）；
+//   否则 → 自动套用该包所属医院的全部基线（目标匹配者），加基线后默认屏蔽。
+func EvaluateBundleAuto(db *sql.DB, reg *rules.Registry, bundleID, baselineID string, bare bool) (*EvaluationSummary, error) {
+	raw, hospitalID, assetID, err := loadBundleMeta(db, bundleID)
+	if err != nil {
+		return nil, err
+	}
+	var baseline *rules.Baseline
+	mode := "auto"
+	var applied []string
+	switch {
+	case baselineID != "":
+		baseline, err = LoadBaseline(db, baselineID)
+		if err != nil {
+			return nil, fmt.Errorf("基线加载失败: %w", err)
+		}
+		mode = "baseline"
+		applied = []string{baselineID}
+	case bare:
+		baseline = &rules.Baseline{}
+		mode = "bare"
+	default:
+		kind := ""
+		if assetID != "" {
+			_ = db.QueryRow(`SELECT kind FROM assets WHERE id = ?`, assetID).Scan(&kind)
+		}
+		baseline, applied, err = LoadHospitalBaselines(db, hospitalID, kind)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return evaluateCore(db, reg, bundleID, raw, hospitalID, baseline, mode, applied)
+}
+
+// loadBundleMeta 取包 JSON、医院、资产。
+func loadBundleMeta(db *sql.DB, bundleID string) (raw, hospitalID, assetID string, err error) {
+	err = db.QueryRow(`SELECT bundle, hospital_id, asset_id FROM fact_bundles WHERE id = ?`, bundleID).
+		Scan(&raw, &hospitalID, &assetID)
+	if err == sql.ErrNoRows {
+		return "", "", "", fmt.Errorf("事实包 %s 不存在", bundleID)
+	}
+	return raw, hospitalID, assetID, err
+}
+
+// LoadHospitalBaselines 合并某医院的全部基线（目标为空或与资产类型匹配者），
+// 返回合并后的基线与实际套用的基线 ID（去重后放行项合并）。
+func LoadHospitalBaselines(db *sql.DB, hospitalID, target string) (*rules.Baseline, []string, error) {
+	rows, err := db.Query(`SELECT id, target, spec FROM baselines WHERE hospital_id = ? ORDER BY id`, hospitalID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	merged := &rules.Baseline{}
+	var applied []string
+	for rows.Next() {
+		var id, tgt, spec string
+		if err := rows.Scan(&id, &tgt, &spec); err != nil {
+			return nil, nil, err
+		}
+		if tgt != "" && target != "" && tgt != target {
+			continue
+		}
+		var s struct {
+			Allows []rules.BaselineAllow `json:"allows"`
+		}
+		if err := json.Unmarshal([]byte(spec), &s); err != nil {
+			return nil, nil, err
+		}
+		merged.Allows = append(merged.Allows, s.Allows...)
+		applied = append(applied, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	merged.Allows = dedupeAllows(merged.Allows)
+	return merged, applied, nil
+}
+
+// evaluateCore 评估公共核心：规则评估 + 本站启停过滤 + 落库。
+func evaluateCore(db *sql.DB, reg *rules.Registry, bundleID, raw, hospitalID string, baseline *rules.Baseline, mode string, applied []string) (*EvaluationSummary, error) {
+	var b facts.FactBundle
+	if err := json.Unmarshal([]byte(raw), &b); err != nil {
+		return nil, err
+	}
 	results := reg.Evaluate(&b, baseline)
 	// M17 本站规则启停：工程师关闭的检查项整体跳过——不计数、不落库、
 	// 报告不体现。与基线分工：基线豁免单个主体，启停关闭整项检查。
@@ -164,7 +248,7 @@ func EvaluateBundle(db *sql.DB, reg *rules.Registry, bundleID, baselineID string
 		}
 		results = kept
 	}
-	summary := &EvaluationSummary{BundleID: bundleID, Total: len(results)}
+	summary := &EvaluationSummary{BundleID: bundleID, Total: len(results), BaselineMode: mode, BaselinesApplied: applied}
 	for _, r := range results {
 		switch r.Conclusion {
 		case facts.ConclusionPass:

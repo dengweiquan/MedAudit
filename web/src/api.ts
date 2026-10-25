@@ -131,6 +131,13 @@ export interface EvalSummary {
   not_applicable: number
   not_run: number
   findings_stored: number
+  baseline_mode: string
+  baselines_applied?: string[]
+}
+
+export interface FixScriptResp {
+  supported: boolean
+  script?: RemediationScript
 }
 
 export interface Fact {
@@ -431,8 +438,10 @@ export const api = {
   evidenceUrl: (id: string) => `/api/v1/bundles/${encodeURIComponent(id)}/evidence`,
   findings: (bundleId: string) =>
     req<Finding[]>(`/api/v1/findings?bundle_id=${encodeURIComponent(bundleId)}`),
-  evaluate: (bundleId: string, baselineId?: string) =>
-    post<EvalSummary>('/api/v1/evaluations', { bundle_id: bundleId, baseline_id: baselineId || '' }),
+  evaluate: (bundleId: string, baselineId?: string, bare?: boolean) =>
+    post<EvalSummary>('/api/v1/evaluations', { bundle_id: bundleId, baseline_id: baselineId || '', bare: !!bare }),
+  fixScript: (findingId: number) =>
+    req<FixScriptResp>(`/api/v1/findings/${findingId}/fix`),
   review: (findingId: number, body: { hospital_id: string; decision: string; comment: string; reviewer: string }) =>
     post(`/api/v1/findings/${findingId}/review`, body),
   retest: (findingId: number, bundleId: string) =>

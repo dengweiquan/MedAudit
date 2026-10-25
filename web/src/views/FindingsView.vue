@@ -60,16 +60,34 @@
                               </tr>
                               <tr v-if="openId === f.id">
                                 <td colspan="6">
-                                  <h3>问题说明与解决办法</h3>
+                                  <h3>结论：{{ f.conclusion === 'FAIL' ? '有问题，需处理' : f.conclusion === 'UNKNOWN' ? '证据不足，需人工确认' : f.conclusion }}</h3>
                                   <p v-if="ruleOf(f)"><b>{{ ruleOf(f)?.Name }}</b> · 风险等级 {{ ruleOf(f)?.Risk }}</p>
-                                  <p v-if="detailText(f)">{{ detailText(f) }}</p>
-                                  <p v-if="ruleOf(f)">{{ ruleOf(f)?.Description }}</p>
-                                  <p v-if="ruleOf(f)"><b>如何解决：</b>{{ ruleOf(f)?.Remediation }}</p>
-                                  <p class="todo">需要可执行命令（修复/回滚脚本）的，请生成报告后在报告详情中查看，或由工程师用 ma reportfix 导出。</p>
+                                  <p><b>问题原因：</b>{{ f.subject }}：{{ detailText(f) || f.subject }}<span v-if="ruleOf(f)">。{{ ruleOf(f)?.Description }}</span></p>
+                                  <div>
+                                    <p><b>如何解决：</b></p>
+                                    <p v-if="fixMap.get(f.id) === undefined" class="todo">正在取修复命令…</p>
+                                    <template v-else-if="fixMap.get(f.id)?.supported && fixMap.get(f.id)?.script">
+                                      <p class="todo">以下命令由平台按本问题证据生成，仅供人工评审后执行；平台不自动修改目标权限。</p>
+                                      <pre>{{ fixMap.get(f.id)?.script?.fix }}</pre>
+                                      <button class="btn small" @click="copyFix(fixMap.get(f.id)?.script?.fix || '')">{{ copiedFix ? '已复制' : '复制修复命令' }}</button>
+                                      <p style="margin-top:8px"><b>执行前检查：</b></p>
+                                      <pre>{{ fixMap.get(f.id)?.script?.precheck }}</pre>
+                                      <p><b>验证：</b></p>
+                                      <pre>{{ fixMap.get(f.id)?.script?.verify }}</pre>
+                                      <p><b>回滚：</b></p>
+                                      <pre>{{ fixMap.get(f.id)?.script?.rollback }}</pre>
+                                      <p v-if="fixMap.get(f.id)?.script?.note"><b>注意：</b>{{ fixMap.get(f.id)?.script?.note }}</p>
+                                    </template>
+                                    <template v-else>
+                                      <p>{{ ruleOf(f)?.Remediation }}</p>
+                                      <p class="todo">该检查项暂无逐条修复命令；需要完整脚本清单请生成报告后在报告详情中查看，或由工程师用 ma reportfix 导出。</p>
+                                    </template>
+                                  </div>
+                                  <p v-if="f.conclusion === 'FAIL'"><b>不解决怎么办：</b>确认为业务必需的例外时，点「加基线屏蔽」，之后评估默认自动套用本院基线，该条不再报警。<button class="btn" @click="openExempt(f)">加基线屏蔽</button></p>
 
                                   <template v-if="f.conclusion === 'FAIL'">
                                     <h3>加入基线（确认是例外时）</h3>
-                                    <p class="todo">确认为业务必需的例外（如厂商账号固有权限）时，可把这一条加入基线：之后的评估选用该基线时，这一条不再计为问题。加入基线只影响平台结论，不修改目标系统。</p>
+                                    <p class="todo">确认为业务必需的例外（如厂商账号固有权限）时，可把这一条加入基线：加入后，之后评估默认自动套用本院基线，这一条不再计为问题。加入基线只影响平台结论，不修改目标系统。</p>
                                     <div class="inline-form">
                                       <button class="btn" @click="openExempt(f)">加入基线…</button>
                                     </div>
@@ -94,9 +112,13 @@
                                           <input v-model="exempt.reason" placeholder="原因（如：厂商维护账号，业务必需）" style="min-width:260px" />
                                           <button class="btn primary" :disabled="exempt.busy" @click="doExempt(f)">确认加入</button>
                                         </div>
-                                        <p class="todo">加入后需在「审计记录」页选用该基线重新评估（或生成报告时选用）才生效。</p>
+                                        <p class="todo">加入后默认随下一次评估自动生效；也可点下方按钮立即用该基线重新评估。</p>
                                       </template>
                                       <span class="msg" v-if="exempt.msg">{{ exempt.msg }}</span>
+                                      <div v-if="exempt.msg && exempt.doneBaseline" style="margin-top:6px">
+                                        <button class="btn small" :disabled="exempt.busy" @click="reevalWithBaseline(f)">用该基线重新评估本包</button>
+                                        <span class="msg" v-if="exempt.reevalMsg">{{ exempt.reevalMsg }}</span>
+                                      </div>
                                       <span class="msg err" v-if="exempt.err">{{ exempt.err }}</span>
                                     </div>
                                   </template>
@@ -188,7 +210,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, type BaselineRow, type BundleSummary, type ExemptionPreview, type Finding, type RemediationRow, type RetestRow, type Rule } from '../api'
+import { api, type BaselineRow, type BundleSummary, type ExemptionPreview, type Finding, type FixScriptResp, type RemediationRow, type RetestRow, type Rule } from '../api'
 import { nav, reviewerName, saveReviewerName, filterByHospital } from '../store'
 import { latestRunFindings, fmtLocal, baselineKindLabel } from '../util'
 
@@ -204,6 +226,8 @@ const subjectCap = ref(50)
 const openId = ref(0)
 const retests = ref<RetestRow[]>([])
 const remediations = ref<RemediationRow[]>([])
+const fixMap = ref<Map<number, FixScriptResp | null>>(new Map())
+const copiedFix = ref(false)
 const retestBundle = ref('')
 const opMsg = ref('')
 const opErr = ref('')
@@ -308,12 +332,14 @@ async function toggle(f: Finding) {
     retests.value = await api.retests(f.id)
     remediations.value = await api.remediations(f.id)
   } catch { /* 历史为空即空表 */ }
+  try { fixMap.value.set(f.id, await api.fixScript(f.id)) } catch { fixMap.value.set(f.id, null) }
 }
 
 interface ExemptState {
   forId: number; loading: boolean; busy: boolean
   preview?: ExemptionPreview; baselines: BaselineRow[]
   choice: string; newId: string; reason: string; msg: string; err: string
+  doneBaseline: string; reevalMsg: string
 }
 const exempt = ref<ExemptState | null>(null)
 
@@ -321,6 +347,7 @@ async function openExempt(f: Finding) {
   const st: ExemptState = {
     forId: f.id, loading: true, busy: false, baselines: [],
     choice: 'new', newId: '', reason: '', msg: '', err: '',
+    doneBaseline: '', reevalMsg: '',
   }
   exempt.value = st
   try {
@@ -348,9 +375,25 @@ async function doExempt(f: Finding) {
       reason: st.reason || undefined,
       created_by: reviewerName(),
     })
-    st.msg = `已加入基线 ${res.baseline_id}（新增 ${res.added.length} 条${res.skipped_existing ? `，${res.skipped_existing} 条已存在` : ''}）。选用该基线重新评估后，这一条不再计为问题。`
+    st.doneBaseline = res.baseline_id
+    st.msg = `已加入基线 ${res.baseline_id}（新增 ${res.added.length} 条${res.skipped_existing ? `，${res.skipped_existing} 条已存在` : ''}）。之后评估默认自动套用本院基线，该条不再报警。`
   } catch (e) { st.err = e instanceof Error ? e.message : '加入失败' }
   st.busy = false
+}
+
+async function reevalWithBaseline(f: Finding) {
+  const st = exempt.value
+  if (!st || st.forId !== f.id || !st.doneBaseline) return
+  st.busy = true; st.reevalMsg = ''; st.err = ''
+  try {
+    const s = await api.evaluate(f.bundle_id, st.doneBaseline)
+    st.reevalMsg = `重新评估完成：共 ${s.total} 条，FAIL ${s.fail}，落库问题 ${s.findings_stored}。新一轮已用该基线，屏蔽项不再计入。`
+  } catch (e) { st.err = e instanceof Error ? e.message : '重新评估失败' }
+  st.busy = false
+}
+
+async function copyFix(text: string) {
+  try { await navigator.clipboard.writeText(text); copiedFix.value = true; setTimeout(() => { copiedFix.value = false }, 2000) } catch { /* 剪贴板不可用时用户可手动复制 */ }
 }
 
 async function doReview(f: Finding) {

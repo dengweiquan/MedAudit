@@ -37,8 +37,9 @@
                 <div class="todo" style="margin-bottom:6px">适配器 {{ b.adapter }} · 收据 {{ b.receipt_count }} 张 · 计划 {{ b.plan_id }}</div>
                 <div class="row-actions">
                   <select v-model="selectedBaseline[b.id]" title="评估基线（可选）" style="max-width:150px">
-                    <option value="">无基线</option>
+                    <option value="">自动套用本院基线（默认）</option>
                     <option v-for="bl in baselinesMap[b.hospital_id] || []" :key="bl.id" :value="bl.id">{{ bl.id }}</option>
+                    <option value="__bare">裸评（不套用基线）</option>
                   </select>
                   <button class="btn small" @click="evaluate(b)" :disabled="evaluating === b.id">评估</button>
                   <button class="btn small" @click="toggleExplorer(b.id)">事实明细</button>
@@ -241,8 +242,12 @@ async function evaluate(b: BundleSummary) {
   evaluating.value = b.id; evalMsg.value = ''; evalErr.value = ''
   try {
     const bl = selectedBaseline.value[b.id] || ''
-    const s = await api.evaluate(b.id, bl)
-    evalMsg.value = `${b.id} 评估完成${bl ? `（基线 ${bl}）` : ''}：${s.total} 条结果，FAIL ${s.fail}，落库问题 ${s.findings_stored}`
+    const bare = bl === '__bare'
+    const s = await api.evaluate(b.id, bare ? '' : bl, bare)
+    const mode = s.baseline_mode === 'auto'
+      ? `（已自动套用本院基线${s.baselines_applied?.length ? '：' + s.baselines_applied.join('、') : '，本院暂无基线'}）`
+      : s.baseline_mode === 'bare' ? '（裸评）' : bl ? `（基线 ${bl}）` : ''
+    evalMsg.value = `${b.id} 评估完成${mode}：${s.total} 条结果，FAIL ${s.fail}，落库问题 ${s.findings_stored}`
     failMap.value.set(b.id, s.fail)
   } catch (e) {
     evalErr.value = e instanceof Error ? e.message : '评估失败'

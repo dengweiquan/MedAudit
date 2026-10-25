@@ -22,12 +22,14 @@ func registerEvalRoutes(mux *http.ServeMux, db *sql.DB, reg *rules.Registry) {
 		var req struct {
 			BundleID   string `json:"bundle_id"`
 			BaselineID string `json:"baseline_id"`
+			Bare       bool   `json:"bare"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.BundleID == "" {
 			http.Error(w, "bundle_id 必填", http.StatusBadRequest)
 			return
 		}
-		summary, err := platform.EvaluateBundle(db, reg, req.BundleID, req.BaselineID)
+		// M35 自动屏蔽：未指定基线且非裸评时，自动套用该包所属医院的全部基线。
+		summary, err := platform.EvaluateBundleAuto(db, reg, req.BundleID, req.BaselineID, req.Bare)
 		if err != nil {
 			http.Error(w, "评估失败: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -64,6 +66,17 @@ func registerEvalRoutes(mux *http.ServeMux, db *sql.DB, reg *rules.Registry) {
 			return
 		}
 		switch {
+		case parts[1] == "fix" && r.Method == http.MethodGet:
+			script, supported, err := platform.FixScriptForFinding(db, findingID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if !supported {
+				writeJSON(w, map[string]any{"supported": false})
+				return
+			}
+			writeJSON(w, map[string]any{"supported": true, "script": script})
 		case parts[1] == "review" && r.Method == http.MethodPost:
 			var req struct {
 				HospitalID string `json:"hospital_id"`

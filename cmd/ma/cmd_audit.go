@@ -189,11 +189,11 @@ func cmdAuditBatch(invPath string, failOnFail bool) error {
 // ---------- 在线评估 ----------
 
 func cmdEvaluate(args []string) error {
-	p, err := parseArgs(args, []flagSpec{{name: "b", value: true}, {name: "F"}})
+	p, err := parseArgs(args, []flagSpec{{name: "b", value: true}, {name: "B"}, {name: "F"}})
 	if err != nil {
 		return err
 	}
-	if err := p.requirePos(1, T("ma eval <包id> [-b 基线] [-F]", "ma eval <bundle-id> [-b baseline] [-F]")); err != nil {
+	if err := p.requirePos(1, T("ma eval <包id> [-b 基线] [-B 裸评] [-F]", "ma eval <bundle-id> [-b baseline] [-B bare] [-F]")); err != nil {
 		return err
 	}
 	c, err := newClient()
@@ -204,12 +204,29 @@ func cmdEvaluate(args []string) error {
 	if p.str("b") != "" {
 		body["baseline_id"] = p.str("b")
 	}
+	// M35：默认自动套用本院基线；-B 强制裸评（不套用任何基线）。
+	if p.has("B") {
+		body["bare"] = true
+	}
 	var sum evalSummary
 	if err := c.postJSON("/api/v1/evaluations", body, &sum); err != nil {
 		return err
 	}
 	fmt.Printf(T("评估 %s：共 %d（PASS %d / FAIL %d / UNKNOWN %d / NOT_RUN %d / N/A %d），问题落库 %d\n", "Evaluation %s: %d total (PASS %d / FAIL %d / UNKNOWN %d / NOT_RUN %d / N/A %d), %d findings stored\n"),
 		sum.BundleID, sum.Total, sum.Pass, sum.Fail, sum.Unknown, sum.NotRun, sum.NotApplicable, sum.FindingsStored)
+	// M35：告知本次评估的基线模式（自动/指定/裸评）与实际套用的基线。
+	switch sum.BaselineMode {
+	case "auto":
+		if len(sum.BaselinesApplied) > 0 {
+			fmt.Printf(T("已自动套用本院基线：%s\n", "Auto-applied hospital baselines: %s\n"), strings.Join(sum.BaselinesApplied, ", "))
+		} else {
+			fmt.Println(T("本院暂无基线，本次等于裸评", "No hospital baselines; equivalent to a bare evaluation"))
+		}
+	case "baseline":
+		fmt.Printf(T("已使用指定基线：%s\n", "Used specified baseline: %s\n"), strings.Join(sum.BaselinesApplied, ", "))
+	case "bare":
+		fmt.Println(T("本次为裸评，未套用基线", "Bare evaluation; no baseline applied"))
+	}
 	if p.has("F") && sum.Fail > 0 {
 		return &exitError{code: 2, msg: fmt.Sprintf(T("存在 %d 条 FAIL", "%d FAIL findings"), sum.Fail)}
 	}

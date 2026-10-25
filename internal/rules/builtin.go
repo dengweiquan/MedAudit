@@ -464,7 +464,7 @@ var builtinRules = []builtinRule{
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.oracle.any_privilege", Version: "1",
+			ID: "db.oracle.any_privilege", Version: "2",
 			Name:        "Oracle ANY 类系统权限",
 			Target:      facts.TargetDBOracle,
 			Description: "如 SELECT ANY TABLE 等 ANY 类权限作用范围广。",
@@ -475,6 +475,11 @@ var builtinRules = []builtinRule{
 		check: func(c *EvalContext) []CheckHit {
 			var hits []CheckHit
 			for _, f := range c.ByKind[facts.FactPrivilege] {
+				// M35：DBA 角色是 Oracle 内置管理角色，其管理权限属固有权限，
+				// 不报警（用户 2026-10-25 定）；其他主体的 ANY 权限仍报警。
+				if strings.EqualFold(f.Subject, "DBA") {
+					continue
+				}
 				priv := strings.ToUpper(f.Attributes["privilege"])
 				if !strings.Contains(priv, " ANY ") && !strings.HasSuffix(priv, " ANY") {
 					continue

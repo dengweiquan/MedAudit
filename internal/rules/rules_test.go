@@ -156,6 +156,37 @@ func TestLinuxHighCapabilitiesDetail(t *testing.T) {
 	}
 }
 
+func TestOracleAnyPrivilegeDBAExempt(t *testing.T) {
+	// M35：DBA 角色是 Oracle 内置管理角色，其管理权限属固有权限，不报警。
+	priv := func(subject, privilege string) facts.Fact {
+		return facts.Fact{FactID: "f-p1", Kind: facts.FactPrivilege, Subject: subject,
+			Status: facts.StatusObserved, Attributes: map[string]string{"privilege": privilege}}
+	}
+	hit := func(fs []facts.Fact) bool {
+		for _, r := range DefaultRegistry().Evaluate(testBundle(facts.TargetDBOracle, fs), &Baseline{}) {
+			if r.RuleID == "db.oracle.any_privilege" && r.Conclusion == facts.ConclusionFail {
+				return true
+			}
+		}
+		return false
+	}
+	if hit([]facts.Fact{priv("DBA", "ADMINISTER ANY SQL TUNING SET")}) {
+		t.Fatal("DBA 角色的 ANY 权限仍在报警")
+	}
+	if hit([]facts.Fact{priv("dba", "CREATE ANY TABLE")}) {
+		t.Fatal("小写 dba 仍在报警（应大小写不敏感）")
+	}
+	if !hit([]facts.Fact{priv("SYS", "ADMINISTER ANY SQL TUNING SET")}) {
+		t.Fatal("非 DBA 主体的 ANY 权限未被检出")
+	}
+	if !hit([]facts.Fact{priv("APP_USER", "SELECT ANY TABLE")}) {
+		t.Fatal("普通用户的 ANY 权限未被检出")
+	}
+	if hit([]facts.Fact{priv("DBA", "CREATE SESSION")}) {
+		t.Fatal("非 ANY 权限被误报")
+	}
+}
+
 func TestLinuxRootMismatch(t *testing.T) {
 	proc := func(attrs map[string]string) facts.Fact {
 		return facts.Fact{FactID: "f-p1", Kind: facts.FactProcess, Subject: "h/boot/1/1",
