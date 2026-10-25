@@ -21,7 +21,7 @@ import (
 	"medaudit/internal/license"
 )
 
-const version = "0.33.0-m33"
+const version = "0.34.0-m34"
 
 var flagServer string
 
