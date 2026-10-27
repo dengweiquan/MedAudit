@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"medaudit/internal/platform"
 	"medaudit/internal/rules"
@@ -70,6 +72,7 @@ func newTestServer(t *testing.T, kr *platform.EvidenceKeyring) *testServer {
 	sched := platform.NewScheduler(db, rules.DefaultRegistry(), kr, "", "", "", platform.NewTokenStore())
 	registerScheduleRoutes(mux, db, kr, sched, sessions)
 	registerTemplateRoutes(mux, db, rules.DefaultRegistry(), sessions)
+	registerAssetBundlesRoute(mux, db)
 	srv := httptest.NewServer(opLogMiddleware(authMiddleware(mux, sessions), db, sessions))
 	t.Cleanup(srv.Close)
 	return &testServer{srv: srv, db: db, sessions: sessions, client: &http.Client{}}
@@ -481,5 +484,71 @@ func TestServerTokenCIDRCheckedFirst(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "允许网段") {
 		t.Errorf("网段外应提示允许网段，实际 %s", data)
+	}
+}
+
+func TestServerAssetBundlesBeyondLimit(t *testing.T) {
+	s := newTestServer(t, nil)
+	cookie := s.login(t, platform.DefaultAdminUser, platform.DefaultAdminPassword)
+	if err := platform.CreateHospital(s.db, "h-test", "测试医院"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO collection_plans (id, hospital_id, name, profile, spec, created_by)
+		VALUES ('p1', 'h-test', 'P1', 'prof', '{}', 'web')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := platform.CreateAsset(s.db, platform.Asset{ID: "a-many", HospitalID: "h-test", Kind: "db-mysql", Name: "多包对象"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := platform.CreateAsset(s.db, platform.Asset{ID: "a-few", HospitalID: "h-test", Kind: "db-mysql", Name: "少包对象"}); err != nil {
+		t.Fatal(err)
+	}
+	insert := func(id, asset string, day int) {
+		t.Helper()
+		ts := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC).AddDate(0, 0, day).Format("2006-01-02 15:04:05")
+		if _, err := s.db.Exec(`INSERT INTO fact_bundles (id, plan_id, hospital_id, asset_id, schema_version, adapter, execution, bundle, imported_at)
+			VALUES (?, 'p1', 'h-test', ?, '1', 'db-mysql', 'COMPLETE', '{"facts":[],"receipts":[]}', ?)`,
+			id, asset, ts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 120; i++ {
+		insert(fmt.Sprintf("bundle-a-%03d", i), "a-many", i)
+	}
+	for i := 0; i < 5; i++ {
+		insert(fmt.Sprintf("bundle-b-%d", i), "a-few", i)
+	}
+	status, data, _ := s.do(t, http.MethodGet, "/api/v1/asset-bundles?asset_id=a-many", nil, []*http.Cookie{cookie})
+	if status != http.StatusOK {
+		t.Fatalf("按对象取包应 200，实际 %d：%s", status, data)
+	}
+	var rows []platform.BundleSummary
+	if err := json.Unmarshal(data, &rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 120 {
+		t.Fatalf("超过 100 包时应返回目标对象全部包，实际 %d", len(rows))
+	}
+	for _, r := range rows {
+		if r.AssetID != "a-many" {
+			t.Fatalf("只应返回目标对象的包，混入 %s", r.AssetID)
+		}
+	}
+	if rows[0].ImportedAt != "2026-04-30 10:00:00" {
+		t.Fatalf("首行应为最新包，实际 %s", rows[0].ImportedAt)
+	}
+	status, data, _ = s.do(t, http.MethodGet, "/api/v1/asset-bundles?asset_id=a-few", nil, []*http.Cookie{cookie})
+	if status != http.StatusOK {
+		t.Fatalf("少包对象应 200，实际 %d：%s", status, data)
+	}
+	if err := json.Unmarshal(data, &rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 5 {
+		t.Fatalf("少包对象应返回 5 包，实际 %d", len(rows))
+	}
+	status, _, _ = s.do(t, http.MethodGet, "/api/v1/asset-bundles", nil, []*http.Cookie{cookie})
+	if status != http.StatusBadRequest {
+		t.Fatalf("缺 asset_id 应 400，实际 %d", status)
 	}
 }

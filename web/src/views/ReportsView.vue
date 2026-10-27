@@ -3,7 +3,7 @@
     <h2>生成报告</h2>
     <div class="inline-form">
       <label>对象
-        <select v-model="genAsset" @change="genBundle = latestBundleOf(bundles, genAsset)?.id ?? ''">
+        <select v-model="genAsset" @change="loadGenBundles">
           <option v-for="a in reportableAssets" :key="a.id" :value="a.id">{{ a.name }}</option>
         </select>
       </label>
@@ -169,9 +169,17 @@ import { fmtLocal, latestBundleOf, latestFail } from '../util'
 import { conclLabel, riskLabel, reviewLabel } from '../labels'
 import { reviewerName, filterByHospital, engineerMode } from '../store'
 
-const bundles = ref<BundleSummary[]>([])
 const assets = ref<Asset[]>([])
 const reports = ref<ReportRow[]>([])
+const latestByAsset = ref(new Map<string, BundleSummary>())
+const genBundles = ref<BundleSummary[]>([])
+async function loadGenBundles() {
+  if (!genAsset.value) { genBundles.value = []; genBundle.value = ''; return }
+  try {
+    genBundles.value = await api.assetBundles(genAsset.value)
+    genBundle.value = latestBundleOf(genBundles.value, genAsset.value)?.id ?? ''
+  } catch { genBundles.value = []; genBundle.value = '' }
+}
 const apiReports = ref<ApiAuditSummary[]>([])
 const apiReportRows = computed(() => {
   const byEndpoint = new Map(assets.value.filter(a => a.endpoint).map(a => [a.endpoint as string, a.name]))
@@ -186,16 +194,15 @@ const genBundle = ref('')
 const createdBy = ref(reviewerName())
 const historyOpen = reactive(new Set<string>())
 
-const reportableAssets = computed(() => assets.value.filter(a => bundles.value.some(b => b.asset_id === a.id)))
+const reportableAssets = computed(() => assets.value.filter(a => latestByAsset.value.has(a.id)))
 function bundlesOfAsset(assetId: string): BundleSummary[] {
-  return bundles.value.filter(b => b.asset_id === assetId)
+  return genBundles.value.filter(b => b.asset_id === assetId)
 }
 interface ReportGroup { key: string; name: string; reports: ReportRow[] }
 const reportGroups = computed<ReportGroup[]>(() => {
-  const bundleAsset = new Map(bundles.value.map(b => [b.id, b.asset_id]))
   const byKey = new Map<string, ReportRow[]>()
   for (const r of reports.value) {
-    const key = bundleAsset.get(r.bundle_id) ?? r.bundle_id
+    const key = r.asset_id || r.bundle_id
     const list = byKey.get(key) ?? []
     list.push(r)
     byKey.set(key, list)
@@ -262,7 +269,7 @@ async function load() {
   loaded.value = false
   try {
     reports.value = filterByHospital(await api.reports())
-    bundles.value = filterByHospital(await api.bundles())
+    try { latestByAsset.value = new Map(filterByHospital(await api.latestBundles()).map(b => [b.asset_id, b])) } catch { latestByAsset.value = new Map() }
     try { apiReports.value = await api.apiAudits() } catch { apiReports.value = [] }
     try { assets.value = filterByHospital(await api.assets()) } catch { assets.value = [] }
     loaded.value = true
@@ -276,7 +283,7 @@ async function load() {
     } catch { /* 未取到登录名时用本地署名 */ }
     if (!genAsset.value && reportableAssets.value.length) {
       genAsset.value = reportableAssets.value[0].id
-      genBundle.value = latestBundleOf(bundles.value, genAsset.value)?.id ?? ''
+      await loadGenBundles()
     }
     // 最新报告的问题分级与合规不满足条数（逐份取包问题与报告详情）。
     const rm = new Map<string, { high: number; medium: number; low: number; other: number }>()
@@ -350,7 +357,7 @@ async function expandHistory(g: ReportGroup) {
 
 async function generate() {
   genMsg.value = ''; genErr.value = ''
-  const b = bundles.value.find(x => x.id === genBundle.value)
+  const b = genBundles.value.find(x => x.id === genBundle.value)
   if (!b) return
   try {
     const r = await api.createReport({

@@ -53,3 +53,17 @@ describe('latestBundleOf', () => {
     expect(latestBundleOf([mk('b-old', OLD)], 'a9')).toBeUndefined()
   })
 })
+
+describe('comparePair 120 包场景（M37-fix-3）', () => {
+  it('120 包仍取该对象最后两次，不受全局 100 条上限影响', () => {
+    const many: BundleSummary[] = []
+    for (let i = 0; i < 120; i++) {
+      const d = new Date(Date.UTC(2026, 0, 1) + i * 86400000)
+      many.push(mk(`a1-${String(i).padStart(3, '0')}`, d.toISOString().slice(0, 10) + ' 10:00:00'))
+    }
+    many.push({ ...mk('a2-new', '2026-12-31 10:00:00'), asset_id: 'a2' })
+    const pair = comparePair(many, 'a1')
+    expect(pair?.new.id).toBe('a1-119')
+    expect(pair?.old.id).toBe('a1-118')
+  })
+})

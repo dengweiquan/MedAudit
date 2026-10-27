@@ -15,6 +15,7 @@ type ReportRow struct {
 	HospitalID        string          `json:"hospital_id"`
 	PlanID            string          `json:"plan_id"`
 	BundleID          string          `json:"bundle_id"`
+	AssetID           string          `json:"asset_id,omitempty"`
 	CreatedBy         string          `json:"created_by"`
 	CreatedAt         string          `json:"created_at"`
 	ConclusionSummary json.RawMessage `json:"conclusion_summary,omitempty"`
@@ -25,6 +26,7 @@ func ListReports(db *sql.DB) ([]ReportRow, error) {
 	rows, err := db.Query(
 		`SELECT id, hospital_id, plan_id,
 		        COALESCE(json_extract(snapshot, '$.bundle_id'), ''),
+		        COALESCE((SELECT asset_id FROM fact_bundles WHERE id = COALESCE(json_extract(snapshot, '$.bundle_id'), '')), ''),
 		        created_by, created_at,
 		        json_extract(snapshot, '$.conclusion_summary')
 		 FROM reports ORDER BY created_at DESC, id DESC`)
@@ -36,7 +38,7 @@ func ListReports(db *sql.DB) ([]ReportRow, error) {
 	for rows.Next() {
 		var r ReportRow
 		var summary sql.NullString
-		if err := rows.Scan(&r.ID, &r.HospitalID, &r.PlanID, &r.BundleID,
+		if err := rows.Scan(&r.ID, &r.HospitalID, &r.PlanID, &r.BundleID, &r.AssetID,
 			&r.CreatedBy, &r.CreatedAt, &summary); err != nil {
 			return nil, err
 		}

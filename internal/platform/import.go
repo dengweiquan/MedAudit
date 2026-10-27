@@ -106,6 +106,37 @@ func ListBundles(db *sql.DB) ([]BundleSummary, error) {
 	return out, nil
 }
 
+// ListBundlesByAsset 返回某对象的全部事实包摘要（无 LIMIT，不受 ListBundles
+// 的 100 条上限影响；M37-fix-3）。返回结构与 ListBundles 相同，按导入时间倒序。
+func ListBundlesByAsset(db *sql.DB, assetID string) ([]BundleSummary, error) {
+	rows, err := db.Query(
+		`SELECT id, plan_id, hospital_id, asset_id, schema_version, adapter, execution,
+		        json_array_length(bundle, '$.facts'), json_array_length(bundle, '$.receipts'),
+		        strftime('%Y-%m-%d %H:%M:%S', imported_at)
+		 FROM fact_bundles WHERE asset_id = ? ORDER BY imported_at DESC, id DESC`, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BundleSummary
+	for rows.Next() {
+		var s BundleSummary
+		if err := rows.Scan(&s.ID, &s.PlanID, &s.HospitalID, &s.AssetID,
+			&s.SchemaVersion, &s.Adapter, &s.Execution,
+			&s.FactCount, &s.ReceiptCount, &s.ImportedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []BundleSummary{}
+	}
+	return out, nil
+}
+
 // LatestBundles 返回每个资产最新导入的事实包摘要。
 // ListBundles 有 LIMIT 100，对象一多，老对象的最近审计会从列表消失；
 // 工作台的「最近审计」须用本函数计算，不受 100 条上限影响（M37-1.2）。
