@@ -367,6 +367,17 @@ function post<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
+export interface AuditDueRow {
+  asset_id: string
+  hospital_id: string
+  name: string
+  kind: string
+  last_audit_at: string
+  due_at: string
+  days_left: number
+  status: 'never' | 'overdue' | 'due_soon' | 'ok'
+}
+
 export interface OpLogRow {
   id: number
   at: string
@@ -406,6 +417,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ disabled }),
     }),
+  // 复检到期提醒
+  auditDue: () => req<{ cycle_days: number; items: AuditDueRow[] }>('/api/v1/audit/due'),
   // 平台操作日志（哈希链防篡改）
   opLog: (offset = 0, limit = 50) =>
     req<{ total: number; items: OpLogRow[] }>(`/api/v1/admin/oplog?offset=${offset}&limit=${limit}`),
