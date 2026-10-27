@@ -4,12 +4,12 @@
     <div class="inline-form">
       <label>对象
         <select v-model="genAsset" @change="genBundle = latestBundleOf(bundles.value, genAsset)?.id ?? ''">
-          <option v-for="a in reportableAssets" :key="a.id" :value="a.id">{{ a.name }}（{{ a.id }}）</option>
+          <option v-for="a in reportableAssets" :key="a.id" :value="a.id">{{ a.name }}</option>
         </select>
       </label>
       <label>审计记录
         <select v-model="genBundle">
-          <option v-for="b in bundlesOfAsset(genAsset)" :key="b.id" :value="b.id">{{ fmtLocal(b.imported_at) }}（{{ b.id }}）</option>
+          <option v-for="b in bundlesOfAsset(genAsset)" :key="b.id" :value="b.id">{{ engineerMode.on ? fmtLocal(b.imported_at) + '（' + b.id + '）' : fmtLocal(b.imported_at) }}</option>
         </select>
       </label>
       <button class="btn primary" :disabled="!genBundle" @click="generate">生成报告</button>
@@ -20,58 +20,71 @@
   </div>
 
   <div class="card">
-    <h2>报告列表（按对象）</h2>
+    <h2>报告</h2>
     <div v-if="error" class="error">{{ error }}</div>
-    <div v-else-if="!reportGroups.length" class="empty">暂无报告。</div>
-    <template v-for="g in reportGroups" :key="g.key">
-      <h3 style="margin:14px 0 6px">{{ g.name }} <span class="todo">{{ g.key }} · 共 {{ g.reports.length }} 份</span></h3>
-      <table>
-        <thead><tr><th>生成时间</th><th>结论摘要</th><th>生成人</th><th>审计记录</th><th>操作</th></tr></thead>
-        <tbody>
-          <tr v-for="r in visibleReports(g)" :key="r.id" :class="{ selected: detailId === r.id }">
-            <td>{{ fmtLocal(r.created_at) }}<div class="todo">{{ r.id }}</div></td>
-            <td>
-              <span v-for="(n, c) in r.conclusion_summary || {}" :key="c" class="concl" :class="'c-' + c" style="margin-right:4px">{{ c }} {{ n }}</span>
-            </td>
-            <td>{{ r.created_by }}</td>
-            <td>{{ r.bundle_id }}</td>
+    <table v-else-if="reportGroups.length">
+      <thead><tr><th>对象</th><th>生成时间</th><th>问题数</th><th>合规</th><th>操作</th></tr></thead>
+      <tbody>
+        <template v-for="g in reportGroups" :key="g.key">
+          <tr :class="{ selected: detailId === g.reports[0].id }">
+            <td>{{ g.name }}</td>
+            <td>{{ fmtLocal(g.reports[0].created_at) }}</td>
+            <td>{{ riskText(g.key) }}</td>
+            <td>{{ complianceText(g.key) }}</td>
             <td>
               <div class="row-actions">
-                <button class="btn small" @click="view(r.id)">查看</button>
-                <a class="btn small" :href="api.reportDocxUrl(r.id)" download>Word</a>
-                <a class="btn small" :href="api.reportCsvUrl(r.id)" download>CSV</a>
+                <button class="btn small" @click="view(g.reports[0].id)">查看</button>
+                <a class="btn small" :href="api.reportDocxUrl(g.reports[0].id)" download>下载 Word</a>
+                <a class="btn small" :href="api.reportCsvUrl(g.reports[0].id)" download>CSV</a>
               </div>
             </td>
           </tr>
-        </tbody>
-      </table>
-      <button v-if="g.reports.length > 1 && !historyOpen.has(g.key)" class="btn small" @click="historyOpen.add(g.key)">
-        显示历史报告（{{ g.reports.length - 1 }} 份）
-      </button>
-    </template>
+          <template v-if="historyOpen.has(g.key)">
+            <tr v-for="r in g.reports.slice(1)" :key="r.id" :class="{ selected: detailId === r.id }">
+              <td><span class="todo">历史</span></td>
+              <td>{{ fmtLocal(r.created_at) }}</td>
+              <td>{{ riskTextForReport(r) }}</td>
+              <td>{{ complianceTextForReport(r) }}</td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn small" @click="view(r.id)">查看</button>
+                  <a class="btn small" :href="api.reportDocxUrl(r.id)" download>下载 Word</a>
+                  <a class="btn small" :href="api.reportCsvUrl(r.id)" download>CSV</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td colspan="5"><button class="btn small" @click="historyOpen.delete(g.key)">收起历史</button></td>
+            </tr>
+          </template>
+          <tr v-else-if="g.reports.length > 1">
+            <td colspan="5"><button class="btn small" @click="expandHistory(g)">显示历史报告（{{ g.reports.length - 1 }} 份）</button></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div v-else class="empty">暂无报告。</div>
   </div>
 
   <div class="card" v-if="detail">
-    <h2>报告详情（{{ detailId }}）</h2>
+    <h2>报告详情<span v-if="engineerMode.on">（{{ detailId }}）</span></h2>
     <p>
       结论摘要：
       <span v-for="(n, c) in (detail.conclusion_summary as Record<string, number>) || {}" :key="c"
-            class="concl" :class="'c-' + c" style="margin-right:4px">{{ c }} {{ n }}</span>
-      <span class="todo">执行 {{ detail.execution }} · 适配器 {{ detail.adapter }}</span>
+            class="concl" :class="'c-' + c" style="margin-right:4px">{{ conclLabel(c) }} {{ n }}</span>
     </p>
     <h3>覆盖（coverage）</h3>
     <pre>{{ JSON.stringify(detail.coverage ?? detail.coverage_note ?? '（旧报告无覆盖数据）', null, 2) }}</pre>
     <template v-if="pathsSection">
       <h3>跨层提权路径（关联分析）</h3>
       <p class="todo">
-        来源关联报告 {{ pathsSection.correlation_report_id }}（{{ pathsSection.generated_at }}）；
         提权路径共 {{ pathsSection.path_count }} 条{{ pathsSection.paths.length < pathsSection.path_count ? `，此处列 ${pathsSection.paths.length} 条` : '' }}。
       </p>
       <table v-if="pathsSection.paths.length">
         <thead><tr><th>风险</th><th>路径链</th></tr></thead>
         <tbody>
           <tr v-for="(p, i) in pathsSection.paths" :key="i">
-            <td><span class="concl" :class="p.risk === 'high' ? 'c-FAIL' : 'c-UNKNOWN'">{{ p.risk }}</span></td>
+            <td><span class="concl" :class="p.risk === 'high' ? 'c-FAIL' : 'c-UNKNOWN'">{{ riskLabel(p.risk) }}</span></td>
             <td>{{ p.chain }}</td>
           </tr>
         </tbody>
@@ -79,13 +92,13 @@
       <div v-else class="empty">该关联报告未发现提权路径。</div>
     </template>
     <template v-if="driftSection">
-      <h3>权限漂移（与上一事实包对比）</h3>
+      <h3>权限漂移（与上一次审计对比）</h3>
       <p class="todo">
-        基线包 {{ driftSection.base_id }}；新增 {{ driftSection.added_total }} 项、消失 {{ driftSection.removed_total }} 项，
+        新增 {{ driftSection.added_total }} 项、消失 {{ driftSection.removed_total }} 项，
         其中 <b style="color:#b91c1c">新增授权/角色关系 {{ driftSection.attention }} 项</b>需重点关注。
       </p>
       <table v-if="driftSection.added.length || driftSection.removed.length">
-        <thead><tr><th>方向</th><th>类别</th><th>主体</th><th>明细</th></tr></thead>
+        <thead><tr><th>方向</th><th>类别</th><th>账号</th><th>明细</th></tr></thead>
         <tbody>
           <tr v-for="(it, i) in driftSection.added" :key="'a' + i">
             <td><span class="concl c-FAIL">新增</span></td><td>{{ it.category }}</td><td>{{ it.subject }}</td><td>{{ it.detail }}</td>
@@ -99,12 +112,12 @@
     <template v-if="remediationSection">
       <h3>修复与回滚脚本</h3>
       <p class="todo">
-        FAIL 共 {{ remediationSection.fail_total }} 条，已生成脚本 {{ remediationSection.generated }} 条
+        不通过共 {{ remediationSection.fail_total }} 条，已生成脚本 {{ remediationSection.generated }} 条
         （快照存入 {{ remediationSection.stored }} 条）；未生成的为程序性整改项。脚本仅供人工评审后执行，平台不自动修改目标权限。
       </p>
       <div v-for="(s, i) in visibleScripts" :key="s.finding_id" class="fixscript">
         <details>
-          <summary><b>{{ s.rule_id }}</b> · {{ s.subject }}<span v-if="s.scope"> · {{ s.scope }}</span></summary>
+          <summary><b :title="engineerMode.on ? s.rule_id : undefined">{{ ruleName(s.rule_id) }}</b> · {{ s.subject }}<span v-if="s.scope"> · {{ s.scope }}</span></summary>
           <p class="fixlabel">前置检查</p><pre>{{ s.precheck }}</pre>
           <p class="fixlabel">修复命令 <button class="btn small" @click="copyText(s.fix)">复制</button></p><pre>{{ s.fix }}</pre>
           <p class="fixlabel">验证</p><pre>{{ s.verify }}</pre>
@@ -119,12 +132,12 @@
     </template>
     <h3>问题清单（{{ snapshotFindings.length }}）</h3>
     <table v-if="snapshotFindings.length">
-      <thead><tr><th>规则</th><th>主体</th><th>结论</th><th>复核</th></tr></thead>
+      <thead><tr><th>规则</th><th>账号</th><th>结论</th><th>复核</th></tr></thead>
       <tbody>
         <tr v-for="f in snapshotFindings" :key="f.id">
-          <td>{{ f.rule_id }}</td><td>{{ f.subject }}</td>
-          <td><span class="concl" :class="'c-' + f.conclusion">{{ f.conclusion }}</span></td>
-          <td>{{ f.review_status }}</td>
+          <td :title="engineerMode.on ? f.rule_id : undefined">{{ ruleName(f.rule_id) }}</td><td>{{ f.subject }}</td>
+          <td><span class="concl" :class="'c-' + f.conclusion">{{ conclLabel(f.conclusion) }}</span></td>
+          <td>{{ reviewLabel(f.review_status) }}</td>
         </tr>
       </tbody>
     </table>
@@ -133,13 +146,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { api, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow } from '../api'
-import { fmtLocal , latestBundleOf} from '../util'
-import { reviewerName, filterByHospital } from '../store'
+import { api, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule } from '../api'
+import { fmtLocal, latestBundleOf, latestFail } from '../util'
+import { reviewerName, filterByHospital, engineerMode } from '../store'
 
 const bundles = ref<BundleSummary[]>([])
 const assets = ref<Asset[]>([])
 const reports = ref<ReportRow[]>([])
+const rulesMap = ref<Map<string, Rule>>(new Map())
 const genAsset = ref('')
 const genBundle = ref('')
 const createdBy = ref(reviewerName())
@@ -170,8 +184,41 @@ const reportGroups = computed<ReportGroup[]>(() => {
   }
   return out.sort((x, y) => (y.reports[0]?.created_at ?? '').localeCompare(x.reports[0]?.created_at ?? ''))
 })
-function visibleReports(g: ReportGroup): ReportRow[] {
-  return historyOpen.has(g.key) ? g.reports : g.reports.slice(0, 1)
+function conclLabel(c: string): string {
+  return { FAIL: '不通过', PASS: '通过', UNKNOWN: '证据不足' }[c] ?? c
+}
+function riskLabel(r?: string): string {
+  return { high: '高', medium: '中', low: '低' }[(r ?? '').toLowerCase()] ?? '—'
+}
+function reviewLabel(r: string): string {
+  return { confirmed: '已确认', false_positive: '误报', exception: '例外' }[r] ?? '未复核'
+}
+function ruleName(id: string): string {
+  return rulesMap.value.get(id)?.Name ?? id
+}
+// 每份报告的问题数（高/中/低）与合规不满足条数：按报告的包取最新轮问题与报告详情合规段。
+const riskByReport = ref<Map<string, { high: number; medium: number; low: number; other: number }>>(new Map())
+const complianceFailByReport = ref<Map<string, number | null>>(new Map())
+function riskTextForReport(r: ReportRow): string {
+  const c = riskByReport.value.get(r.id)
+  if (!c) return '—'
+  const total = c.high + c.medium + c.low + c.other
+  if (total === 0) return '通过'
+  const parts = [`高 ${c.high}`, `中 ${c.medium}`, `低 ${c.low}`].filter((_, i) => [c.high, c.medium, c.low][i] > 0)
+  if (c.other > 0) parts.push(`未分级 ${c.other}`)
+  return parts.join(' · ')
+}
+function riskText(assetKey: string): string {
+  const g = reportGroups.value.find(x => x.key === assetKey)
+  return g ? riskTextForReport(g.reports[0]) : '—'
+}
+function complianceTextForReport(r: ReportRow): string {
+  const n = complianceFailByReport.value.get(r.id)
+  return n === undefined || n === null ? '—' : `不满足 ${n} 条`
+}
+function complianceText(assetKey: string): string {
+  const g = reportGroups.value.find(x => x.key === assetKey)
+  return g ? complianceTextForReport(g.reports[0]) : '—'
 }
 const genMsg = ref('')
 const genErr = ref('')
@@ -199,6 +246,10 @@ async function load() {
     bundles.value = filterByHospital(await api.bundles())
     try { assets.value = filterByHospital(await api.assets()) } catch { assets.value = [] }
     try {
+      const rs = await api.rules()
+      rulesMap.value = new Map(rs.map(r => [r.ID, r]))
+    } catch { /* 无规则说明时降级 */ }
+    try {
       const me = await api.me()
       if (me.username) createdBy.value = me.username
     } catch { /* 未取到登录名时用本地署名 */ }
@@ -206,7 +257,74 @@ async function load() {
       genAsset.value = reportableAssets.value[0].id
       genBundle.value = latestBundleOf(bundles.value, genAsset.value)?.id ?? ''
     }
+    // 最新报告的问题分级与合规不满足条数（逐份取包问题与报告详情）。
+    const rm = new Map<string, { high: number; medium: number; low: number; other: number }>()
+    const cm = new Map<string, number | null>()
+    for (const g of reportGroups.value) {
+      const latest = g.reports[0]
+      try {
+        const fails = latestFail(await api.findings(latest.bundle_id))
+        const c = { high: 0, medium: 0, low: 0, other: 0 }
+        for (const f of fails) {
+          const r = (rulesMap.value.get(f.rule_id)?.Risk ?? '').toLowerCase()
+          if (r === 'high') c.high++
+          else if (r === 'medium') c.medium++
+          else if (r === 'low') c.low++
+          else c.other++
+        }
+        rm.set(latest.id, c)
+      } catch { /* 未评估包 */ }
+      try {
+        const d = await api.getReport(latest.id)
+        const comp = d.compliance as { counts?: Record<string, number> }[] | undefined
+        let fail = 0
+        let found = false
+        if (Array.isArray(comp)) {
+          for (const fw of comp) {
+            if (fw.counts && typeof fw.counts.fail === 'number') { fail += fw.counts.fail; found = true }
+          }
+        }
+        cm.set(latest.id, found ? fail : null)
+      } catch { cm.set(latest.id, null) }
+    }
+    riskByReport.value = rm
+    complianceFailByReport.value = cm
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
+}
+
+// 展开历史时再补算旧报告的问题分级与合规数（平时只算最新一份）。
+async function expandHistory(g: ReportGroup) {
+  historyOpen.add(g.key)
+  for (const r of g.reports.slice(1)) {
+    if (!riskByReport.value.has(r.id)) {
+      try {
+        const fails = latestFail(await api.findings(r.bundle_id))
+        const c = { high: 0, medium: 0, low: 0, other: 0 }
+        for (const f of fails) {
+          const rk = (rulesMap.value.get(f.rule_id)?.Risk ?? '').toLowerCase()
+          if (rk === 'high') c.high++
+          else if (rk === 'medium') c.medium++
+          else if (rk === 'low') c.low++
+          else c.other++
+        }
+        riskByReport.value.set(r.id, c)
+      } catch { /* 未评估包 */ }
+    }
+    if (!complianceFailByReport.value.has(r.id)) {
+      try {
+        const d = await api.getReport(r.id)
+        const comp = d.compliance as { counts?: Record<string, number> }[] | undefined
+        let fail = 0
+        let found = false
+        if (Array.isArray(comp)) {
+          for (const fw of comp) {
+            if (fw.counts && typeof fw.counts.fail === 'number') { fail += fw.counts.fail; found = true }
+          }
+        }
+        complianceFailByReport.value.set(r.id, found ? fail : null)
+      } catch { complianceFailByReport.value.set(r.id, null) }
+    }
+  }
 }
 
 async function generate() {
@@ -217,7 +335,7 @@ async function generate() {
     const r = await api.createReport({
       hospital_id: b.hospital_id, plan_id: b.plan_id, bundle_id: b.id, created_by: createdBy.value,
     })
-    genMsg.value = `报告已生成：${r.report_id}`
+    genMsg.value = '报告已生成'
     await load()
   } catch (e) { genErr.value = e instanceof Error ? e.message : '生成失败' }
 }
