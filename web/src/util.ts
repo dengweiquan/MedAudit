@@ -28,12 +28,18 @@ export function latestRunFindings(rows: Finding[]): Finding[] {
   return sorted.slice(start)
 }
 
-// 报告表问题数（M37-fix-5）：只按报告快照的 findings 计算，不取包的实时问题，
-// 否则重新评估或改基线后历史报告行的数字会变。快照本身就是一轮评估结果，
-// 只需过滤结论为不通过（FAIL）的项，按规则风险分级。
+// 报告表问题数（M37-fix-5，M37-fix2-1 修正）：只按报告快照的 findings 计算，
+// 不取包的实时问题，否则重新评估或改基线后历史报告行的数字会变。
+// 注意快照 findings 来自 ListFindings，含该包所有评估轮次的结果（不是一轮），
+// 故先按 latestRunFindings 取最新一轮（120 秒间隙聚类，与复检/最新问题同口径），
+// 再过滤结论为不通过（FAIL）的项，按规则风险分级。
+// 口径差异说明：服务端 compliance_report.go 的 latestRun 是「同一 created_at
+// 为一轮」；但 DB 时间戳只到秒，一轮落库可达几十秒时它只取最后一秒的行，
+// 会漏算大包（前端早年用最大时间戳往前 1.5 秒切分就踩过这个坑），故此处
+// 不用服务端口径，用前端已有的 latestRunFindings。
 export function countSnapshotRisks(findings: Finding[], riskOf: (ruleId: string) => string): { high: number; medium: number; low: number; other: number } {
   const c = { high: 0, medium: 0, low: 0, other: 0 }
-  for (const f of findings) {
+  for (const f of latestRunFindings(findings)) {
     if (f.conclusion !== 'FAIL') continue
     const r = riskOf(f.rule_id).toLowerCase()
     if (r === 'high') c.high++

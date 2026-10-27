@@ -86,7 +86,8 @@ describe('buildConclusion（M37-fix-4）', () => {
 
 describe('countSnapshotRisks（M37-fix-5）', () => {
   const riskOf = (id: string) => ({ r1: 'high', r2: 'medium', r3: 'low' }[id] ?? '')
-  const f = (rule_id: string, conclusion: string) => ({ rule_id, conclusion }) as never
+  // 单轮时间戳：旧用例隐含「快照只有一轮」，此处显式打上同一时间戳。
+  const f = (rule_id: string, conclusion: string, created_at = '2026-10-20 10:00:00') => ({ rule_id, conclusion, created_at }) as never
   it('只计快照中不通过项，按规则风险分级；非不通过与未知规则归入未分级', () => {
     const c = countSnapshotRisks(
       [f('r1', 'FAIL'), f('r1', 'FAIL'), f('r2', 'FAIL'), f('r3', 'PASS'), f('rX', 'FAIL'), f('r2', 'UNKNOWN')],
@@ -96,5 +97,31 @@ describe('countSnapshotRisks（M37-fix-5）', () => {
   })
   it('空快照全为 0', () => {
     expect(countSnapshotRisks([], riskOf)).toEqual({ high: 0, medium: 0, low: 0, other: 0 })
+  })
+})
+
+describe('countSnapshotRisks 最新一轮（M37-fix2-1）', () => {
+  const riskOf = (id: string) => ({ r1: 'high', r2: 'medium', r3: 'low' }[id] ?? '')
+  const f = (rule_id: string, conclusion: string, created_at: string) => ({ rule_id, conclusion, created_at }) as never
+  it('快照含两轮评估结果时只计最新一轮（旧轮翻倍的回归）', () => {
+    const rows = [
+      f('r1', 'FAIL', '2026-10-20 10:00:00'), f('r1', 'FAIL', '2026-10-20 10:00:01'), f('r2', 'FAIL', '2026-10-20 10:00:02'),
+      f('r1', 'FAIL', '2026-10-20 11:00:00'), f('r3', 'FAIL', '2026-10-20 11:00:03'), f('r2', 'PASS', '2026-10-20 11:00:05'),
+    ]
+    // 旧口径会算成高 3 · 中 1 · 低 1；正确值只计最新一轮：高 1 · 低 1。
+    expect(countSnapshotRisks(rows, riskOf)).toEqual({ high: 1, medium: 0, low: 1, other: 0 })
+  })
+  it('输入顺序打乱时仍只计最新一轮', () => {
+    const rows = [
+      f('r1', 'FAIL', '2026-10-20 11:00:00'),
+      f('r1', 'FAIL', '2026-10-20 10:00:00'), f('r1', 'FAIL', '2026-10-20 10:00:01'),
+    ]
+    expect(countSnapshotRisks(rows, riskOf)).toEqual({ high: 1, medium: 0, low: 0, other: 0 })
+  })
+  it('一轮内多秒写入仍算同一轮', () => {
+    const rows = [
+      f('r1', 'FAIL', '2026-10-20 11:00:00'), f('r2', 'FAIL', '2026-10-20 11:00:30'), f('r3', 'FAIL', '2026-10-20 11:00:59'),
+    ]
+    expect(countSnapshotRisks(rows, riskOf)).toEqual({ high: 1, medium: 1, low: 1, other: 0 })
   })
 })
