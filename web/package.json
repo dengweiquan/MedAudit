@@ -3,6 +3,7 @@
     "vue": "^3.4.38"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.1",
     "@vitejs/plugin-vue": "^5.1.2",
     "typescript": "^5.5.4",
     "vite": "^5.4.8",
@@ -14,7 +15,8 @@
     "build": "vite build",
     "dev": "vite",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "type": "module",
   "version": "0.1.0"

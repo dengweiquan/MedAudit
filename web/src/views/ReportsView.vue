@@ -22,7 +22,7 @@
   <div class="card">
     <h2>报告</h2>
     <div v-if="error" class="error">{{ error }}</div>
-    <table v-else-if="reportGroups.length">
+    <table v-else-if="loaded && reportGroups.length">
       <thead><tr><th>对象</th><th>生成时间</th><th>问题数</th><th>合规</th><th>操作</th></tr></thead>
       <tbody>
         <template v-for="g in reportGroups" :key="g.key">
@@ -63,7 +63,8 @@
         </template>
       </tbody>
     </table>
-    <div v-else class="empty">暂无报告。</div>
+    <div v-else-if="loaded" class="empty">暂无报告。</div>
+    <div v-else class="empty">加载中…</div>
   </div>
 
   <div class="card" v-if="detail">
@@ -154,6 +155,7 @@ import { reviewerName, filterByHospital, engineerMode } from '../store'
 const bundles = ref<BundleSummary[]>([])
 const assets = ref<Asset[]>([])
 const reports = ref<ReportRow[]>([])
+const loaded = ref(false)
 const rulesMap = ref<Map<string, Rule>>(new Map())
 const genAsset = ref('')
 const genBundle = ref('')
@@ -233,10 +235,12 @@ async function copyText(t: string) {
 }
 
 async function load() {
+  loaded.value = false
   try {
     reports.value = filterByHospital(await api.reports())
     bundles.value = filterByHospital(await api.bundles())
     try { assets.value = filterByHospital(await api.assets()) } catch { assets.value = [] }
+    loaded.value = true
     try {
       const rs = await api.rules()
       rulesMap.value = new Map(rs.map(r => [r.ID, r]))

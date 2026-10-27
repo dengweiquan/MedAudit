@@ -24,3 +24,6 @@ session.json
 # shipped env template is not a secret
 !packaging/medaudit.env
 !*.env.example
+web/e2e/__screens__/
+web/test-results/
+web/playwright-report/

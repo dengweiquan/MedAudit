@@ -26,7 +26,7 @@
       <span v-if="!latestOnly">含全部历史轮次，同一问题会重复出现。</span>
     </p>
     <div v-if="error" class="error">{{ error }}</div>
-    <table v-else-if="groups.length">
+    <table v-else-if="rulesReady && groups.length">
       <thead><tr><th>问题名称</th><th>风险</th><th>涉及账号</th><th></th><th></th></tr></thead>
       <tbody>
         <template v-for="g in groups" :key="g.ruleId">
@@ -209,7 +209,8 @@
         </template>
       </tbody>
     </table>
-    <div v-else class="empty">该审计记录暂无问题（或尚未评估，去「审计记录」页的工程师详情里点评估）。</div>
+    <div v-else-if="rulesReady" class="empty">该审计记录暂无问题（或尚未评估，去「审计记录」页的工程师详情里点评估）。</div>
+    <div v-else class="empty">加载中…</div>
   </div>
 </template>
 
@@ -243,6 +244,8 @@ const opErr = ref('')
 const reviewForm = ref({ decision: 'confirmed', comment: '', reviewer: reviewerName() })
 const remForm = ref({ action: '', status: 'pending', acted_by: reviewerName() })
 const rulesMap = ref<Map<string, Rule>>(new Map())
+const rulesReady = ref(false)
+let loadSeq = 0
 
 function ruleOf(f: Finding | string): Rule | undefined {
   return rulesMap.value.get(typeof f === 'string' ? f : f.rule_id)
@@ -354,8 +357,9 @@ async function openHowTo(g: RuleGroup) {
 async function load() {
   error.value = ''; openId.value = 0; openRule.value = ''; openSubject.value = ''
   if (!bundleId.value) return
-  try { findings.value = await api.findings(bundleId.value) }
-  catch (e) { error.value = e instanceof Error ? e.message : '加载失败'; findings.value = [] }
+  const seq = ++loadSeq
+  try { const rows = await api.findings(bundleId.value); if (seq !== loadSeq) return; findings.value = rows }
+  catch (e) { if (seq !== loadSeq) return; error.value = e instanceof Error ? e.message : '加载失败'; findings.value = [] }
 }
 
 async function toggle(f: Finding) {
@@ -474,6 +478,7 @@ onMounted(async () => {
       const rs = await api.rules()
       rulesMap.value = new Map(rs.map(r => [r.ID, r]))
     } catch { /* 无规则说明时降级为仅原始详情 */ }
+    rulesReady.value = true
     // 默认该对象最新一次审计：显式指定的包优先，其次指定对象，再次首个对象。
     if (nav.bundleId && bundles.value.some(b => b.id === nav.bundleId)) {
       bundleId.value = nav.bundleId

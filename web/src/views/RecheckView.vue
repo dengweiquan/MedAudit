@@ -13,7 +13,8 @@
     <div v-if="error" class="error">{{ error }}</div>
     <div v-else-if="!candidates.length" class="empty">暂无拥有两个以上事实包的对象。先对同一对象审计两次（整改前后各一次），再来这里看复检结果。</div>
 
-    <template v-if="oldBundle && newBundle">
+    <div v-else-if="comparing" class="empty">对比中…</div>
+    <template v-if="oldBundle && newBundle && !comparing">
       <p><b>{{ summaryLine }}</b></p>
       <p v-if="!still.length && !added.length" class="msg">本对象问题已全部清零。</p>
 
@@ -63,6 +64,8 @@ const newBundle = ref<BundleSummary | null>(null)
 interface Group { f: Finding; n: number }
 const rulesMap = ref<Map<string, Rule>>(new Map())
 const stillOpen = ref(false)
+const comparing = ref(false)
+let compareSeq = 0
 const fixed = ref<Group[]>([])
 const still = ref<Group[]>([])
 const added = ref<Group[]>([])
@@ -109,6 +112,7 @@ function text(f: Finding): string {
 
 async function compare() {
   error.value = ''
+  const seq = ++compareSeq
   fixed.value = []; still.value = []; added.value = []
   oldBundle.value = null; newBundle.value = null
   if (!assetId.value) return
@@ -119,8 +123,10 @@ async function compare() {
   const nb = pair.new
   const ob = pair.old
   newBundle.value = nb; oldBundle.value = ob
+  comparing.value = true
   try {
     const [of, nf] = await Promise.all([api.findings(ob.id), api.findings(nb.id)])
+    if (seq !== compareSeq) return
     const oldB = bucket(latestFail(of))
     const newB = bucket(latestFail(nf))
     for (const [k, og] of oldB) {
@@ -134,7 +140,10 @@ async function compare() {
       const common = Math.min(ng.n, og?.n ?? 0)
       if (ng.n > common) added.value.push({ f: ng.f, n: ng.n - common })
     }
+    comparing.value = false
   } catch (e) {
+    if (seq !== compareSeq) return
+    comparing.value = false
     error.value = e instanceof Error ? e.message : '对比失败'
   }
 }
@@ -156,8 +165,11 @@ onMounted(async () => {
       rulesMap.value = new Map(rs.map(r => [r.ID, r]))
     } catch { /* 无规则说明时降级显示规则 ID */ }
     const wanted = nav.assetId
-    assetId.value = (wanted && candidates.value.some(a => a.id === wanted)) ? wanted : (candidates.value[0]?.id ?? '')
-    await compare()
+    // 用户已在加载期间选过对象时不覆盖、不重算，否则后到的 mount 对比会覆盖用户所选对象的结论。
+    if (!assetId.value) {
+      assetId.value = (wanted && candidates.value.some(a => a.id === wanted)) ? wanted : (candidates.value[0]?.id ?? '')
+      await compare()
+    }
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
 })
 </script>
