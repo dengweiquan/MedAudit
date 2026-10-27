@@ -308,7 +308,7 @@ func main() {
 		}
 		sessions := platform.NewSessionStore()
 		registerAuthRoutes(mux, db, sessions)
-		registerUserRoutes(mux, db, sessions) // M20 用户管理
+		registerUserRoutes(mux, db, sessions)  // M20 用户管理
 		registerAdminRoutes(mux, db, sessions) // M27 一键清场
 		registerOpLogRoutes(mux, db)           // 平台操作日志
 		registerAlertRoutes(mux, db, sessions) // 权限漂移/复检失败告警

@@ -49,7 +49,6 @@ var oracleExtraRules = []struct {
 	},
 }
 
-
 // oracleMaintainedNames 汇总「厂商维护」主体集合：优先用事实自带的
 // oracle_maintained 标记（ora.cdb_users），再并入内置 19c 厂商账号清单兜底
 // （纯 PDB 采集无 CDB 事实时使用）。组件版本化模式（APEX_190200 等）按前缀识别。

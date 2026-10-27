@@ -1,12 +1,12 @@
 package platform
 
 import (
-	"medaudit/internal/remediation"
 	"bytes"
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"medaudit/internal/remediation"
 )
 
 // ReportRow 报告列表行（M6）。bundle_id 与结论摘要自快照 JSON 提取。

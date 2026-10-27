@@ -12,10 +12,11 @@ import (
 )
 
 // M20 用户管理（全部经 authMiddleware 要求登录会话）：
-//   GET  /api/v1/users                       列表（不含哈希）
-//   POST /api/v1/users                       建号（must_change_pwd=1）
-//   PUT  /api/v1/users/{name}/password       管理员重置（吊销该用户会话）
-//   PUT  /api/v1/users/{name}/disabled       禁用/启用（禁用即吊销会话）
+//
+//	GET  /api/v1/users                       列表（不含哈希）
+//	POST /api/v1/users                       建号（must_change_pwd=1）
+//	PUT  /api/v1/users/{name}/password       管理员重置（吊销该用户会话）
+//	PUT  /api/v1/users/{name}/disabled       禁用/启用（禁用即吊销会话）
 //
 // 防自锁：禁止禁用自己、禁止禁用最后一个可用账号。
 // 留痕：建号/重置/启停写服务端日志行 [user-admin]。

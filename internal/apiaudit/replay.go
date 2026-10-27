@@ -22,10 +22,10 @@ const (
 
 // ReplaySession 一次重放探针：用指定身份的截获会话凭证重放。
 type ReplaySession struct {
-	Name        string      `yaml:"name"`        // 会话名（报告 Identity 字段）
-	Identity    string      `yaml:"identity"`    // 引用 identities 中的身份名
+	Name        string       `yaml:"name"`        // 会话名（报告 Identity 字段）
+	Identity    string       `yaml:"identity"`    // 引用 identities 中的身份名
 	Invalidated Invalidation `yaml:"invalidated"` // 失效条件
-	Note        string      `yaml:"note"`        // 失效背景说明（附加到 Detail）
+	Note        string       `yaml:"note"`        // 失效背景说明（附加到 Detail）
 }
 
 // ReplayConfig 重放探针配置。Endpoints 留空 = 全部 GET 端点。

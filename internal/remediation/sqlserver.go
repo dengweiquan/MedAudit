@@ -122,7 +122,7 @@ func msSpConfigure(option, ruleKey, note string) generator {
 		return &Script{
 			RuleID: ruleID, Subject: subject,
 			Precheck: fmt.Sprintf("EXEC sp_configure %s;", sq(option)),
-			Fix: fmt.Sprintf("EXEC sp_configure 'show advanced options', 1;\nRECONFIGURE;\nEXEC sp_configure %s, 0;\nRECONFIGURE;\nEXEC sp_configure 'show advanced options', 0;\nRECONFIGURE;", sq(option)),
+			Fix:      fmt.Sprintf("EXEC sp_configure 'show advanced options', 1;\nRECONFIGURE;\nEXEC sp_configure %s, 0;\nRECONFIGURE;\nEXEC sp_configure 'show advanced options', 0;\nRECONFIGURE;", sq(option)),
 			Verify:   fmt.Sprintf("SELECT name, value_in_use FROM sys.configurations WHERE name = %s;  -- 应为 0", sq(option)),
 			Rollback: fmt.Sprintf("EXEC sp_configure 'show advanced options', 1;\nRECONFIGURE;\nEXEC sp_configure %s, %s;\nRECONFIGURE;\nEXEC sp_configure 'show advanced options', 0;\nRECONFIGURE;", sq(option), cur),
 			Note:     note,

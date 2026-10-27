@@ -16,8 +16,8 @@ import (
 // ---------- server.xml / tomcat-users.xml 结构 ----------
 
 type tcServer struct {
-	XMLName  xml.Name     `xml:"Server"`
-	Services []tcService  `xml:"Service"`
+	XMLName  xml.Name    `xml:"Server"`
+	Services []tcService `xml:"Service"`
 }
 type tcService struct {
 	Connectors []tcConnector `xml:"Connector"`
@@ -58,8 +58,8 @@ func effectiveSSLProtocol(c tcConnector) string {
 }
 
 type tcUsers struct {
-	XMLName xml.Name  `xml:"tomcat-users"`
-	Users   []tcUser  `xml:"user"`
+	XMLName xml.Name `xml:"tomcat-users"`
+	Users   []tcUser `xml:"user"`
 }
 type tcUser struct {
 	Username string `xml:"username,attr"`

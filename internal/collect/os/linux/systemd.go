@@ -9,14 +9,14 @@ import (
 
 // UnitInfo systemd 单元的白名单属性（只读，不含环境变量与完整启停脚本）。
 type UnitInfo struct {
-	ID          string
-	ActiveState string
-	SubState    string
-	UnitType    string
-	User        string // 配置的运行用户（systemd.exec User=）
-	Group       string
-	MainPID     int
-	ExecMainPID int
+	ID           string
+	ActiveState  string
+	SubState     string
+	UnitType     string
+	User         string // 配置的运行用户（systemd.exec User=）
+	Group        string
+	MainPID      int
+	ExecMainPID  int
 	FragmentPath string // 单元文件路径
 }
 

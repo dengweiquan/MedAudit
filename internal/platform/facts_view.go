@@ -10,10 +10,10 @@ import (
 
 // FactsPage 事实明细分页结果（M6：主机/数据库明细浏览的数据来源）。
 type FactsPage struct {
-	BundleID   string         `json:"bundle_id"`
-	Total      int            `json:"total"`
+	BundleID     string         `json:"bundle_id"`
+	Total        int            `json:"total"`
 	CountsByKind map[string]int `json:"counts_by_kind"`
-	Facts      []facts.Fact   `json:"facts"`
+	Facts        []facts.Fact   `json:"facts"`
 }
 
 // BundleFacts 读取已存事实包并按 kind 过滤、分页返回事实明细。

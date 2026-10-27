@@ -131,8 +131,8 @@ var mwBuiltinRules = []builtinRule{
 					continue
 				}
 				hits = append(hits, CheckHit{
-					Subject: f.Subject,
-					Detail:  fmt.Sprintf("管理控制台应用已部署：%s（%s）", f.Subject, f.Attributes["path"]),
+					Subject:  f.Subject,
+					Detail:   fmt.Sprintf("管理控制台应用已部署：%s（%s）", f.Subject, f.Attributes["path"]),
 					Evidence: []string{f.FactID},
 				})
 			}
@@ -254,8 +254,8 @@ var mwBuiltinRules = []builtinRule{
 				}
 				if strings.EqualFold(proto, "all") {
 					hits = append(hits, CheckHit{
-						Subject: f.Subject,
-						Detail:  fmt.Sprintf("Connector %s 协议配置=all（含弱协议）", f.Subject),
+						Subject:  f.Subject,
+						Detail:   fmt.Sprintf("Connector %s 协议配置=all（含弱协议）", f.Subject),
 						Evidence: []string{f.FactID},
 					})
 					continue
