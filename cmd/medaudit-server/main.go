@@ -293,6 +293,7 @@ func main() {
 		registerOpLogRoutes(mux, db)           // 平台操作日志
 		registerAlertRoutes(mux, db, sessions) // 权限漂移/复检失败告警
 		registerScheduleRoutes(mux, db, keyring, scheduler, sessions)
+		registerTemplateRoutes(mux, db, rules.DefaultRegistry(), sessions)
 		authSessions = sessions
 		if collectorWinBin != "" {
 			fmt.Fprintf(os.Stderr, "远程推送（WinRM）已启用（Windows 采集器: %s）\n", collectorWinBin)

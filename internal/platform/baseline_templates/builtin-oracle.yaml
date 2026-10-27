@@ -1,0 +1,14 @@
+id: builtin-oracle
+name: Oracle 内置管理账号
+system: 通用
+target: db-oracle
+status: verified
+description: |
+  Oracle 安装即带的管理账号：SYS、SYSTEM 持有 DBA 角色，SYS 在密码文件中持有
+  SYSDBA/SYSOPER。这些是数据库自身运行所需，不应回收；但仍需确认口令已改、
+  远程登录受控。
+entries:
+  - {subject: SYS, kind: role, value: DBA, reason: Oracle 内置超级管理账号}
+  - {subject: SYSTEM, kind: role, value: DBA, reason: Oracle 内置管理账号}
+  - {subject: SYS, kind: privilege, value: SYSDBA, scope: pwfile, reason: Oracle 内置超级管理账号（密码文件）}
+  - {subject: SYS, kind: privilege, value: SYSOPER, scope: pwfile, reason: Oracle 内置超级管理账号（密码文件）}

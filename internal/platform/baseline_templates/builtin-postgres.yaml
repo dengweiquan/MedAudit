@@ -1,0 +1,10 @@
+id: builtin-postgres
+name: PostgreSQL 初始化超级用户
+system: 通用
+target: db-postgres
+status: verified
+description: |
+  initdb 创建的初始超级用户（通常为 postgres）。如果安装时用 -U 指定了其他名
+  字，请在套用前改成实际名称。
+entries:
+  - {subject: postgres, kind: role, value: superuser, reason: 初始化超级用户}

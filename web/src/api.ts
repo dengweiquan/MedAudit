@@ -367,6 +367,18 @@ function post<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
+export interface BaselineTemplate {
+  id: string
+  name: string
+  system: string
+  target: string
+  status: 'verified' | 'draft'
+  description: string
+  entries: { subject: string; kind: string; value: string; scope: string; reason: string }[]
+  placeholders: string[]
+  source: 'builtin' | 'site'
+}
+
 export interface ScheduleRow {
   asset_id: string
   hospital_id: string
@@ -450,6 +462,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ disabled }),
     }),
+  // 基线模板
+  baselineTemplates: () => req<{ items: BaselineTemplate[]; errors: string[] }>('/api/v1/baseline-templates'),
+  applyBaselineTemplate: (id: string, body: { hospital_id: string; baseline_id: string; values: Record<string, string>; skip: number[] }) =>
+    post<{ baseline_id: string; created: boolean; added: number; reevaluated: number; reevaluate_error?: string }>(
+      `/api/v1/baseline-templates/${encodeURIComponent(id)}/apply`, body),
   // 定期自动复检
   schedules: () => req<{ items: ScheduleRow[]; key_ready: boolean }>('/api/v1/schedules'),
   saveSchedule: (assetId: string, body: { cycle_days: number; password?: string }) =>

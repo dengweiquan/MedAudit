@@ -1,0 +1,11 @@
+id: lis-sqlserver
+name: LIS 应用登录（SQL Server）
+system: LIS
+target: db-sqlserver
+status: draft
+description: |
+  LIS 部署在 SQL Server 时，部分厂商要求应用登录加入 sysadmin（建库、作业、仪器
+  接口程序需要）。套用前把 {…} 换成现场实际登录名，并取得厂商书面说明留档；
+  能降为 db_owner 的应优先整改而非放行。
+entries:
+  - {subject: "{LIS应用登录}", kind: role, value: sysadmin, scope: server, reason: LIS 厂商部署要求（须厂商书面说明）}

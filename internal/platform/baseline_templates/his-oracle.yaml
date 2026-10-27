@@ -1,0 +1,12 @@
+id: his-oracle
+name: HIS 应用库账号（Oracle）
+system: HIS
+target: db-oracle
+status: draft
+description: |
+  HIS 部署在 Oracle 时常见的厂商要求：应用主账号持有 DBA 角色（升级、建表需要），
+  接口/报表账号持有 SELECT ANY TABLE 跨模式查询。各厂商与版本差异很大，套用前
+  请把 {…} 换成现场实际账号，并取得厂商书面说明留档；不需要的条目取消勾选。
+entries:
+  - {subject: "{HIS应用账号}", kind: role, value: DBA, reason: HIS 厂商部署/升级要求（须厂商书面说明）}
+  - {subject: "{HIS接口账号}", kind: privilege, value: SELECT ANY TABLE, reason: 接口/报表跨模式查询（须厂商书面说明）}

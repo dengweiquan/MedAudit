@@ -448,3 +448,39 @@ MYSQL_PW=<只读审计账号口令>
 机器人均可直接接收（钉钉机器人若开启「自定义关键词」安全设置，关键词填 `MedAudit`）。
 推送失败只写服务日志，不影响告警落库。接口：`GET /api/v1/alerts`（`?all=1` 含已确认）、
 `POST /api/v1/alerts/{id}/ack`。
+
+## 9. 基线模板（试点提速）
+
+「基线」页顶部「从模板套用基线」：选模板 → 填占位账号 → 取消不需要的条目 → 「一键套用」。
+已有同名基线则追加，没有则新建；套用后自动用本院全部基线重评本院同类对象的最新审计。
+
+内置模板：
+
+| 模板 | 状态 | 说明 |
+| --- | --- | --- |
+| Oracle / MySQL 8.0 / SQL Server / PostgreSQL 内置账号 | 已核实 | 数据库自带的管理与系统账号，可直接套用 |
+| HIS（Oracle）、LIS（SQL Server）、PACS（SQL Server / Oracle） | 草稿 | 常见厂商要求的整理，账号名写成 `{…}` 占位，必须填现场实际账号 |
+| 厂商运维账号 sudo（Linux） | 草稿 | 同上 |
+
+草稿模板不是某家厂商的官方清单。套用前请与厂商确认并取得书面说明留档；能整改的优先整改，
+不要用基线掩盖。
+
+**站点模板**：把现场核实过的模板放到 `/etc/medaudit/baseline-templates/*.yaml`
+（或 `MEDAUDIT_BASELINE_TEMPLATE_DIR` 指定的目录），刷新页面即可见；与内置模板同 `id`
+时覆盖内置。格式：
+
+```yaml
+id: his-oracle-vendorA          # 唯一
+name: HIS 应用库账号（Oracle，某厂商 V5）
+system: HIS                     # HIS / LIS / PACS / 通用 …
+target: db-oracle               # 与资产类型一致
+status: verified                # verified 已核实 | draft 草稿
+description: |
+  来源：某厂商部署手册 V5.2 第 3 章；院方信息科 2026-10 确认。
+entries:                        # kind/value 口径与「加入基线」一致
+  - {subject: HISAPP, kind: role, value: DBA, reason: 厂商升级需要}
+  - {subject: "{接口账号}", kind: privilege, value: SELECT ANY TABLE, reason: 接口查询}
+```
+
+接口：`GET /api/v1/baseline-templates`、`POST /api/v1/baseline-templates/{id}/apply`
+（`{hospital_id, baseline_id, values:{"{占位}":"账号"}, skip:[序号]}`）。
