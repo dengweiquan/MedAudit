@@ -5,11 +5,19 @@ export const nav = reactive({
   view: 'dashboard' as string,
   bundleId: '' as string,
   assetId: '' as string,
+  // 审计对象页的类别筛选（全部/数据库/操作系统/中间件/业务接口），由首页
+  // 类别卡与旧类别路由跳转时设定；审计对象页挂载与视图切换时读取。
+  objectsFilter: '' as string,
 })
 
 export function goto(view: string, bundleId?: string) {
   nav.view = view
   if (bundleId !== undefined) nav.bundleId = bundleId
+}
+
+export function gotoObjects(filter: string) {
+  nav.objectsFilter = filter
+  nav.view = 'objects'
 }
 
 export function gotoAsset(view: string, assetId: string) {
@@ -30,6 +38,22 @@ export function setHospital(id: string) {
   try {
     if (id) localStorage.setItem(HOSPITAL_KEY, id)
     else localStorage.removeItem(HOSPITAL_KEY)
+  } catch { /* 隐私模式等写失败时仅本次会话有效 */ }
+}
+
+// 工程师模式：只切换界面显示（菜单与详情层级），不是权限控制——
+// 现在所有账号同权，开关旁悬停提示写明。状态存 localStorage，读写包 try/catch。
+const ENGINEER_KEY = 'medaudit-engineer-mode'
+function loadEngineer(): boolean {
+  try { return localStorage.getItem(ENGINEER_KEY) === '1' } catch { return false }
+}
+export const engineerMode = reactive({ on: loadEngineer() })
+
+export function setEngineerMode(on: boolean) {
+  engineerMode.on = on
+  try {
+    if (on) localStorage.setItem(ENGINEER_KEY, '1')
+    else localStorage.removeItem(ENGINEER_KEY)
   } catch { /* 隐私模式等写失败时仅本次会话有效 */ }
 }
 

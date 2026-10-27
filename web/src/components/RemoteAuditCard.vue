@@ -24,7 +24,7 @@
       <p>
         审计完成（传输：{{ result.transport }}<span v-if="result.host_key_fingerprint">，主机密钥 {{ result.host_key_fingerprint }}</span>）：
         采集事实 {{ result.facts }} 条 / 收据 {{ result.receipts }} 张；
-        评估 {{ result.evaluation.total }} 条结果，FAIL {{ result.evaluation.fail }}，问题落库 {{ result.evaluation.findings_stored }}。
+        评估 {{ result.evaluation.total }} 条结果，不通过 {{ result.evaluation.fail }} 项，问题落库 {{ result.evaluation.findings_stored }}。
       </p>
       <div class="row-actions">
         <a class="btn primary" :href="api.reportDocxUrl(result.report_id)" download>下载 Word 审计报告</a>

@@ -12,6 +12,10 @@
       <span class="badge" v-if="health"><span class="dot"></span>运行正常<span class="ver">{{ health.version }}</span></span>
       <span class="badge off" v-else><span class="dot"></span>连接中…</span>
       <span class="todo" v-if="hospitalLabel" style="margin-left:12px">当前医院：{{ hospitalLabel }} <button class="btn small" :disabled="mustChange" @click="goto('admin')">管理页切换</button></span>
+      <label class="userbox" style="gap:4px" title="工程师模式只切换界面显示，不是权限控制；现在所有账号权限相同。">
+        <input type="checkbox" :checked="engineerMode.on" @change="toggleEngineer(($event.target as HTMLInputElement).checked)" />
+        工程师模式
+      </label>
       <span class="userbox">
         <span class="user-name">{{ username }}</span>
         <button class="btn small" :disabled="mustChange" @click="showPw = !showPw">修改口令</button>
@@ -34,16 +38,14 @@
 
     <template v-if="!mustChange">
     <nav class="tabs">
-      <button v-for="t in tabs" :key="t.key" :class="{ active: nav.view === t.key }" @click="goto(t.key)">
+      <button v-for="t in tabs" :key="t.key" :class="{ active: nav.view === t.key || (t.key === 'objects' && ['databases', 'os', 'middleware', 'api'].includes(nav.view)) }" @click="goto(t.key)">
         {{ t.label }}
       </button>
     </nav>
 
     <DashboardView v-if="nav.view === 'dashboard'" />
-    <DatabasesView v-else-if="nav.view === 'databases'" />
-    <OsView v-else-if="nav.view === 'os'" />
-    <MiddlewareView v-else-if="nav.view === 'middleware'" />
-    <ApiView v-else-if="nav.view === 'api'" />
+    <!-- 旧类别路由（数据库/操作系统/中间件/业务接口）保留并跳转到审计对象页对应筛选（M37-2.2）。 -->
+    <ObjectsView v-else-if="nav.view === 'objects' || nav.view === 'databases' || nav.view === 'os' || nav.view === 'middleware' || nav.view === 'api'" />
     <BundlesView v-else-if="nav.view === 'bundles'" />
     <FindingsView v-else-if="nav.view === 'findings'" />
     <ReportsView v-else-if="nav.view === 'reports'" />
@@ -60,15 +62,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, type Health, type Hospital } from './api'
-import { nav, goto, selectedHospital, setHospital } from './store'
+import { nav, goto, selectedHospital, setHospital, engineerMode, setEngineerMode } from './store'
 import { loadSite } from './util'
 import LoginView from './views/LoginView.vue'
 import SiteFooter from './components/SiteFooter.vue'
 import DashboardView from './views/DashboardView.vue'
-import DatabasesView from './views/DatabasesView.vue'
-import OsView from './views/OsView.vue'
-import MiddlewareView from './views/MiddlewareView.vue'
-import ApiView from './views/ApiView.vue'
 import BundlesView from './views/BundlesView.vue'
 import FindingsView from './views/FindingsView.vue'
 import ReportsView from './views/ReportsView.vue'
@@ -77,22 +75,31 @@ import RulesView from './views/RulesView.vue'
 import PathsView from './views/PathsView.vue'
 import RecheckView from './views/RecheckView.vue'
 import AdminView from './views/AdminView.vue'
+import ObjectsView from './views/ObjectsView.vue'
 
-const tabs = [
-  { key: 'dashboard', label: '工作台' },
-  { key: 'databases', label: '数据库' },
-  { key: 'os', label: '操作系统' },
-  { key: 'middleware', label: '中间件' },
-  { key: 'api', label: '业务接口' },
-  { key: 'bundles', label: '审计记录' },
+// 医院模式（默认）5 个菜单；工程师模式额外显示 5 个。
+// 只是界面显示切换，不是权限控制。
+const hospitalTabs = [
+  { key: 'dashboard', label: '首页' },
+  { key: 'objects', label: '审计对象' },
   { key: 'findings', label: '问题' },
   { key: 'reports', label: '报告' },
   { key: 'recheck', label: '复检对比' },
+]
+const engineerTabs = [
+  { key: 'bundles', label: '审计记录' },
   { key: 'baselines', label: '基线' },
   { key: 'rules', label: '规则' },
   { key: 'paths', label: '关联分析' },
   { key: 'admin', label: '管理' },
 ]
+const tabs = computed(() => engineerMode.on ? [...hospitalTabs, ...engineerTabs] : hospitalTabs)
+const engineerOnly = new Set(engineerTabs.map(t => t.key))
+function toggleEngineer(on: boolean) {
+  setEngineerMode(on)
+  // 切回医院模式时，若正停在工程师专属页，回到首页，避免空白页。
+  if (!on && engineerOnly.has(nav.view)) goto('dashboard')
+}
 
 // M12 鉴权态：checking → in / out；任一 API 返回 401 时自动回登录页
 const authState = ref<'checking' | 'in' | 'out'>('checking')

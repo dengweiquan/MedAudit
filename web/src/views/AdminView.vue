@@ -1,12 +1,15 @@
 <template>
   <div class="card">
-    <h2>管理说明</h2>
-    <p class="todo">本页为工程师管理面：医院与对象的登记、参数修改、归类与删除。客户日常只需在类别页点「开始审计」与「导出报告」。删除只移除资产登记，历史事实包/问题/报告作为审计证据保留。工程师也可使用 ma 命令（如 ma assetadd、ma rules、ma baseexempt、ma srv）。</p>
+    <h2>管理</h2>
+    <p class="todo">本页为工程师管理面。删除只移除资产登记，历史事实包/问题/报告作为审计证据保留。</p>
+    <div class="row-actions" style="margin-top:8px">
+      <button v-for="t in adminTabs" :key="t.key" class="btn small" :class="{ primary: adminTab === t.key }" @click="adminTab = t.key">{{ t.label }}</button>
+    </div>
     <div class="msg" v-if="msg">{{ msg }}</div>
     <div class="msg err" v-if="err">{{ err }}</div>
   </div>
 
-  <div class="card" v-if="site?.hospital_id">
+  <div class="card" v-if="adminTab === 'site' && site?.hospital_id">
     <h2>本站信息</h2>
     <table>
       <tbody>
@@ -17,7 +20,7 @@
     <div class="todo">本平台为单院部署：本站医院在系统初始化时给定，本页不提供多医院管理。登记的所有对象自动归属本站。如需变更本站信息，由工程师修改服务端初始化参数（MEDAUDIT_SITE_HOSPITAL_ID / NAME）后重启服务。当前查看医院已锁定为本站，工作台与各类别页只显示本站信息。</div>
   </div>
 
-  <div class="card" v-else>
+  <div class="card" v-else-if="adminTab === 'site' && !site?.hospital_id">
     <h2>医院登记</h2>
     <table v-if="hospitals.length">
       <thead><tr><th>ID</th><th>名称</th><th>登记时间</th></tr></thead>
@@ -33,18 +36,23 @@
     <div class="todo">本站尚未初始化（当前为多院开发/测试模式）。客户部署在初始化时给定本站医院后，本节自动变为「本站信息」。名称为 auto-created:* 的是导入时自动生成的占位登记。</div>
   </div>
 
-  <div class="card" v-if="!site?.hospital_id">
+  <div class="card" v-if="adminTab === 'site' && !site?.hospital_id">
     <h2>当前查看医院</h2>
     <div class="inline-form">
       <select v-model="viewHospital" @change="onViewHospitalChange">
         <option value="">全部医院</option>
         <option v-for="h in hospitals" :key="h.id" :value="h.id">{{ h.id }}（{{ h.name }}）</option>
       </select>
-      <span class="todo">选择后，工作台、数据库、操作系统、中间件、业务接口、审计记录、问题、报告、复检对比、关联分析只显示该医院的信息；刷新、换页后仍然有效。切回「全部医院」恢复全量。规则页不受影响（规则启停为本站级）。下方登记表单的医院缺省值跟随当前选择。</span>
+      <span class="todo">选择后各页只显示该医院的信息；刷新、换页后仍然有效。规则页不受影响（规则启停为本站级）。</span>
     </div>
   </div>
 
-  <div class="card" v-if="unclassified.length">
+  <div class="card" v-if="adminTab === 'site'">
+    <h2>清场说明</h2>
+    <p class="todo">清场会删除全部业务数据（资产、事实包、问题、报告、基线、规则启停、用户、操作日志等），仅用于测试环境重建：先用 ma srvbak 备份，再用 ma srvreset 清场；清场后管理员恢复为初始口令，需重新登录。</p>
+  </div>
+
+  <div class="card" v-if="adminTab === 'objects' && unclassified.length">
     <h2>待分类资产（{{ unclassified.length }}）</h2>
     <div class="todo" style="margin-bottom:8px">以下资产是早期导入自动生成的占位登记（类型 unknown），请选择正确类型保存，以便归入类别页管理。</div>
     <table>
@@ -69,7 +77,13 @@
     </table>
   </div>
 
-  <div class="card">
+  <div class="card" v-if="adminTab === 'objects'">
+    <div class="row-actions" style="margin-bottom:8px">
+      <button v-for="t in regTabs" :key="t.key" class="btn small" :class="{ primary: regTab === t.key }" @click="regTab = t.key">{{ t.label }}</button>
+    </div>
+  </div>
+
+  <div class="card" v-if="adminTab === 'objects' && regTab === 'db'">
     <h2>登记数据库</h2>
     <div class="form-grid">
       <label>数据库类型
@@ -104,7 +118,7 @@
     <div class="todo">登记只保存连接参数（非机密信息）。<b>口令不保存</b>，在一键审计时输入、仅本次使用。请使用只读审计账号。</div>
   </div>
 
-  <div class="card">
+  <div class="card" v-if="adminTab === 'objects' && regTab === 'os'">
     <h2>登记主机</h2>
     <div class="form-grid">
       <label>资产 ID<input v-model="osForm.id" placeholder="host-his-01" /></label>
@@ -137,7 +151,7 @@
     <div class="todo">登记了远程参数（主机+账号）的主机可由服务端推送采集器远程审计：口令在审计时输入、仅本次使用不保存。</div>
   </div>
 
-  <div class="card">
+  <div class="card" v-if="adminTab === 'objects' && regTab === 'mw'">
     <h2>登记中间件</h2>
     <div class="form-grid">
       <label>产品
@@ -166,7 +180,26 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" v-if="adminTab === 'objects' && regTab === 'api'">
+    <h2>登记业务接口</h2>
+    <div class="form-grid">
+      <label>资产 ID<input v-model="apiForm.id" placeholder="api-his-01" /></label>
+      <label v-if="site?.hospital_id">医院<input :value="site.name + '（' + site.hospital_id + '）'" disabled /></label>
+      <label v-else>医院
+        <select v-model="apiForm.hospital_id">
+          <option v-for="h in hospitals" :key="h.id" :value="h.id">{{ h.id }}（{{ h.name }}）</option>
+        </select>
+      </label>
+      <label>名称<input v-model="apiForm.name" placeholder="如：HIS 对外接口" /></label>
+      <label>接口地址<input v-model="apiForm.endpoint" placeholder="如 https://his.example.com/api" /></label>
+    </div>
+    <div class="inline-form">
+      <button class="btn primary" @click="createApi">登记接口</button>
+    </div>
+    <div class="todo">登记后用采集器 apicheck 对该地址做接口审计（规范文件 + 上传地址见审计对象页的开始审计指引）。</div>
+  </div>
+
+  <div class="card" v-if="adminTab === 'objects'">
     <h2>资产总表（{{ assets.length }}）</h2>
     <div class="todo" v-if="viewHospital">当前只显示 {{ viewHospital }} 的资产；切回「全部医院」可见全部。</div>
     <div class="inline-form" v-if="delSelected.size" style="margin-bottom:8px">
@@ -215,7 +248,7 @@
     </table>
   </div>
 
-  <div class="card">
+  <div class="card" v-if="adminTab === 'users'">
     <h2>用户管理（{{ users.length }}）</h2>
     <table v-if="users.length">
       <thead><tr><th>用户名</th><th>状态</th><th>强制改密</th><th>创建时间</th><th></th></tr></thead>
@@ -252,9 +285,9 @@
     <div class="todo">禁用或重置口令会立即吊销该用户的全部会话；不能禁用自己与最后一个可用账号（服务端校验）。所有账号当前同权（无角色分级）。</div>
   </div>
 
-  <ScheduleCard />
+  <ScheduleCard v-if="adminTab === 'schedule'" />
 
-  <OpLogCard />
+  <OpLogCard v-if="adminTab === 'oplog'" />
 </template>
 
 <script setup lang="ts">
@@ -265,6 +298,24 @@ import { loadSite, fmtLocal} from '../util'
 import { selectedHospital, setHospital, filterByHospital } from '../store'
 import OpLogCard from '../components/OpLogCard.vue'
 import ScheduleCard from '../components/ScheduleCard.vue'
+
+// 管理页标签：审计对象登记 / 用户 / 定期自动复检 / 操作日志 / 本站与系统。
+const adminTab = ref('objects')
+const adminTabs = [
+  { key: 'objects', label: '审计对象登记' },
+  { key: 'users', label: '用户' },
+  { key: 'schedule', label: '定期自动复检' },
+  { key: 'oplog', label: '操作日志' },
+  { key: 'site', label: '本站与系统' },
+]
+// 登记表单子标签：数据库 / 主机 / 中间件 / 接口。
+const regTab = ref('db')
+const regTabs = [
+  { key: 'db', label: '数据库' },
+  { key: 'os', label: '主机' },
+  { key: 'mw', label: '中间件' },
+  { key: 'api', label: '接口' },
+]
 
 // 当前查看医院（管理页的选择器即全局筛选的唯一入口）。
 const viewHospital = ref('')
@@ -338,16 +389,19 @@ async function load() {
       dbForm.value.hospital_id = site.value.hospital_id
       osForm.value.hospital_id = site.value.hospital_id
       mwForm.value.hospital_id = site.value.hospital_id
+      apiForm.value.hospital_id = site.value.hospital_id
     } else if (viewHospital.value) {
       // 多院模式：登记表单缺省跟随当前查看医院
       dbForm.value.hospital_id = viewHospital.value
       osForm.value.hospital_id = viewHospital.value
       mwForm.value.hospital_id = viewHospital.value
+      apiForm.value.hospital_id = viewHospital.value
     }
     for (const a of assets.value) if (kindCategory(a.kind) === 'unknown') fixKind[a.id] = 'host'
     if (!dbForm.value.hospital_id && hospitals.value.length) dbForm.value.hospital_id = hospitals.value[0].id
     if (!osForm.value.hospital_id && hospitals.value.length) osForm.value.hospital_id = hospitals.value[0].id
     if (!mwForm.value.hospital_id && hospitals.value.length) mwForm.value.hospital_id = hospitals.value[0].id
+    if (!apiForm.value.hospital_id && hospitals.value.length) apiForm.value.hospital_id = hospitals.value[0].id
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
 }
 
@@ -474,6 +528,21 @@ async function createMw() {
     })
     note(`中间件 ${f.id} 已登记`)
     mwForm.value.id = ''; mwForm.value.name = ''
+    await load()
+  } catch (e) { fail(e, '登记失败') }
+}
+
+// ---- 业务接口登记 ----
+const apiForm = ref({ id: '', hospital_id: '', name: '', endpoint: '' })
+async function createApi() {
+  try {
+    const f = apiForm.value
+    await api.createAsset({
+      id: f.id, hospital_id: f.hospital_id, kind: 'api', name: f.name,
+      endpoint: f.endpoint || null, labels: JSON.stringify({ base_url: f.endpoint }),
+    })
+    note(`接口 ${f.id} 已登记`)
+    apiForm.value.id = ''; apiForm.value.name = ''
     await load()
   } catch (e) { fail(e, '登记失败') }
 }

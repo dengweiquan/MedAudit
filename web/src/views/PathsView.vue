@@ -3,7 +3,7 @@
     <h2>发起关联分析</h2>
     <p class="todo" style="margin-top:0">
       选择同一医院的 2 个以上事实包（应为同一主机的不同层面：操作系统 + 中间件 + 数据库），
-      系统将把它们建成权限图，搜索低权主体到 root / 数据库超级账号的提权路径。每一步都附证据事实。
+      系统将把它们建成权限图，搜索低权账号到 root / 数据库超级账号的提权路径。每一步都附证据事实。
     </p>
     <div v-if="error" class="error">{{ error }}</div>
     <div v-for="h in hospitalsWithBundles" :key="h" style="margin-bottom:10px">

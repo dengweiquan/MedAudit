@@ -2,47 +2,52 @@
   <div class="card">
     <h2>问题列表</h2>
     <div class="inline-form">
-      <label>审计记录
-        <select v-model="bundleId" @change="load">
-          <option v-for="b in bundles" :key="b.id" :value="b.id">{{ bundleLabel(b) }}</option>
+      <label>对象
+        <select v-model="assetId" @change="onAssetChange">
+          <option v-for="a in assetOptions" :key="a.id" :value="a.id">{{ a.name }}</option>
         </select>
       </label>
-      <span class="todo" v-if="current">资产 {{ current.asset_id }} · 医院 {{ current.hospital_id }}</span>
+      <label v-if="engineerMode.on">审计记录
+        <select v-model="bundleId" @change="load">
+          <option v-for="b in bundlesOfAsset" :key="b.id" :value="b.id">{{ bundleLabel(b) }}</option>
+        </select>
+      </label>
+      <span class="todo" v-if="current">最近审计 {{ fmtLocal(current.imported_at) }}</span>
       <label class="todo"><input type="checkbox" v-model="latestOnly" /> 只看最新一轮评估</label>
     </div>
     <div class="chips">
       <button class="chip" :class="{ active: filter === '' }" @click="filter = ''">全部 {{ runRows.length }}</button>
       <button v-for="c in conclusions" :key="c" class="chip" :class="{ active: filter === c }" @click="filter = c">
-        {{ c }} {{ runRows.filter(f => f.conclusion === c).length }}
+        {{ conclLabel(c) }} {{ runRows.filter(f => f.conclusion === c).length }}
       </button>
     </div>
     <p class="todo" v-if="runRows.length">
-      当前口径共 <b>{{ groups.length }} 类问题</b>、{{ filtered.length }} 条（按问题类型分组，展开看主体与明细）。
+      当前口径共 <b>{{ groups.length }} 类问题</b>、{{ filtered.length }} 条（按风险分组，展开看账号与明细）。
       <span v-if="!latestOnly">含全部历史轮次，同一问题会重复出现。</span>
     </p>
     <div v-if="error" class="error">{{ error }}</div>
-    <table v-else-if="groups.length">
-      <thead><tr><th>问题类型</th><th>风险</th><th>涉及主体</th><th>条数</th><th></th></tr></thead>
+    <table v-else-if="rulesReady && groups.length">
+      <thead><tr><th>问题名称</th><th>风险</th><th>涉及账号</th><th></th><th></th></tr></thead>
       <tbody>
         <template v-for="g in groups" :key="g.ruleId">
           <tr class="clickable" :class="{ selected: openRule === g.ruleId }" @click="openRule = openRule === g.ruleId ? '' : g.ruleId">
-            <td><b>{{ ruleName(g.ruleId) }}</b><div class="todo">{{ g.ruleId }}</div></td>
-            <td><span class="concl" :class="'risk-' + (ruleOf(g.ruleId)?.Risk ?? '')">{{ ruleOf(g.ruleId)?.Risk ?? '—' }}</span></td>
+            <td><b :title="engineerMode.on ? g.ruleId : undefined">{{ ruleName(g.ruleId) }}</b><div class="todo" v-if="engineerMode.on">{{ g.ruleId }}</div></td>
+            <td><span class="concl" :class="'risk-' + (ruleOf(g.ruleId)?.Risk ?? '')">{{ riskLabel(ruleOf(g.ruleId)?.Risk) }}</span></td>
             <td>{{ g.subjects.length }}</td>
-            <td>{{ g.rows.length }}</td>
+            <td><button class="btn small primary" @click.stop="openHowTo(g)">怎么改</button></td>
             <td>{{ openRule === g.ruleId ? '收起' : '展开' }}</td>
           </tr>
           <tr v-if="openRule === g.ruleId">
             <td colspan="5">
               <p v-if="ruleOf(g.ruleId)" style="margin:4px 0">{{ ruleOf(g.ruleId)?.Description }}<br /><b>如何解决：</b>{{ ruleOf(g.ruleId)?.Remediation }}</p>
               <table>
-                <thead><tr><th>主体</th><th>条数</th><th>结论</th><th></th></tr></thead>
+                <thead><tr><th>账号</th><th>条数</th><th>结论</th><th></th></tr></thead>
                 <tbody>
                   <template v-for="s in visibleSubjects(g)" :key="g.ruleId + '|' + s.subject">
                     <tr class="clickable" @click="toggleSubject(g.ruleId, s.subject)">
-                      <td>{{ subjectLabel(s.subject) }}<div class="todo" v-if="subjectLabel(s.subject) !== s.subject">{{ s.subject }}</div></td>
+                      <td>{{ subjectLabel(s.subject) }}<div class="todo" v-if="engineerMode.on && subjectLabel(s.subject) !== s.subject">{{ s.subject }}</div></td>
                       <td>{{ s.rows.length }}</td>
-                      <td><span v-for="c in subjectConclusions(s.rows)" :key="c" class="concl" :class="'c-' + c" style="margin-right:4px">{{ c }}</span></td>
+                      <td><span v-for="c in subjectConclusions(s.rows)" :key="c" class="concl" :class="'c-' + c" style="margin-right:4px">{{ conclLabel(c) }}</span></td>
                       <td>{{ openSubject === g.ruleId + '|' + s.subject ? '收起' : '明细' }}</td>
                     </tr>
                     <tr v-if="openSubject === g.ruleId + '|' + s.subject">
@@ -51,17 +56,17 @@
                           <tbody>
                             <template v-for="f in s.rows.slice(0, 30)" :key="f.id">
                               <tr class="clickable" :class="{ selected: openId === f.id }" @click="toggle(f)">
-                                <td style="width:60px">{{ f.id }}</td>
+                                <td v-if="engineerMode.on" style="width:60px">{{ f.id }}</td>
                                 <td>{{ detailText(f) || f.subject }}</td>
-                                <td><span class="concl" :class="'c-' + f.conclusion">{{ f.conclusion }}</span></td>
-                                <td><span class="concl" :class="'rev-' + f.review_status">{{ f.review_status }}</span></td>
+                                <td><span class="concl" :class="'c-' + f.conclusion">{{ conclLabel(f.conclusion) }}</span></td>
+                                <td><span class="concl" :class="'rev-' + f.review_status">{{ reviewLabel(f.review_status) }}</span></td>
                                 <td>{{ fmtLocal(f.created_at) }}</td>
                                 <td>{{ openId === f.id ? '收起' : '详情' }}</td>
                               </tr>
                               <tr v-if="openId === f.id">
-                                <td colspan="6">
+                                <td :colspan="engineerMode.on ? 6 : 5">
                                   <h3>结论：{{ f.conclusion === 'FAIL' ? '有问题，需处理' : f.conclusion === 'UNKNOWN' ? '证据不足，需人工确认' : f.conclusion }}</h3>
-                                  <p v-if="ruleOf(f)"><b>{{ ruleOf(f)?.Name }}</b> · 风险等级 {{ ruleOf(f)?.Risk }}</p>
+                                  <p v-if="ruleOf(f)"><b>{{ ruleOf(f)?.Name }}</b> · 风险等级 {{ riskLabel(ruleOf(f)?.Risk) }}</p>
                                   <p><b>问题原因：</b>{{ f.subject }}：{{ detailText(f) || f.subject }}<span v-if="ruleOf(f)">。{{ ruleOf(f)?.Description }}</span></p>
                                   <div>
                                     <p><b>如何解决：</b></p>
@@ -171,17 +176,17 @@
                                   <div class="inline-form">
                                     <select v-model="retestBundle">
                                       <option value="">选择同资产的复测事实包…</option>
-                                      <option v-for="b in sameAssetBundles(f)" :key="b.id" :value="b.id">{{ b.id }}（{{ fmtLocal(b.imported_at) }}）</option>
+                                      <option v-for="b in sameAssetBundles(f)" :key="b.id" :value="b.id">{{ engineerMode.on ? b.id + '（' + fmtLocal(b.imported_at) + '）' : fmtLocal(b.imported_at) }}</option>
                                     </select>
                                     <button class="btn primary" :disabled="!retestBundle" @click="doRetest(f)">执行复测</button>
-                                    <span class="todo">复测以新包做技术口径（无基线）重评估，比对同规则同主体。</span>
+                                    <span class="todo">复测以新包做技术口径（无基线）重评估，比对同规则同账号。</span>
                                   </div>
                                   <table v-if="retests.length">
                                     <thead><tr><th>复测包</th><th>结论</th><th>时间</th></tr></thead>
                                     <tbody>
                                       <tr v-for="r in retests" :key="r.id">
                                         <td>{{ r.bundle_id }}</td>
-                                        <td><span class="concl" :class="'c-' + r.conclusion">{{ r.conclusion }}</span></td>
+                                        <td><span class="concl" :class="'c-' + r.conclusion">{{ conclLabel(r.conclusion) }}</span></td>
                                         <td>{{ fmtLocal(r.created_at) }}</td>
                                       </tr>
                                     </tbody>
@@ -192,29 +197,34 @@
                             </template>
                           </tbody>
                         </table>
-                        <p class="todo" v-if="s.rows.length > 30">该主体共 {{ s.rows.length }} 条，此处仅列前 30 条；完整清单见报告导出。</p>
+                        <p class="todo" v-if="s.rows.length > 30">该账号共 {{ s.rows.length }} 条，此处仅列前 30 条；完整清单见报告导出。</p>
                       </td>
                     </tr>
                   </template>
                 </tbody>
               </table>
-              <button v-if="g.subjects.length > subjectCap" class="btn small" @click="subjectCap += 100">显示更多主体（剩余 {{ g.subjects.length - subjectCap }}）</button>
+              <button v-if="g.subjects.length > subjectCap" class="btn small" @click="subjectCap += 100">显示更多账号（剩余 {{ g.subjects.length - subjectCap }}）</button>
             </td>
           </tr>
         </template>
       </tbody>
     </table>
-    <div v-else class="empty">该审计记录暂无问题（或尚未评估，去「审计记录」页的工程师详情里点评估）。</div>
+    <div v-else-if="rulesReady" class="empty">该审计记录暂无问题（或尚未评估，去「审计记录」页的工程师详情里点评估）。</div>
+    <div v-else class="empty">加载中…</div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, type BaselineRow, type BundleSummary, type ExemptionPreview, type Finding, type FixScriptResp, type RemediationRow, type RetestRow, type Rule } from '../api'
-import { nav, reviewerName, saveReviewerName, filterByHospital } from '../store'
-import { latestRunFindings, fmtLocal, baselineKindLabel } from '../util'
+import { api, type Asset, type BaselineRow, type BundleSummary, type ExemptionPreview, type Finding, type FixScriptResp, type RemediationRow, type RetestRow, type Rule } from '../api'
+import { nav, reviewerName, saveReviewerName, filterByHospital, engineerMode } from '../store'
+import { latestRunFindings, latestBundleOf, fmtLocal, baselineKindLabel } from '../util'
+import { conclLabel, riskLabel, reviewLabel } from '../labels'
 
 const bundles = ref<BundleSummary[]>([])
+const assets = ref<Asset[]>([])
+const latestByAsset = ref(new Map<string, BundleSummary>())
+const assetId = ref('')
 const bundleId = ref('')
 const findings = ref<Finding[]>([])
 const filter = ref('')
@@ -234,6 +244,8 @@ const opErr = ref('')
 const reviewForm = ref({ decision: 'confirmed', comment: '', reviewer: reviewerName() })
 const remForm = ref({ action: '', status: 'pending', acted_by: reviewerName() })
 const rulesMap = ref<Map<string, Rule>>(new Map())
+const rulesReady = ref(false)
+let loadSeq = 0
 
 function ruleOf(f: Finding | string): Rule | undefined {
   return rulesMap.value.get(typeof f === 'string' ? f : f.rule_id)
@@ -292,7 +304,11 @@ const groups = computed<RuleGroup[]>(() => {
       .sort((a, b) => b.rows.length - a.rows.length)
     out.push({ ruleId, rows, subjects })
   }
-  return out.sort((a, b) => b.rows.length - a.rows.length)
+  const riskRank = (id: string) => {
+    const r = (rulesMap.value.get(id)?.Risk ?? '').toLowerCase()
+    return r === 'high' ? 0 : r === 'medium' ? 1 : r === 'low' ? 2 : 3
+  }
+  return out.sort((a, b) => (riskRank(a.ruleId) - riskRank(b.ruleId)) || (b.rows.length - a.rows.length))
 })
 
 function visibleSubjects(g: RuleGroup): SubjectGroup[] {
@@ -316,11 +332,34 @@ function sameAssetBundles(f: Finding): BundleSummary[] {
   return bundles.value.filter(b => b.asset_id === cur.asset_id && b.id !== f.bundle_id)
 }
 
+const assetOptions = computed(() => {
+  const ids = new Set(bundles.value.map(b => b.asset_id))
+  return assets.value.filter(a => ids.has(a.id))
+})
+const bundlesOfAsset = computed(() => bundles.value.filter(b => b.asset_id === assetId.value))
+function latestBundleOfAsset(id: string): BundleSummary | undefined {
+  return latestByAsset.value.get(id) ?? latestBundleOf(bundles.value, id)
+}
+async function onAssetChange() {
+  const lb = latestBundleOfAsset(assetId.value)
+  bundleId.value = lb?.id ?? ''
+  await load()
+}
+// 怎么改：展开该类问题并打开首条问题的详情（结论卡里有修复命令与基线屏蔽）。
+async function openHowTo(g: RuleGroup) {
+  openRule.value = g.ruleId
+  const first = g.subjects[0]?.rows[0]
+  if (!first) return
+  openSubject.value = g.ruleId + '|' + first.subject
+  await toggle(first)
+}
+
 async function load() {
   error.value = ''; openId.value = 0; openRule.value = ''; openSubject.value = ''
   if (!bundleId.value) return
-  try { findings.value = await api.findings(bundleId.value) }
-  catch (e) { error.value = e instanceof Error ? e.message : '加载失败'; findings.value = [] }
+  const seq = ++loadSeq
+  try { const rows = await api.findings(bundleId.value); if (seq !== loadSeq) return; findings.value = rows }
+  catch (e) { if (seq !== loadSeq) return; error.value = e instanceof Error ? e.message : '加载失败'; findings.value = [] }
 }
 
 async function toggle(f: Finding) {
@@ -387,7 +426,7 @@ async function reevalWithBaseline(f: Finding) {
   st.busy = true; st.reevalMsg = ''; st.err = ''
   try {
     const s = await api.evaluate(f.bundle_id, st.doneBaseline)
-    st.reevalMsg = `重新评估完成：共 ${s.total} 条，FAIL ${s.fail}，落库问题 ${s.findings_stored}。新一轮已用该基线，屏蔽项不再计入。`
+    st.reevalMsg = `重新评估完成：共 ${s.total} 条，不通过 ${s.fail} 项，落库问题 ${s.findings_stored}。新一轮已用该基线，屏蔽项不再计入。`
   } catch (e) { st.err = e instanceof Error ? e.message : '重新评估失败' }
   st.busy = false
 }
@@ -432,14 +471,25 @@ async function doRemediation(f: Finding) {
 
 onMounted(async () => {
   try {
+    assets.value = filterByHospital(await api.assets())
     bundles.value = filterByHospital(await api.bundles())
+    try { latestByAsset.value = new Map(filterByHospital(await api.latestBundles()).map(b => [b.asset_id, b])) } catch { latestByAsset.value = new Map() }
     try {
       const rs = await api.rules()
       rulesMap.value = new Map(rs.map(r => [r.ID, r]))
     } catch { /* 无规则说明时降级为仅原始详情 */ }
-    bundleId.value = (nav.bundleId && bundles.value.some(b => b.id === nav.bundleId))
-      ? nav.bundleId
-      : (bundles.value[0]?.id ?? '')
+    rulesReady.value = true
+    // 默认该对象最新一次审计：显式指定的包优先，其次指定对象，再次首个对象。
+    if (nav.bundleId && bundles.value.some(b => b.id === nav.bundleId)) {
+      bundleId.value = nav.bundleId
+      assetId.value = bundles.value.find(b => b.id === nav.bundleId)?.asset_id ?? ''
+    } else if (nav.assetId && latestBundleOfAsset(nav.assetId)) {
+      assetId.value = nav.assetId
+      bundleId.value = latestBundleOfAsset(nav.assetId)?.id ?? ''
+    } else {
+      assetId.value = assetOptions.value[0]?.id ?? ''
+      bundleId.value = latestBundleOfAsset(assetId.value)?.id ?? ''
+    }
     await load()
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
 })

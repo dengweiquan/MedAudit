@@ -1,51 +1,46 @@
 <template>
   <div class="card">
     <h2>复检对比</h2>
-    <p class="todo">整改完成后对同一对象再次审计，本页对比最近两次审计的问题集合：哪些已修复、哪些仍存在、哪些是新增。对比口径为每包最新一轮评估的 FAIL（同规则 + 同主体 + 同问题描述视为同一问题，同类多条按数量增减对账）。</p>
+    <p class="todo">整改后再次审计，对比最近两次：哪些已修复、哪些仍存在、哪些是新增。</p>
     <div class="inline-form">
       <label>对象
         <select v-model="assetId" @change="compare">
-          <option v-for="a in candidates" :key="a.id" :value="a.id">{{ a.name }}（{{ a.id }} · {{ bundleCount(a.id) }} 个事实包）</option>
+          <option v-for="a in candidates" :key="a.id" :value="a.id">{{ engineerMode.on ? a.name + '（' + a.id + ' · ' + bundleCount(a.id) + ' 个事实包）' : a.name }}</option>
         </select>
       </label>
-      <span class="todo" v-if="asset">{{ asset.hospital_id }}</span>
+      <span class="todo" v-if="asset && engineerMode.on">{{ asset.hospital_id }}</span>
     </div>
     <div v-if="error" class="error">{{ error }}</div>
     <div v-else-if="!candidates.length" class="empty">暂无拥有两个以上事实包的对象。先对同一对象审计两次（整改前后各一次），再来这里看复检结果。</div>
 
-    <template v-if="oldBundle && newBundle">
-      <p>
-        上次：{{ oldBundle.id }}（{{ fmtLocal(oldBundle.imported_at) }}）→ 本次：{{ newBundle.id }}（{{ fmtLocal(newBundle.imported_at) }}）
-      </p>
-      <div class="stat-grid" style="margin-bottom:12px">
-        <div class="stat"><div class="num" style="color:#15803d">{{ countOf(fixed) }}</div><div class="lbl">已修复</div></div>
-        <div class="stat"><div class="num" style="color:#b91c1c">{{ countOf(still) }}</div><div class="lbl">仍存在</div></div>
-        <div class="stat"><div class="num" style="color:#b45309">{{ countOf(added) }}</div><div class="lbl">新增</div></div>
-        <div class="stat"><div class="num">{{ countOf(still) + countOf(added) }}</div><div class="lbl">当前待整改</div></div>
-      </div>
+    <div v-else-if="comparing" class="empty">对比中…</div>
+    <template v-if="oldBundle && newBundle && !comparing">
+      <p><b>{{ summaryLine }}</b></p>
       <p v-if="!still.length && !added.length" class="msg">本对象问题已全部清零。</p>
 
       <h3 v-if="fixed.length">已修复（{{ countOf(fixed) }}）</h3>
       <table v-if="fixed.length">
-        <thead><tr><th>规则</th><th>主体</th><th>原问题</th><th>数量</th></tr></thead>
-        <tbody><tr v-for="g in fixed" :key="'x' + g.f.id"><td>{{ g.f.rule_id }}</td><td>{{ g.f.subject }}</td><td>{{ text(g.f) }}</td><td>{{ g.n }}</td></tr></tbody>
+        <thead><tr><th>问题名称</th><th>账号</th><th>原问题</th><th>数量</th></tr></thead>
+        <tbody><tr v-for="g in fixed" :key="'x' + g.f.id"><td :title="engineerMode.on ? g.f.rule_id : undefined">{{ ruleName(g.f.rule_id) }}</td><td>{{ g.f.subject }}</td><td>{{ text(g.f) }}</td><td>{{ g.n }}</td></tr></tbody>
       </table>
 
-      <h3 v-if="still.length">仍存在（{{ countOf(still) }}）</h3>
-      <table v-if="still.length">
-        <thead><tr><th>规则</th><th>主体</th><th>问题</th><th>数量</th></tr></thead>
-        <tbody><tr v-for="g in still" :key="'s' + g.f.id"><td>{{ g.f.rule_id }}</td><td>{{ g.f.subject }}</td><td>{{ text(g.f) }}</td><td>{{ g.n }}</td></tr></tbody>
+      <h3 v-if="still.length">
+        <button class="btn small" @click="stillOpen = !stillOpen">{{ stillOpen ? '收起' : '展开' }}仍存在（{{ countOf(still) }}）</button>
+      </h3>
+      <table v-if="still.length && stillOpen">
+        <thead><tr><th>问题名称</th><th>账号</th><th>问题</th><th>数量</th></tr></thead>
+        <tbody><tr v-for="g in still" :key="'s' + g.f.id"><td :title="engineerMode.on ? g.f.rule_id : undefined">{{ ruleName(g.f.rule_id) }}</td><td>{{ g.f.subject }}</td><td>{{ text(g.f) }}</td><td>{{ g.n }}</td></tr></tbody>
       </table>
 
       <h3 v-if="added.length">新增（{{ countOf(added) }}）</h3>
       <table v-if="added.length">
-        <thead><tr><th>规则</th><th>主体</th><th>问题</th><th>数量</th></tr></thead>
-        <tbody><tr v-for="g in added" :key="'a' + g.f.id"><td>{{ g.f.rule_id }}</td><td>{{ g.f.subject }}</td><td>{{ text(g.f) }}</td><td>{{ g.n }}</td></tr></tbody>
+        <thead><tr><th>问题名称</th><th>账号</th><th>问题</th><th>数量</th></tr></thead>
+        <tbody><tr v-for="g in added" :key="'a' + g.f.id"><td :title="engineerMode.on ? g.f.rule_id : undefined">{{ ruleName(g.f.rule_id) }}</td><td>{{ g.f.subject }}</td><td>{{ text(g.f) }}</td><td>{{ g.n }}</td></tr></tbody>
       </table>
 
       <div class="row-actions" style="margin-top:12px">
         <button class="btn" @click="goto('findings', newBundle?.id)">查看本次问题</button>
-        <button class="btn" :disabled="exporting" @click="doExport">导出本次报告</button>
+        <button class="btn primary" :disabled="exporting" @click="doExport">导出本次报告</button>
       </div>
       <div class="msg err" v-if="exportErr">{{ exportErr }}</div>
     </template>
@@ -54,9 +49,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, type Asset, type BundleSummary, type Finding } from '../api'
-import { goto, nav, filterByHospital } from '../store'
-import { bundlesOfAsset, comparePair, exportLatestReport, latestFail, fmtLocal} from '../util'
+import { api, type Asset, type BundleSummary, type Finding, type Rule } from '../api'
+import { goto, nav, filterByHospital, engineerMode } from '../store'
+import { bundlesOfAsset, comparePair, exportLatestReport, latestFail } from '../util'
 
 const assets = ref<Asset[]>([])
 const bundles = ref<BundleSummary[]>([])
@@ -67,10 +62,26 @@ const exportErr = ref('')
 const oldBundle = ref<BundleSummary | null>(null)
 const newBundle = ref<BundleSummary | null>(null)
 interface Group { f: Finding; n: number }
+const rulesMap = ref<Map<string, Rule>>(new Map())
+const stillOpen = ref(false)
+const comparing = ref(false)
+let compareSeq = 0
 const fixed = ref<Group[]>([])
 const still = ref<Group[]>([])
 const added = ref<Group[]>([])
 function countOf(gs: Group[]): number { return gs.reduce((s, g) => s + g.n, 0) }
+
+function ruleName(id: string): string {
+  return rulesMap.value.get(id)?.Name ?? id
+}
+function shortDate(ts: string): string {
+  return ts.slice(5, 10)
+}
+const summaryLine = computed(() => {
+  if (!oldBundle.value || !newBundle.value) return ''
+  const rest = countOf(still.value) + countOf(added.value)
+  return `上次 ${shortDate(oldBundle.value.imported_at)} → 本次 ${shortDate(newBundle.value.imported_at)}：修复 ${countOf(fixed.value)} 项，新增 ${countOf(added.value)} 项，还剩 ${rest} 项。`
+})
 
 const candidates = computed(() => assets.value.filter(a => bundleCount(a.id) >= 2))
 const asset = computed(() => assets.value.find(a => a.id === assetId.value))
@@ -101,6 +112,7 @@ function text(f: Finding): string {
 
 async function compare() {
   error.value = ''
+  const seq = ++compareSeq
   fixed.value = []; still.value = []; added.value = []
   oldBundle.value = null; newBundle.value = null
   if (!assetId.value) return
@@ -111,8 +123,10 @@ async function compare() {
   const nb = pair.new
   const ob = pair.old
   newBundle.value = nb; oldBundle.value = ob
+  comparing.value = true
   try {
     const [of, nf] = await Promise.all([api.findings(ob.id), api.findings(nb.id)])
+    if (seq !== compareSeq) return
     const oldB = bucket(latestFail(of))
     const newB = bucket(latestFail(nf))
     for (const [k, og] of oldB) {
@@ -126,7 +140,10 @@ async function compare() {
       const common = Math.min(ng.n, og?.n ?? 0)
       if (ng.n > common) added.value.push({ f: ng.f, n: ng.n - common })
     }
+    comparing.value = false
   } catch (e) {
+    if (seq !== compareSeq) return
+    comparing.value = false
     error.value = e instanceof Error ? e.message : '对比失败'
   }
 }
@@ -143,9 +160,16 @@ onMounted(async () => {
   try {
     assets.value = filterByHospital(await api.assets())
     bundles.value = filterByHospital(await api.bundles())
+    try {
+      const rs = await api.rules()
+      rulesMap.value = new Map(rs.map(r => [r.ID, r]))
+    } catch { /* 无规则说明时降级显示规则 ID */ }
     const wanted = nav.assetId
-    assetId.value = (wanted && candidates.value.some(a => a.id === wanted)) ? wanted : (candidates.value[0]?.id ?? '')
-    await compare()
+    // 用户已在加载期间选过对象时不覆盖、不重算，否则后到的 mount 对比会覆盖用户所选对象的结论。
+    if (!assetId.value) {
+      assetId.value = (wanted && candidates.value.some(a => a.id === wanted)) ? wanted : (candidates.value[0]?.id ?? '')
+      await compare()
+    }
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
 })
 </script>
