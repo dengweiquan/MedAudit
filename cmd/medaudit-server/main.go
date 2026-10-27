@@ -22,7 +22,7 @@ import (
 	"medaudit/internal/rules"
 )
 
-const version = "0.35.0-m35"
+const version = "0.36.0-m36"
 
 var authSessions *platform.SessionStore
 
