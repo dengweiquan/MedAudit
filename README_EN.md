@@ -21,7 +21,7 @@ audit → report → remediate → re-audit — with professional Word reports.
 
 ```
 # 1. Install (Debian family; use the .rpm with dnf on RHEL family)
-sudo apt install ./medaudit_0.25.0+m23-1_amd64.deb
+sudo apt install ./medaudit_0.36.0+m36-1_amd64.deb
 #    Interactive installs prompt for this site's hospital ID and name;
 #    the service then starts automatically.
 
@@ -50,6 +50,23 @@ as UNKNOWN, never folded into a pass. Beyond per-target rules, the
 platform performs **correlation analysis**: cross-target permission
 graphs, privilege-escalation path solving, effective-permission
 computation, and cross-run drift comparison.
+
+**Clause-by-clause compliance**: the Word report states, clause by
+clause, whether each requirement is met / not met / undeterminable /
+not applicable / outside the platform's checks, with the supporting
+checks and results. Built in: **MLPS 2.0 (GB/T 22239-2019) Level 3,
+"secure computing environment"** (23 clauses), plus a **draft healthcare
+network & data security framework** (10 requirements; clause numbers to
+be verified, off by default). Mappings are data files
+(`internal/rules/compliance/*.yaml`); sites can add or override them in
+`/etc/medaudit/compliance/`.
+
+**Continuous monitoring**: assets can be put on a **scheduled re-audit**
+(cycle set in the admin page or `ma schedon`); every new audit is compared
+with the previous one and **new grants, roles or accounts raise an
+alert** (shown on the dashboard, optionally pushed to a WeCom/DingTalk
+group). **Baseline templates** for built-in database accounts and common
+HIS/LIS/PACS vendor accounts can be applied in one step.
 
 Business-required privileges can be exempted through **baselines**
 (one-click "add to baseline" from a finding, with per-item derivation
@@ -96,7 +113,7 @@ Feiteng): the architecture segment of the file name is `arm64` (deb)
 ```
 cd web && npm ci && npm run build && cd ..       # frontend (web/dist)
 go build -o bin/ ./cmd/medaudit-server ./cmd/medaudit-collector ./cmd/ma
-./package.sh 0.25.0-m23                          # assemble release tree (optional)
+./package.sh 0.36.0-m36                          # assemble release tree (optional)
 ```
 
 Layout after installation: programs in `/opt/medaudit`, configuration
@@ -168,9 +185,17 @@ the evidence key, and the Oracle client library path. Restart
   changes, no business-table reads. Collector and platform identities
   are separate; use a dedicated low-privilege collection account per
   target.
-- Audit passwords are **never stored**: in Web one-click audits the
-  password only enters the collector subprocess environment; in the CLI
-  it comes from an environment variable or an interactive prompt.
+- Audit passwords are **not stored by default**: in Web one-click audits
+  the password only enters the collector subprocess environment; in the
+  CLI it comes from an environment variable or an interactive prompt. The
+  only exception is an asset an engineer explicitly puts on **scheduled
+  re-audit**: its password is stored encrypted with the evidence key
+  (AES-256-GCM), decrypted only in memory when the audit runs, and deleted
+  when the schedule is turned off. Scheduling is refused when no evidence
+  key is configured.
+- Every write operation and file download on the platform is recorded in
+  a hash-chained **operation log** (no passwords), verifiable from the
+  admin page or `ma oplogchk`.
 - The initial administrator password is a publicly documented product
   default and **changing it is forced at first Web login** — do so
   immediately after deployment.

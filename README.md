@@ -18,7 +18,7 @@
 
 ```
 # 1. 安装（Debian 系）—— RHEL 系用对应的 .rpm 与 dnf
-sudo apt install ./medaudit_0.25.0+m23-1_amd64.deb
+sudo apt install ./medaudit_0.36.0+m36-1_amd64.deb
 #    交互安装时按提示输入本站医院 ID 与名称，装完服务即自动启动
 
 # 2. （可选）事后设置/修改本站医院（首次启动自动登记），然后重启服务
@@ -91,7 +91,7 @@ systemd 服务。两个包均为零外部依赖（Go 静态二进制；不依赖
 ```
 cd web && npm ci && npm run build && cd ..       # 前端（产物在 web/dist）
 go build -o bin/ ./cmd/medaudit-server ./cmd/medaudit-collector ./cmd/ma
-./package.sh 0.25.0-m23                          # 组装发行树（可选）
+./package.sh 0.36.0-m36                          # 组装发行树（可选）
 ```
 
 安装后的目录布局：程序 `/opt/medaudit`，配置 `/etc/medaudit/medaudit.env`，
