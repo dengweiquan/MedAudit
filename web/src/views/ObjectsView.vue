@@ -99,7 +99,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { api, parseRemote, type ApiAuditCheck, type ApiAuditSummary, type Asset, type AuditRunResult, type BaselineRow, type BundleSummary, type ConnConfig } from '../api'
 import RemoteAuditCard from '../components/RemoteAuditCard.vue'
 import { kindCategory, type CategoryKey } from '../categories'
-import { nav, goto, filterByHospital, reviewerName } from '../store'
+import { nav, goto, filterByHospital, reviewerName, selectedHospital } from '../store'
 import { exportLatestReport, latestBundleOf, latestFail, fmtLocal } from '../util'
 import { conclLabel } from '../labels'
 
@@ -233,7 +233,8 @@ async function load() {
       apiAudits.value = all
       apiByAsset.value = byAsset
     } catch { apiAudits.value = []; apiByAsset.value = new Map() }
-    const hs = filterByHospital(await api.hospitals())
+    const allHs = await api.hospitals()
+    const hs = selectedHospital.id ? allHs.filter(h => h.id === selectedHospital.id) : allHs
     for (const h of hs) {
       if (!(h.id in baselinesMap.value)) {
         try { baselinesMap.value[h.id] = await api.baselines(h.id) } catch { baselinesMap.value[h.id] = [] }

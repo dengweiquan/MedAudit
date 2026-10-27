@@ -551,6 +551,14 @@ export const api = {
     req<BaselineRow[]>(`/api/v1/baselines?hospital_id=${encodeURIComponent(hospitalId)}`),
   createBaseline: (body: { id: string; hospital_id: string; target: string; allows: unknown[]; created_by: string }) =>
     post('/api/v1/baselines', body),
+  updateBaseline: (id: string, allows: unknown[]) =>
+    req(`/api/v1/baselines/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allows }),
+    }),
+  deleteBaseline: (id: string) =>
+    req(`/api/v1/baselines/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   exemptPreview: (findingId: number) =>
     post<ExemptionPreview>('/api/v1/baselines/exempt-preview', { finding_id: findingId }),
   exemptFinding: (body: { finding_id: number; baseline_id?: string; new_baseline_id?: string; reason?: string; created_by?: string }) =>
