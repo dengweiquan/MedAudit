@@ -28,6 +28,22 @@ export function latestRunFindings(rows: Finding[]): Finding[] {
   return sorted.slice(start)
 }
 
+// 报告表问题数（M37-fix-5）：只按报告快照的 findings 计算，不取包的实时问题，
+// 否则重新评估或改基线后历史报告行的数字会变。快照本身就是一轮评估结果，
+// 只需过滤结论为不通过（FAIL）的项，按规则风险分级。
+export function countSnapshotRisks(findings: Finding[], riskOf: (ruleId: string) => string): { high: number; medium: number; low: number; other: number } {
+  const c = { high: 0, medium: 0, low: 0, other: 0 }
+  for (const f of findings) {
+    if (f.conclusion !== 'FAIL') continue
+    const r = riskOf(f.rule_id).toLowerCase()
+    if (r === 'high') c.high++
+    else if (r === 'medium') c.medium++
+    else if (r === 'low') c.low++
+    else c.other++
+  }
+  return c
+}
+
 export function latestFail(rows: Finding[]): Finding[] {
   return latestRunFindings(rows).filter(f => f.conclusion === 'FAIL')
 }

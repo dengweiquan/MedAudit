@@ -165,7 +165,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api, type ApiAuditSummary, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule } from '../api'
-import { fmtLocal, latestBundleOf, latestFail } from '../util'
+import { fmtLocal, latestBundleOf, countSnapshotRisks } from '../util'
 import { conclLabel, riskLabel, reviewLabel } from '../labels'
 import { reviewerName, filterByHospital, engineerMode } from '../store'
 
@@ -285,25 +285,15 @@ async function load() {
       genAsset.value = reportableAssets.value[0].id
       await loadGenBundles()
     }
-    // 最新报告的问题分级与合规不满足条数（逐份取包问题与报告详情）。
+    // 最新报告的问题分级与合规不满足条数：只取报告详情快照，不取包的实时问题
+    // （M37-fix-5：重评或改基线后历史报告行的数字不再变）。
     const rm = new Map<string, { high: number; medium: number; low: number; other: number }>()
     const cm = new Map<string, number | null>()
     for (const g of reportGroups.value) {
       const latest = g.reports[0]
       try {
-        const fails = latestFail(await api.findings(latest.bundle_id))
-        const c = { high: 0, medium: 0, low: 0, other: 0 }
-        for (const f of fails) {
-          const r = (rulesMap.value.get(f.rule_id)?.Risk ?? '').toLowerCase()
-          if (r === 'high') c.high++
-          else if (r === 'medium') c.medium++
-          else if (r === 'low') c.low++
-          else c.other++
-        }
-        rm.set(latest.id, c)
-      } catch { /* 未评估包 */ }
-      try {
         const d = await api.getReport(latest.id)
+        rm.set(latest.id, countSnapshotRisks((d.findings as Finding[]) || [], id => rulesMap.value.get(id)?.Risk ?? ''))
         const comp = d.compliance as { counts?: Record<string, number> }[] | undefined
         let fail = 0
         let found = false
@@ -324,23 +314,12 @@ async function load() {
 async function expandHistory(g: ReportGroup) {
   historyOpen.add(g.key)
   for (const r of g.reports.slice(1)) {
-    if (!riskByReport.value.has(r.id)) {
-      try {
-        const fails = latestFail(await api.findings(r.bundle_id))
-        const c = { high: 0, medium: 0, low: 0, other: 0 }
-        for (const f of fails) {
-          const rk = (rulesMap.value.get(f.rule_id)?.Risk ?? '').toLowerCase()
-          if (rk === 'high') c.high++
-          else if (rk === 'medium') c.medium++
-          else if (rk === 'low') c.low++
-          else c.other++
-        }
-        riskByReport.value.set(r.id, c)
-      } catch { /* 未评估包 */ }
-    }
-    if (!complianceFailByReport.value.has(r.id)) {
+    if (!riskByReport.value.has(r.id) || !complianceFailByReport.value.has(r.id)) {
       try {
         const d = await api.getReport(r.id)
+        if (!riskByReport.value.has(r.id)) {
+          riskByReport.value.set(r.id, countSnapshotRisks((d.findings as Finding[]) || [], id => rulesMap.value.get(id)?.Risk ?? ''))
+        }
         const comp = d.compliance as { counts?: Record<string, number> }[] | undefined
         let fail = 0
         let found = false

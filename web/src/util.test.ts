@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BundleSummary } from './api'
-import { buildConclusion, comparePair, latestBundleOf } from './util'
+import { buildConclusion, comparePair, countSnapshotRisks, latestBundleOf } from './util'
 
 // M37-1.1：服务端按 imported_at DESC 返回，直接取末尾会把新旧颠倒；
 // 下面用例固定：无论输入顺序如何，本次一定是导入时间更晚的那个包。
@@ -81,5 +81,20 @@ describe('buildConclusion（M37-fix-4）', () => {
   it('无对象与只有问题时口径不变', () => {
     expect(buildConclusion('本院', 0, 0, 0, 0)).toBe('暂无审计对象')
     expect(buildConclusion('本院', 5, 0, 3, 38)).toBe('本院 5 个对象，3 个有问题；高风险 38 项待整改。')
+  })
+})
+
+describe('countSnapshotRisks（M37-fix-5）', () => {
+  const riskOf = (id: string) => ({ r1: 'high', r2: 'medium', r3: 'low' }[id] ?? '')
+  const f = (rule_id: string, conclusion: string) => ({ rule_id, conclusion }) as never
+  it('只计快照中不通过项，按规则风险分级；非不通过与未知规则归入未分级', () => {
+    const c = countSnapshotRisks(
+      [f('r1', 'FAIL'), f('r1', 'FAIL'), f('r2', 'FAIL'), f('r3', 'PASS'), f('rX', 'FAIL'), f('r2', 'UNKNOWN')],
+      riskOf,
+    )
+    expect(c).toEqual({ high: 2, medium: 1, low: 0, other: 1 })
+  })
+  it('空快照全为 0', () => {
+    expect(countSnapshotRisks([], riskOf)).toEqual({ high: 0, medium: 0, low: 0, other: 0 })
   })
 })
