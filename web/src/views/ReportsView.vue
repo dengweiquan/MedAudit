@@ -67,6 +67,23 @@
     <div v-else class="empty">加载中…</div>
   </div>
 
+  <div class="card">
+    <h2>业务接口报告</h2>
+    <table v-if="loaded && apiReportRows.length">
+      <thead><tr><th>目标</th><th>时间</th><th>不通过数</th><th>操作</th></tr></thead>
+      <tbody>
+        <tr v-for="r in apiReportRows" :key="r.report_id">
+          <td>{{ r.name }}</td>
+          <td>{{ fmtLocal(r.imported_at) }}</td>
+          <td>{{ r.fail_count > 0 ? `不通过 ${r.fail_count} 条` : '通过' }}</td>
+          <td><a class="btn small" :href="api.apiAuditDocxUrl(r.report_id)" download>下载 Word</a></td>
+        </tr>
+      </tbody>
+    </table>
+    <div v-else-if="loaded" class="empty">暂无业务接口报告。</div>
+    <div v-else class="empty">加载中…</div>
+  </div>
+
   <div class="card" v-if="detail">
     <h2>报告详情<span v-if="engineerMode.on">（{{ detailId }}）</span></h2>
     <p>
@@ -147,7 +164,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { api, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule } from '../api'
+import { api, type ApiAuditSummary, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule } from '../api'
 import { fmtLocal, latestBundleOf, latestFail } from '../util'
 import { conclLabel, riskLabel, reviewLabel } from '../labels'
 import { reviewerName, filterByHospital, engineerMode } from '../store'
@@ -155,6 +172,13 @@ import { reviewerName, filterByHospital, engineerMode } from '../store'
 const bundles = ref<BundleSummary[]>([])
 const assets = ref<Asset[]>([])
 const reports = ref<ReportRow[]>([])
+const apiReports = ref<ApiAuditSummary[]>([])
+const apiReportRows = computed(() => {
+  const byEndpoint = new Map(assets.value.filter(a => a.endpoint).map(a => [a.endpoint as string, a.name]))
+  return apiReports.value
+    .map(r => ({ ...r, name: byEndpoint.get(r.target) ?? r.target }))
+    .sort((x, y) => y.imported_at.localeCompare(x.imported_at))
+})
 const loaded = ref(false)
 const rulesMap = ref<Map<string, Rule>>(new Map())
 const genAsset = ref('')
@@ -239,6 +263,7 @@ async function load() {
   try {
     reports.value = filterByHospital(await api.reports())
     bundles.value = filterByHospital(await api.bundles())
+    try { apiReports.value = await api.apiAudits() } catch { apiReports.value = [] }
     try { assets.value = filterByHospital(await api.assets()) } catch { assets.value = [] }
     loaded.value = true
     try {

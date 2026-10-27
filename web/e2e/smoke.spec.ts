@@ -150,6 +150,12 @@ test('医院模式冒烟：菜单、术语与复检对比顺序', async ({ page 
   await expect(page.getByRole('heading', { name: '生成报告' })).toBeVisible()
   await expect(page.locator('table').first()).toBeVisible()
   await expect(page.locator('body')).toContainText('演示 MySQL 8.0')
+  // 业务接口报告：演示接口报告未匹配登记对象，显示目标地址，不通过 6 条，可下载。
+  // 同目标有多行时按行定位，避免多重匹配。
+  await expect(page.getByRole('heading', { name: '业务接口报告' })).toBeVisible()
+  const apiCard = page.locator('div.card', { has: page.getByRole('heading', { name: '业务接口报告' }) })
+  await expect(apiCard.getByText('http://127.0.0.1:19090').first()).toBeVisible()
+  await expect(apiCard.locator('tr', { hasText: 'http://127.0.0.1:19090' }).first()).toContainText('不通过 6 条')
   await assertNoForbiddenText(page)
   await shot(page, 'reports')
 
