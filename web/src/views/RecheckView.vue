@@ -51,7 +51,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BundleSummary, type Finding, type Rule } from '../api'
 import { goto, nav, filterByHospital, engineerMode } from '../store'
-import { bundlesOfAsset, comparePair, exportLatestReport, latestFail } from '../util'
+import { bundlesOfAsset, comparePair, exportLatestReport, latestFail, fmtLocal } from '../util'
 
 const assets = ref<Asset[]>([])
 const bundles = ref<BundleSummary[]>([])
@@ -75,7 +75,8 @@ function ruleName(id: string): string {
   return rulesMap.value.get(id)?.Name ?? id
 }
 function shortDate(ts: string): string {
-  return ts.slice(5, 10)
+  // 与 fmtLocal 同一本地化口径：先转本地时间再取月日，避免 UTC 日期与本地日期差一天。
+  return fmtLocal(ts).slice(5, 10)
 }
 const summaryLine = computed(() => {
   if (!oldBundle.value || !newBundle.value) return ''
