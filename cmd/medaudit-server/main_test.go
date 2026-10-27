@@ -13,7 +13,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -50,22 +49,8 @@ func newTestServer(t *testing.T, kr *platform.EvidenceKeyring) *testServer {
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"status": "ok", "version": version})
 	})
-	// 与 main 相同的备份下载入口（仅用于验证“下载记一条”）。
-	mux.HandleFunc("/api/v1/admin/backup", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		path, err := platform.BackupSnapshot(db, os.TempDir())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer os.Remove(path)
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", "attachment; filename=medaudit-platform-backup.db")
-		http.ServeFile(w, r, path)
-	})
+	// 备份下载用 main 真实注册的路由，不再复制 handler（M37-fix-9）。
+	registerBackupRoute(mux, db)
 	registerAuthRoutes(mux, db, sessions)
 	registerOpLogRoutes(mux, db)
 	registerAlertRoutes(mux, db, sessions)
@@ -196,13 +181,7 @@ func TestServerAuthRequired(t *testing.T) {
 func TestServerOpLog(t *testing.T) {
 	s := newTestServer(t, nil)
 	cookie := s.login(t, platform.DefaultAdminUser, platform.DefaultAdminPassword)
-	// 写操作记一条：改密（旧口令错误，400 也记）。
-	if status, _, _ := s.do(t, http.MethodPost, "/api/v1/auth/change-password",
-		map[string]string{"old_password": "wrong-old", "new_password": "NewPass123"}, []*http.Cookie{cookie}); status != http.StatusBadRequest {
-		t.Fatalf("错旧口令改密应 400，实际 %d", status)
-	}
-	entries := opEntries(t, s.db)
-	has := func(method, path string) bool {
+	hasEntry := func(entries []platform.OpEntry, method, path string) bool {
 		for _, e := range entries {
 			if e.Method == method && e.Path == path {
 				return true
@@ -210,21 +189,33 @@ func TestServerOpLog(t *testing.T) {
 		}
 		return false
 	}
-	if !has(http.MethodPost, "/api/v1/auth/login") {
+	entries := opEntries(t, s.db)
+	if !hasEntry(entries, http.MethodPost, "/api/v1/auth/login") {
 		t.Error("操作日志应含登录 POST 条目")
 	}
-	if !has(http.MethodPost, "/api/v1/auth/change-password") {
+	// 写操作恰好新增 1 条：改密（旧口令错误，400 也记）。
+	before := len(entries)
+	if status, _, _ := s.do(t, http.MethodPost, "/api/v1/auth/change-password",
+		map[string]string{"old_password": "wrong-old", "new_password": "NewPass123"}, []*http.Cookie{cookie}); status != http.StatusBadRequest {
+		t.Fatalf("错旧口令改密应 400，实际 %d", status)
+	}
+	entries = opEntries(t, s.db)
+	if len(entries) != before+1 {
+		t.Errorf("改密应恰好新增 1 条日志：记前 %d 条，记后 %d 条", before, len(entries))
+	}
+	if !hasEntry(entries, http.MethodPost, "/api/v1/auth/change-password") {
 		t.Error("操作日志应含改密 POST 条目")
 	}
 	// GET 不记：读告警前后条数不变。
-	before := len(entries)
+	before = len(entries)
 	if status, _, _ := s.do(t, http.MethodGet, "/api/v1/alerts", nil, []*http.Cookie{cookie}); status != http.StatusOK {
 		t.Fatalf("读告警应 200，实际 %d", status)
 	}
 	if after := len(opEntries(t, s.db)); after != before {
 		t.Errorf("GET 不应记操作日志：记前 %d 条，记后 %d 条", before, after)
 	}
-	// 下载记一条：备份下载（GET 但带 attachment）应落日志。
+	// 下载恰好新增 1 条：备份下载（GET 但带 attachment）应落日志。
+	before = len(opEntries(t, s.db))
 	status, _, resp := s.do(t, http.MethodGet, "/api/v1/admin/backup", nil, []*http.Cookie{cookie})
 	if status != http.StatusOK {
 		t.Fatalf("备份下载应 200，实际 %d", status)
@@ -232,17 +223,12 @@ func TestServerOpLog(t *testing.T) {
 	if !strings.HasPrefix(resp.Header.Get("Content-Disposition"), "attachment") {
 		t.Fatalf("备份下载应带 attachment，实际 %q", resp.Header.Get("Content-Disposition"))
 	}
-	if !has(http.MethodGet, "/api/v1/admin/backup") {
-		// has 闭包捕获的是旧 entries，重新查。
-		found := false
-		for _, e := range opEntries(t, s.db) {
-			if e.Method == http.MethodGet && e.Path == "/api/v1/admin/backup" {
-				found = true
-			}
-		}
-		if !found {
-			t.Error("操作日志应含备份下载 GET 条目")
-		}
+	after := opEntries(t, s.db)
+	if len(after) != before+1 {
+		t.Errorf("备份下载应恰好新增 1 条日志：记前 %d 条，记后 %d 条", before, len(after))
+	}
+	if !hasEntry(after, http.MethodGet, "/api/v1/admin/backup") {
+		t.Error("操作日志应含备份下载 GET 条目")
 	}
 	// 不含口令：全部条目字段均不得出现登录口令原文。
 	for _, e := range opEntries(t, s.db) {

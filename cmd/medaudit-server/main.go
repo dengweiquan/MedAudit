@@ -94,25 +94,7 @@ func main() {
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"status": "ok", "version": version})
 	})
-	mux.HandleFunc("/api/v1/admin/backup", func(w http.ResponseWriter, r *http.Request) {
-		if db == nil {
-			http.Error(w, "平台库未配置", http.StatusServiceUnavailable)
-			return
-		}
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		path, err := platform.BackupSnapshot(db, os.TempDir())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer os.Remove(path)
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", "attachment; filename=medaudit-platform-backup.db")
-		http.ServeFile(w, r, path)
-	})
+	registerBackupRoute(mux, db)
 	mux.HandleFunc("/api/v1/assets", func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {
 			http.Error(w, "平台库未配置", http.StatusServiceUnavailable)
@@ -373,6 +355,30 @@ func importBundle(w http.ResponseWriter, r *http.Request, db *sql.DB, kr *platfo
 	writeJSON(w, map[string]any{
 		"bundle_id": b.BundleID, "status": "imported",
 		"facts": len(b.Facts), "receipts": len(b.Receipts),
+	})
+}
+
+// 平台库备份下载：GET /api/v1/admin/backup（M37-fix-9：从 main 内联抽出，
+// 供测试复用同一注册，测试不再复制 handler）。
+func registerBackupRoute(mux *http.ServeMux, db *sql.DB) {
+	mux.HandleFunc("/api/v1/admin/backup", func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			http.Error(w, "平台库未配置", http.StatusServiceUnavailable)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		path, err := platform.BackupSnapshot(db, os.TempDir())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer os.Remove(path)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", "attachment; filename=medaudit-platform-backup.db")
+		http.ServeFile(w, r, path)
 	})
 }
 
