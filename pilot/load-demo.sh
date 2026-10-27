@@ -109,8 +109,8 @@ PYEOF
 
 echo
 echo "== 加载完成。演示动线（浏览器打开 $BASE，登录后查看）："
-echo "   1) 工作台：类别问题卡与医院整改进度出现「演示医院」，含待整改 FAIL 与最近审计"
-echo "   2) 数据库页 → PostgreSQL/MySQL：点「问题」看按规则分组的清单与整改说明"
-echo "   3) 审计记录页：MySQL 第二包开「工程师详情」，看「漂移对比」（新增角色/授权/local_infile 配置）与「有效权限」（demo_via 角色派生 SUPER）"
-echo "   4) 关联分析页：查看跨层提权路径（组写 Tomcat 配置→root；Oracle 角色嵌套）"
-echo "   5) 报告页：按对象打开 MySQL/Oracle 报告或下载 Word（新版式：执行摘要/问题分布/路径/漂移/修复脚本章节）；业务接口页可下 API 报告 Word"
+echo "   1) 首页：类别问题卡与医院整改进度出现「演示医院」，含待整改问题与最近审计"
+echo "   2) 审计对象页 → PostgreSQL/MySQL：点「看问题」看按规则分组的清单与整改说明"
+echo "   3) 问题页：按对象看 MySQL 问题清单与整改说明；工程师模式下审计记录页可开「工程师详情」，看「漂移对比」（新增角色/授权/local_infile 配置）与「有效权限」（demo_via 角色派生 SUPER）"
+echo "   4) 关联分析页（工程师模式）：查看跨层提权路径（组写 Tomcat 配置→root；Oracle 角色嵌套）"
+echo "   5) 报告页：按对象打开 MySQL/Oracle 报告或下载 Word（新版式：执行摘要/问题分布/路径/漂移/修复脚本章节）；业务接口报告可下 API 报告 Word"
