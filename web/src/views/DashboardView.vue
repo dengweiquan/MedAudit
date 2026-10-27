@@ -1,20 +1,16 @@
 <template>
-  <div class="stat-grid" style="margin-bottom:16px">
-    <div class="stat a-blue"><div class="num">{{ assets.length }}</div><div class="lbl">审计对象</div></div>
-    <div class="stat a-red"><div class="num">{{ problemAssets }}</div><div class="lbl">有问题对象</div></div>
-    <div class="stat a-amber"><div class="num">{{ openFail }}</div><div class="lbl">待整改问题（FAIL）</div></div>
-    <div class="stat a-violet"><div class="num">{{ reports?.length ?? '—' }}</div><div class="lbl">已生成报告</div></div>
-    <div class="stat a-slate"><div class="num">{{ rulesCount ?? '—' }}</div><div class="lbl">启用规则</div></div>
+  <div class="card">
+    <h2 style="font-size:22px; margin:6px 0">{{ conclusion }}</h2>
   </div>
 
-  <div class="card" v-if="alertRows.length">
-    <h2>告警（{{ alertRows.length }}）</h2>
-    <div v-for="a in alertRows" :key="a.id" class="alert-row">
+  <div class="card">
+    <h2>需要你处理</h2>
+    <div v-if="!todoAlerts.length && !dueRows.length" class="empty">暂无待办</div>
+    <div v-for="a in todoAlerts" :key="'al' + a.id" class="alert-row">
       <div class="inline-form" style="justify-content:space-between">
         <span>
           <span class="concl c-FAIL">{{ a.kind === 'drift' ? '权限新增' : '复检失败' }}</span>
           <b style="margin-left:6px">{{ assetName(a.asset_id) }}</b>
-          <span class="todo">（{{ a.asset_id }}） · {{ fmtLocal(a.created_at) }}</span>
         </span>
         <span class="row-actions">
           <button class="btn small" v-if="a.items?.length" @click="toggleAlert(a.id)">{{ openAlert === a.id ? '收起' : '看明细' }}</button>
@@ -24,57 +20,64 @@
       <div class="todo" v-if="a.kind === 'drift'">与上次审计相比新增 {{ a.added_count }} 项授权/角色/账号，请确认是否为已批准的变更；不应存在的请回收，业务必需的请加入基线。</div>
       <div class="todo" v-else>原因：{{ a.error }}</div>
       <table v-if="openAlert === a.id && a.items?.length" style="margin-top:6px">
-        <thead><tr><th>变化</th><th>主体</th><th>内容</th></tr></thead>
+        <thead><tr><th>变化</th><th>账号</th><th>内容</th></tr></thead>
         <tbody>
           <tr v-for="(it, i) in a.items" :key="i"><td>{{ it.category }}</td><td>{{ it.subject }}</td><td>{{ it.detail }}</td></tr>
         </tbody>
       </table>
-      <div class="todo" v-if="openAlert === a.id && a.added_count > (a.items?.length ?? 0)">仅显示前 {{ a.items?.length }} 项，完整对比见「审计记录」工程师详情的漂移对比。</div>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>该复检了（{{ dueRows.length }}）</h2>
-    <table v-if="dueRows.length">
-      <thead><tr><th>对象</th><th>上次审计</th><th>状态</th><th>操作</th></tr></thead>
+    <table v-if="dueRows.length" style="margin-top:8px">
       <tbody>
         <tr v-for="d in dueRows" :key="d.asset_id">
-          <td>{{ d.name }} <span v-if="d.auto" class="concl c-PASS">自动</span><div class="todo">{{ d.asset_id }}</div></td>
-          <td>{{ d.last_audit_at ? fmtLocal(d.last_audit_at) : '—' }}</td>
+          <td>{{ d.name }} <span v-if="d.auto" class="concl c-PASS">自动</span></td>
+          <td>{{ d.last_audit_at ? fmtLocal(d.last_audit_at) : '从未审计' }}</td>
           <td>
             <span v-if="d.status === 'overdue'" class="concl c-FAIL">已逾期 {{ -d.days_left }} 天</span>
             <span v-else-if="d.status === 'never'" class="concl c-UNKNOWN">从未审计</span>
             <span v-else class="concl c-UNKNOWN">{{ d.days_left }} 天后到期</span>
           </td>
-          <td><button class="btn small primary" @click="gotoAsset(viewOfKind(d.kind), d.asset_id)">去审计</button></td>
+          <td><button class="btn small primary" @click="gotoObjects(kindCategory(d.kind))">去审计</button></td>
         </tr>
       </tbody>
     </table>
-    <div v-else class="todo">全部对象都在复检周期内。</div>
-    <div class="todo" style="margin-top:8px">每个对象每 {{ cycleDays }} 天复检一次（7 天内到期即提醒）。标「自动」的对象已开启定期自动复检（在「管理」页设置），到期由平台自动执行；其余对象由工程师点「开始审计」复检。</div>
+    <div class="todo" style="margin-top:8px">每个对象每 {{ cycleDays }} 天复检一次（7 天内到期即提醒）。标「自动」的对象到期由平台自动执行。</div>
+  </div>
+
+  <div class="card" v-if="topRisks.length">
+    <h2>先改这些</h2>
+    <table>
+      <thead><tr><th>问题名称</th><th>对象</th><th>涉及账号数</th><th>操作</th></tr></thead>
+      <tbody>
+        <tr v-for="t in topRisks" :key="t.ruleId">
+          <td>{{ t.name }}</td>
+          <td>{{ t.objectText }}</td>
+          <td>{{ t.accounts }} 个账号</td>
+          <td><button class="btn small primary" @click="goto('findings', t.bundleId)">怎么改</button></td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
   <div class="card">
-    <h2>哪类有问题</h2>
+    <h2>各类对象情况</h2>
     <div class="stat-grid">
-      <div v-for="c in catCards" :key="c.key" class="stat clickable" :class="catAccent(c.key)" style="cursor:pointer" @click="goto(c.view)">
+      <div v-for="c in catCards" :key="c.key" class="stat clickable" :class="catAccent(c.key)" style="cursor:pointer" @click="gotoObjects(c.key)">
         <div class="num">{{ c.problem }}<span class="todo"> / {{ c.assets }} 个对象</span></div>
         <div class="lbl">
-          {{ c.label }}：<b v-if="c.fail" style="color:#b91c1c">待整改 {{ c.fail }} 项</b><span v-else-if="c.assets">暂无问题</span><span v-else>暂无对象</span>
+          {{ c.label }}：<b v-if="c.total" style="color:#b91c1c">高 {{ c.high }} · 中 {{ c.medium }} · 低 {{ c.low }}</b><span v-else-if="c.assets">暂无问题</span><span v-else>暂无对象</span>
           <div class="todo">最近审计 {{ c.lastAt || '—' }} →</div>
         </div>
       </div>
     </div>
-    <div class="todo" style="margin-top:10px">闭环流程：在类别页对对象点「开始审计」→ 看问题与整改说明 → 导出报告发负责人 → 整改后再次审计 → 在「复检对比」确认问题消除，直到清零。</div>
   </div>
 
-  <div class="card" v-if="hospitalRows.length">
-    <h2>{{ site?.hospital_id ? '本院整改进度' : '医院整改进度' }}</h2>
+  <div class="card" v-if="showHospitalProgress">
+    <h2>医院整改进度</h2>
     <table>
-      <thead><tr><th>医院</th><th>对象</th><th>有问题对象</th><th>待整改 FAIL</th><th>状态</th><th>最近审计</th></tr></thead>
+      <thead><tr><th>医院</th><th>对象</th><th>有问题对象</th><th>待整改</th><th>状态</th><th>最近审计</th></tr></thead>
       <tbody>
         <tr v-for="h in hospitalRows" :key="h.id">
-          <td>{{ h.id }}<div class="todo">{{ h.name }}</div></td>
+          <td>{{ h.name }}</td>
           <td>{{ h.assets }}</td>
           <td>{{ h.problemAssets }}</td>
           <td><b v-if="h.fail" style="color:#b91c1c">{{ h.fail }}</b><span v-else>0</span></td>
@@ -88,63 +91,33 @@
       </tbody>
     </table>
   </div>
-
-  <div class="card">
-    <h2>最近审计</h2>
-    <div v-if="error" class="error">{{ error }}</div>
-    <table v-else-if="recentRows.length">
-      <thead><tr><th>对象</th><th>类别</th><th>事实包</th><th>FAIL</th><th>导入时间</th><th>操作</th></tr></thead>
-      <tbody>
-        <tr v-for="r in recentRows" :key="r.b.id">
-          <td>{{ assetName(r.b.asset_id) }}<div class="todo">{{ r.b.asset_id }} · {{ r.b.hospital_id }}</div></td>
-          <td>{{ catLabel(r.cat) }}</td>
-          <td>{{ r.b.id }}</td>
-          <td><span v-if="r.fail" class="concl c-FAIL">{{ r.fail }}</span><span v-else>0</span></td>
-          <td>{{ fmtLocal(r.b.imported_at) }}</td>
-          <td>
-            <div class="row-actions">
-              <button class="btn small" @click="goto('findings', r.b.id)">问题</button>
-              <button class="btn small" :disabled="exporting === r.b.id" @click="doExport(r.b)">导出报告</button>
-              <button class="btn small" v-if="bundleCountOf(r.b.asset_id) >= 2" @click="gotoAsset('recheck', r.b.asset_id)">复检对比</button>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <div v-else class="empty">暂无事实包。去类别页对对象开始审计，或到「管理」页登记新对象。</div>
-    <div class="msg err" v-if="exportErr">{{ exportErr }}</div>
-  </div>
+  <div class="msg err" v-if="error">{{ error }}</div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, type AlertRow, type AuditDueRow, type Asset, type BundleSummary, type Hospital, type ReportRow, type SiteInfo } from '../api'
+import { api, type AlertRow, type AuditDueRow, type Asset, type BundleSummary, type Finding, type Hospital, type Rule, type SiteInfo } from '../api'
 import { kindCategory, type CategoryKey } from '../categories'
-import { goto, gotoAsset, selectedHospital, filterByHospital } from '../store'
-import { bundleCategory, exportLatestReport, latestBundleOf, latestFail, loadSite, fmtLocal} from '../util'
+import { goto, gotoObjects, selectedHospital, filterByHospital } from '../store'
+import { latestBundleOf, latestFail, loadSite, fmtLocal } from '../util'
 
 const site = ref<SiteInfo | null>(null)
 
-interface CatCard { key: string; view: string; label: string; assets: number; problem: number; fail: number; lastAt: string }
+interface CatCard { key: CategoryKey; label: string; assets: number; problem: number; total: number; high: number; medium: number; low: number; lastAt: string }
 interface HospRow { id: string; name: string; assets: number; problemAssets: number; fail: number; status: 'clear' | 'open' | 'none'; lastAt: string }
-interface RecentRow { b: BundleSummary; fail: number; cat: CategoryKey | 'unknown' }
+interface TopRisk { ruleId: string; name: string; objectText: string; accounts: number; bundleId: string }
 
 const assets = ref<Asset[]>([])
 const bundles = ref<BundleSummary[]>([])
 const latestByAsset = ref(new Map<string, BundleSummary>())
 const hospitals = ref<Hospital[]>([])
-const reports = ref<ReportRow[] | null>(null)
-const rulesCount = ref<number | null>(null)
+const rules = ref<Rule[]>([])
 const error = ref('')
-const exporting = ref('')
-const exportErr = ref('')
-// 每资产最新包的最新轮 FAIL 数（assetId -> fail）
 const failByAsset = ref<Map<string, number>>(new Map())
-// 每包最新轮 FAIL 数（bundleId -> fail），仅最新包计算
-const failByBundle = ref<Map<string, number>>(new Map())
+const failsByAsset = ref<Map<string, Finding[]>>(new Map())
 
 const alertAll = ref<AlertRow[]>([])
-const alertRows = computed(() => filterByHospital(alertAll.value))
+const todoAlerts = computed(() => filterByHospital(alertAll.value))
 const openAlert = ref(0)
 function toggleAlert(id: number) { openAlert.value = openAlert.value === id ? 0 : id }
 async function ackAlert(a: AlertRow) {
@@ -155,35 +128,85 @@ async function ackAlert(a: AlertRow) {
 const dueAll = ref<AuditDueRow[]>([])
 const cycleDays = ref(30)
 const dueRows = computed(() => filterByHospital(dueAll.value).filter(d => d.status !== 'ok'))
-function viewOfKind(kind: string): string {
-  return { db: 'databases', os: 'os', mw: 'middleware', api: 'api' }[kindCategory(kind) as string] ?? 'admin'
-}
 
-const kindByAsset = computed(() => new Map(assets.value.map(a => [a.id, a.kind])))
+const ruleById = computed(() => new Map(rules.value.map(r => [r.ID, r])))
+const problemAssets = computed(() => [...failByAsset.value.values()].filter(f => f > 0).length)
+const riskTotals = computed(() => {
+  const t = { high: 0, medium: 0, low: 0 }
+  for (const fails of failsByAsset.value.values()) {
+    for (const f of fails) {
+      const r = (ruleById.value.get(f.rule_id)?.Risk ?? '').toLowerCase()
+      if (r === 'high') t.high++
+      else if (r === 'medium') t.medium++
+      else if (r === 'low') t.low++
+    }
+  }
+  return t
+})
+const scopeLabel = computed(() => {
+  if (selectedHospital.id) return hospitals.value.find(h => h.id === selectedHospital.id)?.name ?? '本院'
+  if (site.value?.hospital_id) return '本院'
+  return '全部医院'
+})
+const conclusion = computed(() => {
+  if (!assets.value.length) return '暂无审计对象'
+  if (problemAssets.value === 0) return '全部对象检查通过'
+  return `${scopeLabel.value} ${assets.value.length} 个对象，${problemAssets.value} 个有问题；高风险 ${riskTotals.value.high} 项待整改。`
+})
+
+// 先改这些：高风险问题按类型（规则）取前 5 条。
+const topRisks = computed<TopRisk[]>(() => {
+  const byRule = new Map<string, { fails: number; subjects: Set<string>; objects: Map<string, string>; bundleId: string }>()
+  for (const [assetId, fails] of failsByAsset.value) {
+    for (const f of fails) {
+      if ((ruleById.value.get(f.rule_id)?.Risk ?? '').toLowerCase() !== 'high') continue
+      const g = byRule.get(f.rule_id) ?? { fails: 0, subjects: new Set<string>(), objects: new Map<string, string>(), bundleId: f.bundle_id }
+      g.fails++
+      g.subjects.add(f.subject)
+      const an = assets.value.find(a => a.id === assetId)?.name ?? assetId
+      g.objects.set(assetId, an)
+      byRule.set(f.rule_id, g)
+    }
+  }
+  return [...byRule.entries()]
+    .sort((a, b) => b[1].fails - a[1].fails)
+    .slice(0, 5)
+    .map(([ruleId, g]) => {
+      const names = [...g.objects.values()]
+      const objectText = names.length > 1 ? `${names[0]} 等 ${names.length} 个对象` : (names[0] ?? '')
+      return { ruleId, name: ruleById.value.get(ruleId)?.Name ?? ruleId, objectText, accounts: g.subjects.size, bundleId: g.bundleId }
+    })
+})
 
 const catCards = computed<CatCard[]>(() => {
-  const defs: { key: CategoryKey; view: string; label: string }[] = [
-    { key: 'db', view: 'databases', label: '数据库' },
-    { key: 'os', view: 'os', label: '操作系统' },
-    { key: 'mw', view: 'middleware', label: '中间件' },
-    { key: 'api', view: 'api', label: '业务接口' },
+  const defs: { key: CategoryKey; label: string }[] = [
+    { key: 'db', label: '数据库' },
+    { key: 'os', label: '操作系统' },
+    { key: 'mw', label: '中间件' },
+    { key: 'api', label: '业务接口' },
   ]
   return defs.map(d => {
     const catAssets = assets.value.filter(a => kindCategory(a.kind) === d.key)
-    let problem = 0, fail = 0, lastAt = ''
+    let problem = 0, total = 0, high = 0, medium = 0, low = 0, lastAt = ''
     for (const a of catAssets) {
-      const f = failByAsset.value.get(a.id) ?? 0
-      if (f > 0) { problem++; fail += f }
+      const fails = failsByAsset.value.get(a.id) ?? []
+      if (fails.length > 0) problem++
+      for (const f of fails) {
+        total++
+        const r = (ruleById.value.get(f.rule_id)?.Risk ?? '').toLowerCase()
+        if (r === 'high') high++
+        else if (r === 'medium') medium++
+        else if (r === 'low') low++
+      }
       const lb = latestOfAsset(a.id)
       if (lb && lb.imported_at > lastAt) lastAt = lb.imported_at
     }
-    return { key: d.key, view: d.view, label: d.label, assets: catAssets.length, problem, fail, lastAt }
+    return { key: d.key, label: d.label, assets: catAssets.length, problem, total, high, medium, low, lastAt }
   })
 })
 
-const problemAssets = computed(() => [...failByAsset.value.values()].filter(f => f > 0).length)
-const openFail = computed(() => [...failByAsset.value.values()].reduce((s, f) => s + f, 0))
-
+// 医院整改进度只在多医院时显示（单院部署隐藏）。
+const showHospitalProgress = computed(() => !site.value?.hospital_id && hospitals.value.length > 1)
 const hospitalRows = computed<HospRow[]>(() => hospitals.value
   .filter(h => !selectedHospital.id || h.id === selectedHospital.id)
   .map(h => {
@@ -201,35 +224,12 @@ const hospitalRows = computed<HospRow[]>(() => hospitals.value
   }
 }))
 
-const recentRows = computed<RecentRow[]>(() =>
-  [...bundles.value]
-    .sort((x, y) => y.imported_at.localeCompare(x.imported_at))
-    .slice(0, 6)
-    .map(b => ({ b, fail: failByBundle.value.get(b.id) ?? 0, cat: bundleCategory(b, kindByAsset.value) })),
-)
-
-function catLabel(c: CategoryKey | 'unknown'): string {
-  return { db: '数据库', os: '操作系统', mw: '中间件', api: '业务接口', unknown: '未分类' }[c]
-}
-
 function catAccent(c: CategoryKey): string {
   return { db: 'a-blue', os: 'a-teal', mw: 'a-violet', api: 'a-amber' }[c]
 }
 function assetName(id: string): string {
   return assets.value.find(a => a.id === id)?.name ?? id
 }
-function bundleCountOf(assetId: string): number {
-  return bundles.value.filter(b => b.asset_id === assetId).length
-}
-
-async function doExport(b: BundleSummary) {
-  exporting.value = b.id; exportErr.value = ''
-  try { await exportLatestReport(b) }
-  catch (e) { exportErr.value = e instanceof Error ? e.message : '导出失败' }
-  finally { exporting.value = '' }
-}
-
-// 最新包优先用 /assets/latest-bundles，取不到时回退到列表内按时间取最大。
 function latestOfAsset(assetId: string): BundleSummary | undefined {
   return latestByAsset.value.get(assetId) ?? latestBundleOf(bundles.value, assetId)
 }
@@ -237,38 +237,26 @@ function latestOfAsset(assetId: string): BundleSummary | undefined {
 async function load() {
   try {
     site.value = await loadSite()
-    const [bs, as, hs, rs, ru] = await Promise.all([
-      api.bundles(), api.assets(), api.hospitals(), api.reports(), api.rules(),
+    const [bs, as, hs, ru] = await Promise.all([
+      api.bundles(), api.assets(), api.hospitals(), api.rules(),
     ])
-    bundles.value = filterByHospital(bs); assets.value = filterByHospital(as); hospitals.value = hs; reports.value = filterByHospital(rs)
-    // 每对象最新包单独取（M37-1.2）：bundles 列表只返回 100 条，老对象
-    // 的最近审计不能用它算；取不到时各处回退到列表内按时间取最大。
+    bundles.value = filterByHospital(bs); assets.value = filterByHospital(as); hospitals.value = hs
+    rules.value = ru
     try { latestByAsset.value = new Map(filterByHospital(await api.latestBundles()).map(b => [b.asset_id, b])) } catch { latestByAsset.value = new Map() }
-    // 启用规则 = 规则总数 − 本站已关闭数（M17 规则启停）
-    let off = 0
-    try { off = (await api.ruleToggles()).filter(t => !t.enabled).length } catch { off = 0 }
-    rulesCount.value = ru.length - off
     try { alertAll.value = await api.alerts() } catch { alertAll.value = [] }
     try { const due = await api.auditDue(); dueAll.value = due.items; cycleDays.value = due.cycle_days } catch { dueAll.value = [] }
     const byAsset = new Map<string, number>()
-    const byBundle = new Map<string, number>()
-    // 顶部合计须与所选医院一致：用过滤后的资产算，勿用原始全院数组。
+    const failsMap = new Map<string, Finding[]>()
     for (const a of assets.value) {
       const lb = latestOfAsset(a.id)
       if (!lb) { byAsset.set(a.id, 0); continue }
-      let fail = 0
-      try { fail = latestFail(await api.findings(lb.id)).length } catch { fail = 0 }
-      byAsset.set(a.id, fail)
-      byBundle.set(lb.id, fail)
-    }
-    // 最近审计列表（前 6 个包）逐个补算 FAIL，避免非最新包显示误导性的 0。
-    const recent = [...bs].sort((x, y) => y.imported_at.localeCompare(x.imported_at)).slice(0, 6)
-    for (const b of recent) {
-      if (byBundle.has(b.id)) continue
-      try { byBundle.set(b.id, latestFail(await api.findings(b.id)).length) } catch { /* 保持缺省 */ }
+      let fails: Finding[] = []
+      try { fails = latestFail(await api.findings(lb.id)) } catch { fails = [] }
+      byAsset.set(a.id, fails.length)
+      failsMap.set(a.id, fails)
     }
     failByAsset.value = byAsset
-    failByBundle.value = byBundle
+    failsByAsset.value = failsMap
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败'
   }
