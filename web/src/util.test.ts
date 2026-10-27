@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BundleSummary } from './api'
-import { buildConclusion, comparePair, countSnapshotRisks, latestBundleOf, loadBundlesByAssets, filterApiReports } from './util'
+import { buildConclusion, comparePair, countSnapshotRisks, latestBundleOf, loadBundlesByAssets, filterApiReports, hospitalProgressStatus } from './util'
 import type { ApiAuditSummary } from './api'
 
 // M37-1.1：服务端按 imported_at DESC 返回，直接取末尾会把新旧颠倒；
@@ -161,5 +161,23 @@ describe('filterApiReports（M37-fix2-4）', () => {
   })
   it('选定医院时只留本院已匹配报告，他院已匹配与未匹配都不显示', () => {
     expect(filterApiReports(rows, byEndpoint, 'h-demo').map(x => x.target)).toEqual(['http://demo-api'])
+  })
+})
+
+describe('hospitalProgressStatus（M37-fix2-5）', () => {
+  it('全未审计', () => {
+    expect(hospitalProgressStatus(5, 0, 0)).toEqual({ status: 'none', unaudited: 5 })
+  })
+  it('部分未审计且有问题：整改中优先，另有未审计数照常返回', () => {
+    expect(hospitalProgressStatus(5, 3, 10)).toEqual({ status: 'open', unaudited: 2 })
+  })
+  it('部分未审计无问题：才显示部分未审计', () => {
+    expect(hospitalProgressStatus(5, 3, 0)).toEqual({ status: 'partial', unaudited: 2 })
+  })
+  it('全部审计有问题：整改中，无未审计', () => {
+    expect(hospitalProgressStatus(5, 5, 10)).toEqual({ status: 'open', unaudited: 0 })
+  })
+  it('全部审计无问题：已清零', () => {
+    expect(hospitalProgressStatus(5, 5, 0)).toEqual({ status: 'clear', unaudited: 0 })
   })
 })

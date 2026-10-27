@@ -83,7 +83,7 @@
           <td><b v-if="h.fail" style="color:#b91c1c">{{ h.fail }}</b><span v-else>0</span></td>
           <td>
             <span v-if="h.status === 'clear'" class="concl c-PASS">已清零</span>
-            <span v-else-if="h.status === 'open'" class="concl c-FAIL">整改中</span>
+            <span v-else-if="h.status === 'open'" class="concl c-FAIL">整改中</span><span v-if="h.status === 'open' && h.unaudited">（另有 {{ h.unaudited }} 个未审计）</span>
             <span v-else-if="h.status === 'partial'" class="concl c-UNKNOWN">部分未审计</span>
             <span v-else class="concl c-UNKNOWN">未审计</span>
           </td>
@@ -100,13 +100,13 @@ import { computed, onMounted, ref } from 'vue'
 import { api, type AlertRow, type AuditDueRow, type Asset, type BundleSummary, type Finding, type Hospital, type Rule, type SiteInfo } from '../api'
 import { kindCategory, type CategoryKey } from '../categories'
 import { goto, gotoObjects, selectedHospital, filterByHospital } from '../store'
-import { latestBundleOf, latestFail, loadSite, fmtLocal, buildConclusion } from '../util'
+import { latestBundleOf, latestFail, loadSite, fmtLocal, buildConclusion, hospitalProgressStatus } from '../util'
 import { categoryLabel } from '../labels'
 
 const site = ref<SiteInfo | null>(null)
 
 interface CatCard { key: CategoryKey; label: string; assets: number; problem: number; total: number; high: number; medium: number; low: number; lastAt: string; unaudited: number }
-interface HospRow { id: string; name: string; assets: number; problemAssets: number; fail: number; status: 'clear' | 'open' | 'none' | 'partial'; lastAt: string }
+interface HospRow { id: string; name: string; assets: number; problemAssets: number; fail: number; status: 'clear' | 'open' | 'none' | 'partial'; unaudited: number; lastAt: string }
 interface TopRisk { ruleId: string; name: string; objectText: string; accounts: number; bundleId: string }
 
 const assets = ref<Asset[]>([])
@@ -213,9 +213,10 @@ const hospitalRows = computed<HospRow[]>(() => hospitals.value
     const lb = latestOfAsset(a.id)
     if (lb) { audited++; if (lb.imported_at > lastAt) lastAt = lb.imported_at }
   }
+  const progress = hospitalProgressStatus(hs.length, audited, fail)
   return {
     id: h.id, name: h.name, assets: hs.length, problemAssets: problem, fail,
-    status: audited === 0 ? 'none' : audited < hs.length ? 'partial' : fail > 0 ? 'open' : 'clear', lastAt,
+    status: progress.status, unaudited: progress.unaudited, lastAt,
   }
 }))
 

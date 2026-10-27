@@ -109,6 +109,22 @@ export function bundlesOfAsset(bundles: BundleSummary[], assetId: string): Bundl
   return bundles.filter(b => b.asset_id === assetId)
 }
 
+export type HospitalProgressStatus = 'none' | 'partial' | 'open' | 'clear'
+
+// hospitalProgressStatus 医院整改进度状态（M37-fix2-5）：
+// 已审计对象里只要有问题就显示「整改中」，未审计数由调用方在同一格补充
+// 「另有 N 个未审计」；完全没有问题、但有未审计对象时才显示「部分未审计」。
+// 此前部分未审计分支排在有问题分支之前，部分未审计会盖住整改中。
+export function hospitalProgressStatus(
+  total: number, audited: number, fail: number,
+): { status: HospitalProgressStatus; unaudited: number } {
+  const unaudited = total - audited
+  if (audited === 0) return { status: 'none', unaudited }
+  if (fail > 0) return { status: 'open', unaudited }
+  if (unaudited > 0) return { status: 'partial', unaudited }
+  return { status: 'clear', unaudited }
+}
+
 // filterApiReports 按医院过滤业务接口报告（M37-fix2-4）：
 // 已匹配到登记对象的，按对象所属医院过滤；未匹配的只在「全部医院」视图
 // 下显示，选定医院时不显示（此前未过滤，他院已匹配报告会以目标地址形式
