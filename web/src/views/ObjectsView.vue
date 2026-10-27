@@ -101,6 +101,7 @@ import RemoteAuditCard from '../components/RemoteAuditCard.vue'
 import { kindCategory, type CategoryKey } from '../categories'
 import { nav, goto, filterByHospital, reviewerName } from '../store'
 import { exportLatestReport, latestBundleOf, latestFail, fmtLocal } from '../util'
+import { conclLabel } from '../labels'
 
 const MW_PRODUCTS = [
   { kind: 'mw-tomcat', label: 'Tomcat', supported: true, type: 'tomcat' },
@@ -144,9 +145,6 @@ const shown = computed(() => filter.value === 'all'
 
 function catLabel(c: CategoryKey | 'unknown'): string {
   return { db: '数据库', os: '操作系统', mw: '中间件', api: '业务接口', unknown: '未分类' }[c]
-}
-function conclLabel(c: string): string {
-  return { FAIL: '不通过', PASS: '通过', UNKNOWN: '证据不足' }[c] ?? c
 }
 function connOf(a: Asset): ConnConfig | null {
   if (!a.labels) return null

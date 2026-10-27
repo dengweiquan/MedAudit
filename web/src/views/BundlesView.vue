@@ -17,7 +17,7 @@
     <template v-for="g in assetGroups" :key="g.assetId">
       <h3 style="margin:14px 0 6px">{{ g.name }} <span class="todo">{{ g.assetId }} · {{ g.hospital }} · 共 {{ g.bundles.length }} 次审计</span></h3>
       <table>
-        <thead><tr><th>审计时间</th><th>执行</th><th>事实</th><th>问题（FAIL）</th><th>操作</th></tr></thead>
+        <thead><tr><th>审计时间</th><th>执行</th><th>事实</th><th>问题（不通过）</th><th>操作</th></tr></thead>
         <tbody>
           <template v-for="b in g.bundles" :key="b.id">
             <tr :class="{ selected: explorerId === b.id || effectiveId === b.id }">
@@ -59,14 +59,14 @@
 
   <div class="card" v-if="effectiveId">
     <h2>有效权限（传递闭包）· {{ effectiveId }}</h2>
-    <div class="todo" style="margin-top:0">经角色/组传递后每个主体实际持有的角色与权限；「经…派生」的权限是单看直接授权看不见的部分。</div>
+    <div class="todo" style="margin-top:0">经角色/组传递后每个账号实际持有的角色与权限。<span title="「经…派生」的权限是单看直接授权看不见的部分。">?</span></div>
     <div v-if="effectiveError" class="error">{{ effectiveError }}</div>
     <table v-else-if="effectiveRows.length">
-      <thead><tr><th>主体</th><th>类型</th><th>持有角色（路径）</th><th>派生权限</th></tr></thead>
+      <thead><tr><th>账号</th><th>类型</th><th>持有角色（路径）</th><th>派生权限</th></tr></thead>
       <tbody>
         <tr v-for="e in effectiveRows" :key="e.subject">
           <td>{{ e.subject }}</td>
-          <td>{{ e.is_role ? '角色' : '主体' }}</td>
+          <td>{{ e.is_role ? '角色' : '账号' }}</td>
           <td class="detail-cell">{{ e.roles.length ? e.roles.map(r => r.path.join(' → ')).join('；') : '—' }}</td>
           <td class="detail-cell">{{ derivedText(e) }}</td>
         </tr>
@@ -119,7 +119,7 @@
     </div>
     <div v-if="factsError" class="error">{{ factsError }}</div>
     <table v-else-if="facts.length">
-      <thead><tr><th>类型</th><th>主体</th><th>状态</th><th>来源</th><th>属性</th></tr></thead>
+      <thead><tr><th>类型</th><th>账号</th><th>状态</th><th>来源</th><th>属性</th></tr></thead>
       <tbody>
         <tr v-for="f in facts" :key="f.fact_id">
           <td>{{ f.kind }}</td><td>{{ f.subject }}</td><td>{{ f.status }}</td><td>{{ f.source }}</td>
@@ -247,7 +247,7 @@ async function evaluate(b: BundleSummary) {
     const mode = s.baseline_mode === 'auto'
       ? `（已自动套用本院基线${s.baselines_applied?.length ? '：' + s.baselines_applied.join('、') : '，本院暂无基线'}）`
       : s.baseline_mode === 'bare' ? '（裸评）' : bl ? `（基线 ${bl}）` : ''
-    evalMsg.value = `${b.id} 评估完成${mode}：${s.total} 条结果，FAIL ${s.fail}，落库问题 ${s.findings_stored}`
+    evalMsg.value = `${b.id} 评估完成${mode}：${s.total} 条结果，不通过 ${s.fail} 项，落库问题 ${s.findings_stored}`
     failMap.value.set(b.id, s.fail)
   } catch (e) {
     evalErr.value = e instanceof Error ? e.message : '评估失败'

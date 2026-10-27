@@ -148,6 +148,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule } from '../api'
 import { fmtLocal, latestBundleOf, latestFail } from '../util'
+import { conclLabel, riskLabel, reviewLabel } from '../labels'
 import { reviewerName, filterByHospital, engineerMode } from '../store'
 
 const bundles = ref<BundleSummary[]>([])
@@ -184,15 +185,6 @@ const reportGroups = computed<ReportGroup[]>(() => {
   }
   return out.sort((x, y) => (y.reports[0]?.created_at ?? '').localeCompare(x.reports[0]?.created_at ?? ''))
 })
-function conclLabel(c: string): string {
-  return { FAIL: '不通过', PASS: '通过', UNKNOWN: '证据不足' }[c] ?? c
-}
-function riskLabel(r?: string): string {
-  return { high: '高', medium: '中', low: '低' }[(r ?? '').toLowerCase()] ?? '—'
-}
-function reviewLabel(r: string): string {
-  return { confirmed: '已确认', false_positive: '误报', exception: '例外' }[r] ?? '未复核'
-}
 function ruleName(id: string): string {
   return rulesMap.value.get(id)?.Name ?? id
 }

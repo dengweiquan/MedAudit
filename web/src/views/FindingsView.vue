@@ -179,7 +179,7 @@
                                       <option v-for="b in sameAssetBundles(f)" :key="b.id" :value="b.id">{{ engineerMode.on ? b.id + '（' + fmtLocal(b.imported_at) + '）' : fmtLocal(b.imported_at) }}</option>
                                     </select>
                                     <button class="btn primary" :disabled="!retestBundle" @click="doRetest(f)">执行复测</button>
-                                    <span class="todo">复测以新包做技术口径（无基线）重评估，比对同规则同主体。</span>
+                                    <span class="todo">复测以新包做技术口径（无基线）重评估，比对同规则同账号。</span>
                                   </div>
                                   <table v-if="retests.length">
                                     <thead><tr><th>复测包</th><th>结论</th><th>时间</th></tr></thead>
@@ -197,13 +197,13 @@
                             </template>
                           </tbody>
                         </table>
-                        <p class="todo" v-if="s.rows.length > 30">该主体共 {{ s.rows.length }} 条，此处仅列前 30 条；完整清单见报告导出。</p>
+                        <p class="todo" v-if="s.rows.length > 30">该账号共 {{ s.rows.length }} 条，此处仅列前 30 条；完整清单见报告导出。</p>
                       </td>
                     </tr>
                   </template>
                 </tbody>
               </table>
-              <button v-if="g.subjects.length > subjectCap" class="btn small" @click="subjectCap += 100">显示更多主体（剩余 {{ g.subjects.length - subjectCap }}）</button>
+              <button v-if="g.subjects.length > subjectCap" class="btn small" @click="subjectCap += 100">显示更多账号（剩余 {{ g.subjects.length - subjectCap }}）</button>
             </td>
           </tr>
         </template>
@@ -218,6 +218,7 @@ import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BaselineRow, type BundleSummary, type ExemptionPreview, type Finding, type FixScriptResp, type RemediationRow, type RetestRow, type Rule } from '../api'
 import { nav, reviewerName, saveReviewerName, filterByHospital, engineerMode } from '../store'
 import { latestRunFindings, latestBundleOf, fmtLocal, baselineKindLabel } from '../util'
+import { conclLabel, riskLabel, reviewLabel } from '../labels'
 
 const bundles = ref<BundleSummary[]>([])
 const assets = ref<Asset[]>([])
@@ -271,15 +272,6 @@ function detailInfo(f: Finding): { detail?: string; evidence?: string[]; missing
 }
 function bundleLabel(b: BundleSummary): string {
   return `${b.asset_id} · ${fmtLocal(b.imported_at)}（${b.id}）`
-}
-function conclLabel(c: string): string {
-  return { FAIL: '不通过', PASS: '通过', UNKNOWN: '证据不足' }[c] ?? c
-}
-function riskLabel(r?: string): string {
-  return { high: '高', medium: '中', low: '低' }[(r ?? '').toLowerCase()] ?? '—'
-}
-function reviewLabel(r: string): string {
-  return { confirmed: '已确认', false_positive: '误报', exception: '例外' }[r] ?? '未复核'
 }
 
 const current = computed(() => bundles.value.find(b => b.id === bundleId.value))
@@ -430,7 +422,7 @@ async function reevalWithBaseline(f: Finding) {
   st.busy = true; st.reevalMsg = ''; st.err = ''
   try {
     const s = await api.evaluate(f.bundle_id, st.doneBaseline)
-    st.reevalMsg = `重新评估完成：共 ${s.total} 条，FAIL ${s.fail}，落库问题 ${s.findings_stored}。新一轮已用该基线，屏蔽项不再计入。`
+    st.reevalMsg = `重新评估完成：共 ${s.total} 条，不通过 ${s.fail} 项，落库问题 ${s.findings_stored}。新一轮已用该基线，屏蔽项不再计入。`
   } catch (e) { st.err = e instanceof Error ? e.message : '重新评估失败' }
   st.busy = false
 }

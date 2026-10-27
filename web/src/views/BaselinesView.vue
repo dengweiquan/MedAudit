@@ -12,7 +12,7 @@
     </div>
     <div v-if="error" class="error">{{ error }}</div>
     <table v-else-if="baselines.length">
-      <thead><tr><th>ID</th><th>目标</th><th>版本</th><th>允许清单（allows）</th><th>操作</th></tr></thead>
+      <thead><tr><th>ID</th><th>目标</th><th>版本</th><th>允许清单</th><th>操作</th></tr></thead>
       <tbody>
         <tr v-for="b in baselines" :key="b.id">
           <td>{{ b.id }}</td><td>{{ b.target }}</td><td>{{ b.version }}</td>
@@ -50,9 +50,9 @@
       </label>
       <label>创建人<input v-model="form.created_by" placeholder="创建人" /></label>
     </div>
-    <p class="todo" style="margin:6px 0">放行项一条 = 放行「某主体」的一项权限/角色/身份。逐项填写后点「添加一条」，可加多条再一次创建。<b>更推荐</b>：到「问题」页对具体问题点「加入基线」，放行项由系统按证据自动推导，不必手填。</p>
+    <p class="todo" style="margin:6px 0">放行项一条 = 放行某个账号的一项权限/角色/身份。<span title="逐项填写后点「添加一条」，可加多条再一次创建。更推荐：到「问题」页对具体问题点「加入基线」，放行项由系统按证据自动推导，不必手填。">?</span></p>
     <div class="form-grid">
-      <label>主体（账号/进程/对象名）<input v-model="draft.subject" :placeholder="subjectHint" /></label>
+      <label>账号/角色/对象<input v-model="draft.subject" :placeholder="subjectHint" /></label>
       <label>种类
         <select v-model="draft.kind">
           <option v-for="k in kindOptions" :key="k.v" :value="k.v">{{ k.label }}（{{ k.v }}）</option>
@@ -157,7 +157,7 @@ const valueHint = computed(() => ({
 
 function addDraft() {
   err.value = ''
-  if (!draft.value.subject || !draft.value.value) { err.value = '放行项的主体与值必填'; return }
+  if (!draft.value.subject || !draft.value.value) { err.value = '放行项的账号与值必填'; return }
   draftAllows.value.push({ ...draft.value })
   draft.value = { subject: '', kind: draft.value.kind, value: '', scope: '', reason: draft.value.reason }
 }
