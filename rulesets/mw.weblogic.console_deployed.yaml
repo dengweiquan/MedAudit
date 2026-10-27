@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.weblogic.console_deployed
+version: "1"
+name: WebLogic 管理控制台已部署
+target: mw-weblogic
+risk: medium
+description: |
+  app-deployment 中存在管理控制台应用（console）。
+requires: [service_config]
+remediation: |
+  通过 console-enabled=false 关闭控制台，或限制访问并在基线登记。

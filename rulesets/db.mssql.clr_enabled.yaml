@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mssql.clr_enabled
+version: "1"
+name: SQL Server CLR 集成已启用
+target: db-sqlserver
+risk: medium
+description: |
+  clr enabled 允许在数据库引擎内加载 .NET 程序集执行代码。
+requires: [account_config]
+remediation: |
+  无业务依赖时关闭 CLR 集成。

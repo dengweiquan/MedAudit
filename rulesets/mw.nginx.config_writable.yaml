@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.nginx.config_writable
+version: "1"
+name: Nginx 配置可被非属主修改
+target: mw-nginx
+risk: high
+description: |
+  主配置或其目录对 group 或 other 可写。
+requires: [file_perm]
+remediation: |
+  收紧 Nginx 配置文件与目录权限。

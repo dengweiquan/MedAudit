@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.hpux.multiple_uid0
+version: "1"
+name: 多个 UID 0 账号
+target: os-hpux
+risk: high
+description: |
+  除 root 外还有 UID=0 账号，等同多出一个无约束的超级用户，常见于后门或误配。
+requires: [identity]
+remediation: |
+  删除或改 UID 并核实账号来源；确为厂商必需的记入基线。

@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.pg.hba_trust
+version: "1"
+name: PostgreSQL pg_hba 存在 trust 免密认证
+target: db-postgres
+risk: high
+description: |
+  trust 方法不验证口令，任何能连到该规则范围的来源都可直接以对应角色登录。
+requires: [account_config]
+remediation: |
+  将 trust 改为 scram-sha-256（或证书认证），至少收紧来源地址范围。

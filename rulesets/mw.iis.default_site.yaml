@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.iis.default_site
+version: "1"
+name: IIS 默认站点仍存在
+target: mw-iis
+risk: low
+description: |
+  Default Web Site 未删除（默认页与默认绑定扩大暴露面）。
+requires: [service_config]
+remediation: |
+  删除或停用默认站点。

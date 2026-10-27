@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.oracle.public_object_grant
+version: "1"
+name: Oracle 对象授权给 PUBLIC
+target: db-oracle
+risk: high
+description: |
+  对象权限授予 PUBLIC 等于对所有用户与角色开放。判定口径：对象所有者为业务模式（非厂商维护）时任意 PUBLIC 授权判 FAIL；所有者为厂商维护模式时，仅当对象属敏感字典对象（USER$、DBA_USERS 等口令/授权字典）才判 FAIL——厂商组件对 PUBLIC 的常规发布（EXECUTE/目录查询）是产品基线，不判以免噪声淹没真实问题。
+requires: [privilege]
+remediation: |
+  将 PUBLIC 授权改为按角色/用户的定向授权；确属全院共用的只读业务对象记入基线（按对象豁免）。

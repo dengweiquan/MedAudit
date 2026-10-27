@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.oracle.sys_schema_grant
+version: "1"
+name: Oracle 系统模式对象被业务用户持有
+target: db-oracle
+risk: high
+description: |
+  SYS/SYSTEM 模式对象（数据字典与系统包）被业务用户直接持有，等于把字典读写面交给业务侧。判定口径：被授者须是事实中的真实用户（用户与角色共用命名空间，不在用户清单中的被授者是角色——厂商目录角色与管理角色持有 SYS 授权属产品设计，不判）；厂商维护账号（组件账号）豁免；DBA 角色持有归 db.oracle.dba_role 口径，不在此重复。
+requires: [privilege]
+remediation: |
+  回收业务用户对系统模式对象的直接授权，改走 SELECT_CATALOG_ROLE 等厂商角色；个别必需授权记入基线。

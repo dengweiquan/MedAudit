@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.tomcat.manager_deployed
+version: "1"
+name: Tomcat 管理控制台已部署
+target: mw-tomcat
+risk: medium
+description: |
+  webapps 中存在 manager / host-manager 应用，管理面扩大了攻击面。
+requires: [service_config]
+remediation: |
+  生产环境移除管理应用，或限制其访问来源并在基线登记。

@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.iis.apppool_system
+version: "1"
+name: 应用程序池以 LocalSystem 运行
+target: mw-iis
+risk: high
+description: |
+  应用程序池 processModel 身份为 LocalSystem（SYSTEM 全权）。
+requires: [identity]
+remediation: |
+  改用 ApplicationPoolIdentity 或专用低权账号，或在基线登记例外。

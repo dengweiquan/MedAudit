@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.tomcat.sample_apps
+version: "1"
+name: Tomcat 示例应用已部署
+target: mw-tomcat
+risk: low
+description: |
+  webapps 中存在 examples / docs 示例应用。
+requires: [service_config]
+remediation: |
+  生产环境删除 examples 与 docs 应用。

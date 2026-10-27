@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.nginx.autoindex
+version: "1"
+name: Nginx 开启目录列表
+target: mw-nginx
+risk: medium
+description: |
+  存在 autoindex on 的作用域，目录内容可被浏览枚举。
+requires: [service_config]
+remediation: |
+  关闭 autoindex（删除或改 off）。

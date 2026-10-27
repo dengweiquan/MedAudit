@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mssql.adhoc_distributed
+version: "1"
+name: SQL Server 即席分布式查询已启用
+target: db-sqlserver
+risk: medium
+description: |
+  Ad Hoc Distributed Queries 允许 OPENROWSET/OPENDATASOURCE 访问外部数据源，可成为外联与横移通道。
+requires: [account_config]
+remediation: |
+  无业务依赖时关闭即席分布式查询。

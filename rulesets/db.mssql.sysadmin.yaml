@@ -1,11 +1,11 @@
 # MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
 id: db.mssql.sysadmin
-version: "1"
+version: "2"
 name: SQL Server 登录属于 sysadmin
 target: db-sqlserver
 risk: high
 description: |
-  固定服务器角色 sysadmin 成员拥有最高权限。
+  固定服务器角色 sysadmin 成员拥有最高权限；含经服务器角色嵌套传递的间接成员（M8-2）。
 requires: [role_edge]
 remediation: |
   按最小权限移出 sysadmin，或记入基线说明业务必需。

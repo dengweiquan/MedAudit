@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.tomcat.console_admin
+version: "1"
+name: 控制台账号持有管理角色
+target: mw-tomcat
+risk: high
+description: |
+  tomcat-users 中存在持有 manager/admin 类角色的账号且不在基线。
+requires: [identity]
+remediation: |
+  删除不必要的管理账号；确需保留的记入基线并配合访问来源限制。

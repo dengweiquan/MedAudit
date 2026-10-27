@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.hpux.inetd_risky_service
+version: "1"
+name: inetd 开启高危服务
+target: os-hpux
+risk: high
+description: |
+  inetd 托管的 tftp/bootps/r 系列/小服务（echo/daytime/chargen/discard）与明文 telnet/ftp 属历史高危面，应关闭或以 sshd/安全替代收敛。
+requires: [service_config]
+remediation: |
+  在 /etc/inetd.conf 注释对应行并 inetd -c 重读；业务必需的（如个别设备 tftp）记入基线并做来源网段限制。

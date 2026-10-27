@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.tomcat.config_writable
+version: "1"
+name: Tomcat 配置可被非属主修改
+target: mw-tomcat
+risk: high
+description: |
+  conf 目录/关键配置/webapps 对 group 或 other 可写，低权主体可篡改高权服务加载内容。
+requires: [file_perm]
+remediation: |
+  收紧 conf 与 webapps 权限（属主 root/服务账号，组与他人只读或无权）。

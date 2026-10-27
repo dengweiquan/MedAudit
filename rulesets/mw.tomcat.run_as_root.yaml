@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.tomcat.run_as_root
+version: "1"
+name: Tomcat 以 root 运行
+target: mw-tomcat
+risk: high
+description: |
+  Tomcat 进程实际 EUID=0；Web 容器被攻破即等于主机 root。
+requires: [process]
+remediation: |
+  改用专用低权服务账号运行 Tomcat，并在基线登记例外（如确有必需）。

@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.iis.anon_open
+version: "1"
+name: IIS 站点匿名访问且无授权收窄
+target: mw-iis
+risk: medium
+description: |
+  站点匿名认证开启（含架构默认）且授权规则未做任何收窄（无规则或仅 Allow *）。
+requires: [service_config]
+remediation: |
+  业务允许时关闭匿名或用授权规则/其他认证收窄；纯公开站点在基线登记。

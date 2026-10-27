@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.tomcat.tls_weak
+version: "2"
+name: Tomcat TLS 启用了弱协议
+target: mw-tomcat
+risk: medium
+description: |
+  Connector 的 TLS 协议配置（SSLHostConfig protocols / sslProtocol / SSLProtocol）含 TLSv1/TLSv1.1/SSL 或为 all（含弱协议）。
+requires: [service_config]
+remediation: |
+  TLS 协议配置收紧为 TLSv1.2 起（建议 TLSv1.2,TLSv1.3）。

@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mssql.xp_cmdshell
+version: "1"
+name: SQL Server xp_cmdshell 已启用
+target: db-sqlserver
+risk: high
+description: |
+  xp_cmdshell 允许以服务账号身份执行操作系统命令，是数据库到主机的直接跳板。
+requires: [account_config]
+remediation: |
+  关闭 xp_cmdshell；确需使用的记入基线并限制调用主体。

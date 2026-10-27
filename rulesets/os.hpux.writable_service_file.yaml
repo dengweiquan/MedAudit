@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.hpux.writable_service_file
+version: "1"
+name: 启动/服务文件可被低权主体修改
+target: os-hpux
+risk: high
+description: |
+  inetd.conf、/sbin/init.d 启动脚本或 rc 配置可被 group/other 写——低权用户可改高权启动内容实现持久化提权。
+requires: [file_perm]
+remediation: |
+  收紧属主与模式（root:sys、755/644），确保低权主体不能修改启动加载内容。

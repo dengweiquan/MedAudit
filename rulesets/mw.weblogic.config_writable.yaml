@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.weblogic.config_writable
+version: "1"
+name: WebLogic 域配置可被非属主修改
+target: mw-weblogic
+risk: high
+description: |
+  域目录/config 目录/config.xml 对 group 或 other 可写。
+requires: [file_perm]
+remediation: |
+  收紧域目录与配置权限。

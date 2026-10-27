@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.oracle.default_account_open
+version: "1"
+name: Oracle 厂商默认账号未锁定
+target: db-oracle
+risk: medium
+description: |
+  厂商默认/示例账号（DBSNMP、OUTLN、SCOTT、HR 等内置清单）处于 OPEN 状态：这类账号的初始口令是公开知识，未锁定等于留了一扇已知钥匙的门。仅判 OPEN（已过期 EXPIRED 须改密后才能用，风险口径不同，不在此列）；EM 组件在用的 DBSNMP/SYSMAN 如属实请记入基线豁免。
+requires: [account_config]
+remediation: |
+  锁定不使用的默认账号（ALTER USER ... ACCOUNT LOCK）；确在用者改强口令并记入基线说明用途。

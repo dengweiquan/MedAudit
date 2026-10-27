@@ -1,0 +1,11 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.nginx.tls_weak
+version: "1"
+name: Nginx TLS 启用了弱协议
+target: mw-nginx
+risk: medium
+description: |
+  ssl_protocols 含 TLSv1 / TLSv1.1 / SSL。
+requires: [service_config]
+remediation: |
+  ssl_protocols 收紧为 TLSv1.2 TLSv1.3。
