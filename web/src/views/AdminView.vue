@@ -252,6 +252,8 @@
     <div class="todo">禁用或重置口令会立即吊销该用户的全部会话；不能禁用自己与最后一个可用账号（服务端校验）。所有账号当前同权（无角色分级）。</div>
   </div>
 
+  <ScheduleCard />
+
   <OpLogCard />
 </template>
 
@@ -262,6 +264,7 @@ import { DB_ENGINES, engineOfKind, kindCategory } from '../categories'
 import { loadSite, fmtLocal} from '../util'
 import { selectedHospital, setHospital, filterByHospital } from '../store'
 import OpLogCard from '../components/OpLogCard.vue'
+import ScheduleCard from '../components/ScheduleCard.vue'
 
 // 当前查看医院（管理页的选择器即全局筛选的唯一入口）。
 const viewHospital = ref('')

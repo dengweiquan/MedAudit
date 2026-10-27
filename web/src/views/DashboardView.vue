@@ -7,13 +7,39 @@
     <div class="stat a-slate"><div class="num">{{ rulesCount ?? '—' }}</div><div class="lbl">启用规则</div></div>
   </div>
 
+  <div class="card" v-if="alertRows.length">
+    <h2>告警（{{ alertRows.length }}）</h2>
+    <div v-for="a in alertRows" :key="a.id" class="alert-row">
+      <div class="inline-form" style="justify-content:space-between">
+        <span>
+          <span class="concl c-FAIL">{{ a.kind === 'drift' ? '权限新增' : '复检失败' }}</span>
+          <b style="margin-left:6px">{{ assetName(a.asset_id) }}</b>
+          <span class="todo">（{{ a.asset_id }}） · {{ fmtLocal(a.created_at) }}</span>
+        </span>
+        <span class="row-actions">
+          <button class="btn small" v-if="a.items?.length" @click="toggleAlert(a.id)">{{ openAlert === a.id ? '收起' : '看明细' }}</button>
+          <button class="btn small primary" @click="ackAlert(a)">已知悉</button>
+        </span>
+      </div>
+      <div class="todo" v-if="a.kind === 'drift'">与上次审计相比新增 {{ a.added_count }} 项授权/角色/账号，请确认是否为已批准的变更；不应存在的请回收，业务必需的请加入基线。</div>
+      <div class="todo" v-else>原因：{{ a.error }}</div>
+      <table v-if="openAlert === a.id && a.items?.length" style="margin-top:6px">
+        <thead><tr><th>变化</th><th>主体</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr v-for="(it, i) in a.items" :key="i"><td>{{ it.category }}</td><td>{{ it.subject }}</td><td>{{ it.detail }}</td></tr>
+        </tbody>
+      </table>
+      <div class="todo" v-if="openAlert === a.id && a.added_count > (a.items?.length ?? 0)">仅显示前 {{ a.items?.length }} 项，完整对比见「审计记录」工程师详情的漂移对比。</div>
+    </div>
+  </div>
+
   <div class="card">
     <h2>该复检了（{{ dueRows.length }}）</h2>
     <table v-if="dueRows.length">
       <thead><tr><th>对象</th><th>上次审计</th><th>状态</th><th>操作</th></tr></thead>
       <tbody>
         <tr v-for="d in dueRows" :key="d.asset_id">
-          <td>{{ d.name }}<div class="todo">{{ d.asset_id }}</div></td>
+          <td>{{ d.name }} <span v-if="d.auto" class="concl c-PASS">自动</span><div class="todo">{{ d.asset_id }}</div></td>
           <td>{{ d.last_audit_at ? fmtLocal(d.last_audit_at) : '—' }}</td>
           <td>
             <span v-if="d.status === 'overdue'" class="concl c-FAIL">已逾期 {{ -d.days_left }} 天</span>
@@ -25,7 +51,7 @@
       </tbody>
     </table>
     <div v-else class="todo">全部对象都在复检周期内。</div>
-    <div class="todo" style="margin-top:8px">每个对象每 {{ cycleDays }} 天复检一次（7 天内到期即提醒）。平台不保存目标口令，复检由工程师点「开始审计」，或用 ma audit 配合定时任务完成。</div>
+    <div class="todo" style="margin-top:8px">每个对象每 {{ cycleDays }} 天复检一次（7 天内到期即提醒）。标「自动」的对象已开启定期自动复检（在「管理」页设置），到期由平台自动执行；其余对象由工程师点「开始审计」复检。</div>
   </div>
 
   <div class="card">
@@ -92,7 +118,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, type AuditDueRow, type Asset, type BundleSummary, type Hospital, type ReportRow, type SiteInfo } from '../api'
+import { api, type AlertRow, type AuditDueRow, type Asset, type BundleSummary, type Hospital, type ReportRow, type SiteInfo } from '../api'
 import { kindCategory, type CategoryKey } from '../categories'
 import { goto, gotoAsset, selectedHospital, filterByHospital } from '../store'
 import { bundleCategory, exportLatestReport, latestBundleOf, latestFail, loadSite, fmtLocal} from '../util'
@@ -115,6 +141,15 @@ const exportErr = ref('')
 const failByAsset = ref<Map<string, number>>(new Map())
 // 每包最新轮 FAIL 数（bundleId -> fail），仅最新包计算
 const failByBundle = ref<Map<string, number>>(new Map())
+
+const alertAll = ref<AlertRow[]>([])
+const alertRows = computed(() => filterByHospital(alertAll.value))
+const openAlert = ref(0)
+function toggleAlert(id: number) { openAlert.value = openAlert.value === id ? 0 : id }
+async function ackAlert(a: AlertRow) {
+  try { await api.ackAlert(a.id); alertAll.value = alertAll.value.filter(x => x.id !== a.id) }
+  catch (e) { error.value = e instanceof Error ? e.message : '确认失败' }
+}
 
 const dueAll = ref<AuditDueRow[]>([])
 const cycleDays = ref(30)
@@ -204,6 +239,7 @@ async function load() {
     let off = 0
     try { off = (await api.ruleToggles()).filter(t => !t.enabled).length } catch { off = 0 }
     rulesCount.value = ru.length - off
+    try { alertAll.value = await api.alerts() } catch { alertAll.value = [] }
     try { const due = await api.auditDue(); dueAll.value = due.items; cycleDays.value = due.cycle_days } catch { dueAll.value = [] }
     const byAsset = new Map<string, number>()
     const byBundle = new Map<string, number>()

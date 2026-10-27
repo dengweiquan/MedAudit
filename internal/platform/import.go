@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 
 	"medaudit/internal/facts"
 )
@@ -65,7 +66,14 @@ func ImportBundle(db *sql.DB, b *facts.FactBundle, rawZip []byte, kr *EvidenceKe
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	// 权限漂移告警：失败只记日志，不影响导入。
+	if _, err := RecordDriftAlert(db, b.BundleID); err != nil {
+		log.Printf("[alert] %s 漂移比对失败: %v", b.BundleID, err)
+	}
+	return nil
 }
 
 // ListBundles 列出已导入的事实包摘要。

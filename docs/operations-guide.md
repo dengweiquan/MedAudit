@@ -358,8 +358,20 @@ curl -b <会话Cookie> -o api报告.docx \
 `/etc/medaudit/medaudit.env` 的 `MEDAUDIT_AUDIT_CYCLE_DAYS` 设定（缺省 30
 天）。接口：`GET /api/v1/audit/due`。
 
-平台不保存目标口令，因此**服务端不会自动采集**。需要无人值守复检时，在
-工程师机上用 cron 调 `ma`，口令放在仅本人可读（0600）的环境文件里：
+**平台自动复检（推荐）**：「管理」页 →「定期自动复检」，对对象点「开启」，选
+周期（7/14/30/60/90 天）并填目标登录口令。到期后平台自动执行审计（数据库直连
+或 SSH/WinRM 推送，与「开始审计」相同）、自动套用本院基线、生成报告；有新增权
+限或执行失败进入工作台「告警」（见第 8 节）。执行失败次日自动重试。
+
+- 前提：已配置证据密钥 `MEDAUDIT_EVIDENCE_KEY`（安装时自动生成）。口令以该密钥
+  AES-256-GCM 加密存于平台库，只在执行时解密；**更换证据密钥后需重新保存口令**。
+- 「关闭」立即删除保存的口令；删除资产、删除医院、一键清场也会一并删除。
+- 每次自动执行记入操作日志（操作人 `scheduler`）。
+- 接口：`GET /api/v1/schedules`、`PUT/DELETE /api/v1/schedules/{资产}`、
+  `POST /api/v1/schedules/{资产}/run`。
+
+**工程师侧定时（不在平台存口令时）**：在工程师机上用 cron 调 `ma`，口令放在仅
+本人可读（0600）的环境文件里：
 
 ```bash
 # /home/eng/.medaudit/recheck.env （chmod 600）
@@ -423,3 +435,103 @@ MYSQL_PW=<只读审计账号口令>
 ---
 
 *配套文档：`docs/cli-guide.md`（CLI 完整手册，命令与旗标全量）、`pilot/deployment-guide.md`（部署细则）、`pilot/operator-manual.md`（操作手册）、`docs/m21-hpux.md`（HP-UX 专题）。*
+
+## 8. 告警（权限新增 / 复检失败）
+
+每个新事实包入库（一键审计、远程审计、定期复检、`ma` 或 API 导入）后，平台自动与
+**同一对象的上一次审计**比对：出现新增授权、新增角色关系或新增账号时，生成一条
+「权限新增」告警，显示在工作台顶部，点「看明细」查看具体变化，处理后点「已知悉」。
+定期自动复检执行失败时生成「复检失败」告警。
+
+推送到群：在 `/etc/medaudit/medaudit.env` 设 `MEDAUDIT_ALERT_WEBHOOK=<群机器人地址>`
+并重启服务。消息为 `{"msgtype":"text","text":{"content":"…"}}`，企业微信与钉钉群
+机器人均可直接接收（钉钉机器人若开启「自定义关键词」安全设置，关键词填 `MedAudit`）。
+推送失败只写服务日志，不影响告警落库。接口：`GET /api/v1/alerts`（`?all=1` 含已确认）、
+`POST /api/v1/alerts/{id}/ack`。
+
+## 9. 基线模板（试点提速）
+
+「基线」页顶部「从模板套用基线」：选模板 → 填占位账号 → 取消不需要的条目 → 「一键套用」。
+已有同名基线则追加，没有则新建；套用后自动用本院全部基线重评本院同类对象的最新审计。
+
+内置模板：
+
+| 模板 | 状态 | 说明 |
+| --- | --- | --- |
+| Oracle / MySQL 8.0 / SQL Server / PostgreSQL 内置账号 | 已核实 | 数据库自带的管理与系统账号，可直接套用 |
+| HIS（Oracle）、LIS（SQL Server）、PACS（SQL Server / Oracle） | 草稿 | 常见厂商要求的整理，账号名写成 `{…}` 占位，必须填现场实际账号 |
+| 厂商运维账号 sudo（Linux） | 草稿 | 同上 |
+
+草稿模板不是某家厂商的官方清单。套用前请与厂商确认并取得书面说明留档；能整改的优先整改，
+不要用基线掩盖。
+
+**站点模板**：把现场核实过的模板放到 `/etc/medaudit/baseline-templates/*.yaml`
+（或 `MEDAUDIT_BASELINE_TEMPLATE_DIR` 指定的目录），刷新页面即可见；与内置模板同 `id`
+时覆盖内置。格式：
+
+```yaml
+id: his-oracle-vendorA          # 唯一
+name: HIS 应用库账号（Oracle，某厂商 V5）
+system: HIS                     # HIS / LIS / PACS / 通用 …
+target: db-oracle               # 与资产类型一致
+status: verified                # verified 已核实 | draft 草稿
+description: |
+  来源：某厂商部署手册 V5.2 第 3 章；院方信息科 2026-10 确认。
+entries:                        # kind/value 口径与「加入基线」一致
+  - {subject: HISAPP, kind: role, value: DBA, reason: 厂商升级需要}
+  - {subject: "{接口账号}", kind: privilege, value: SELECT ANY TABLE, reason: 接口查询}
+```
+
+接口：`GET /api/v1/baseline-templates`、`POST /api/v1/baseline-templates/{id}/apply`
+（`{hospital_id, baseline_id, values:{"{占位}":"账号"}, skip:[序号]}`）。
+
+## 10. 合规逐条判定
+
+Word 报告第「合规条款逐条判定」章对每个启用的合规框架逐条给出结论：
+
+| 结论 | 含义 |
+| --- | --- |
+| 满足 | 该条款对应的本平台检查项全部通过（含经基线放行的例外） |
+| 不满足 | 对应检查项有不通过的问题 |
+| 无法判定 | 对应检查项证据不足或未执行 |
+| 不涉及 | 对应检查项对本对象类型不适用，或已在本站停用 |
+| 本平台未检查 | 条款不在本平台技术检查范围（如安全审计、漏洞修补），需另行人工测评 |
+
+「满足」只代表本平台的技术检查项通过，条款中的管理类要求不在其内，对外表述时请注意。
+规则页顶部显示当前哪些框架进入报告。报告是生成时点的快照，改了框架后需重新导出。
+
+**内置框架**
+
+- `djbh2-l3`：等保 2.0（GB/T 22239-2019）第三级「安全计算环境」23 条，已核实，默认启用。
+  条款要求为要点概述，正式引用以标准原文为准。
+- `medical-draft`：医疗卫生行业网络与数据安全要求，10 条要点，整理自《医疗卫生机构网络
+  安全管理办法》（国卫规划发〔2022〕29号）与 GB/T 39725-2020《健康医疗数据安全指南》。
+  **具体条款号尚未逐条核对原文**，所以是草稿、默认不进报告。
+
+**启用医疗行业条款（推荐流程）**
+
+1. 复制 `internal/rules/compliance/medical-draft.yaml` 到 `/etc/medaudit/compliance/medical.yaml`。
+2. 合规人员对照原文，为每条填写 `ref`（如 `《办法》第X条`、`GB/T 39725 x.x`），按需
+   调整 `title` 和 `rules`，增删条目。
+3. 把 `status: draft` 改为 `status: verified`，保持 `id: medical-draft` 不变（覆盖内置）。
+4. `systemctl restart medaudit-server`，重新导出报告。
+
+临时预览可不改文件：设 `MEDAUDIT_COMPLIANCE_ENABLE=medical-draft` 并重启，报告中该框架的
+条款会标「条款号待核实」。
+
+同样的格式也可以新增其他标准（如省级卫健委要求、院内制度），`id` 取新值即可：
+
+```yaml
+id: hosp-policy
+name: 某院信息安全管理制度
+short: 院内制度
+status: verified
+controls:
+  - id: 第5条
+    ref: 《某院信息安全管理制度》第5条
+    group: 账号管理
+    title: 数据库特权账号须经信息科审批
+    rules: [db.oracle.dba_role, db.mssql.sysadmin, db.mysql.global_admin, db.pg.superuser]
+```
+
+接口：`GET /api/v1/compliance/frameworks`。

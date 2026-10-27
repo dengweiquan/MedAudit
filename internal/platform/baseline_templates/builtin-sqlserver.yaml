@@ -1,0 +1,16 @@
+id: builtin-sqlserver
+name: SQL Server 内置 sysadmin 成员（默认实例）
+system: 通用
+target: db-sqlserver
+status: verified
+description: |
+  SQL Server 2012 及以后默认实例安装后 sysadmin 角色中的内置成员：sa 与数据库
+  服务、代理、VSS 写入器、WMI 的服务账号。命名实例的服务账号为
+  NT SERVICE\MSSQL$实例名、NT SERVICE\SQLAgent$实例名，套用前请按实际改名。
+  sa 建议禁用或改名，保留此项仅表示角色成员身份为预期。
+entries:
+  - {subject: sa, kind: role, value: sysadmin, scope: server, reason: SQL Server 内置管理员登录}
+  - {subject: 'NT SERVICE\MSSQLSERVER', kind: role, value: sysadmin, scope: server, reason: 数据库引擎服务账号}
+  - {subject: 'NT SERVICE\SQLSERVERAGENT', kind: role, value: sysadmin, scope: server, reason: SQL Server 代理服务账号}
+  - {subject: 'NT SERVICE\SQLWriter', kind: role, value: sysadmin, scope: server, reason: VSS 写入器服务账号}
+  - {subject: 'NT SERVICE\Winmgmt', kind: role, value: sysadmin, scope: server, reason: WMI 服务账号}

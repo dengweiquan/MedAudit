@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// 复检周期提醒：按对象最近一次导入事实包的时间判断是否到期。平台不保存
-// 目标口令，不在服务端自动采集；到期对象由工程师「开始审计」或 ma audit
-// （可配 cron）复检。
+// 复检周期提醒：按对象最近一次导入事实包的时间判断是否到期。开启了定期
+// 自动复检的对象由调度器执行（见 schedule.go），其余由工程师「开始审计」
+// 或 ma audit 复检。
 
 // DefaultAuditCycleDays 默认复检周期（天），可由 MEDAUDIT_AUDIT_CYCLE_DAYS 覆盖。
 const DefaultAuditCycleDays = 30
@@ -34,13 +34,15 @@ type AuditDue struct {
 	DueAt       string `json:"due_at"`        // UTC，从未审计时为空
 	DaysLeft    int    `json:"days_left"`     // 距到期天数，负数为已逾期天数
 	Status      string `json:"status"`        // never | overdue | due_soon | ok
+	Auto        bool   `json:"auto"`          // 已开启定期自动复检
 }
 
 // ListAuditDue 列出全部已分类对象的复检状态，需处理的排在前面。
 // 7 天内到期记为 due_soon。
 func ListAuditDue(db *sql.DB, cycleDays int, now time.Time) ([]AuditDue, error) {
 	rows, err := db.Query(`SELECT a.id, a.hospital_id, a.name, a.kind,
-		       COALESCE((SELECT MAX(b.imported_at) FROM fact_bundles b WHERE b.asset_id = a.id), '')
+		       COALESCE((SELECT MAX(b.imported_at) FROM fact_bundles b WHERE b.asset_id = a.id), ''),
+		       EXISTS (SELECT 1 FROM audit_schedules s WHERE s.asset_id = a.id)
 		  FROM assets a WHERE a.kind <> 'unknown'`)
 	if err != nil {
 		return nil, err
@@ -50,7 +52,7 @@ func ListAuditDue(db *sql.DB, cycleDays int, now time.Time) ([]AuditDue, error) 
 	for rows.Next() {
 		var d AuditDue
 		var last string
-		if err := rows.Scan(&d.AssetID, &d.HospitalID, &d.Name, &d.Kind, &last); err != nil {
+		if err := rows.Scan(&d.AssetID, &d.HospitalID, &d.Name, &d.Kind, &last, &d.Auto); err != nil {
 			return nil, err
 		}
 		if t, ok := parseStoredTime(last); ok {

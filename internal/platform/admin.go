@@ -50,7 +50,7 @@ func HospitalDataCounts(db *sql.DB, id string) (map[string]int64, error) {
 	counts := map[string]int64{}
 	byHospital := []string{"assets", "fact_bundles", "findings", "reports",
 		"correlation_reports", "collection_plans", "baselines", "audit_events",
-		"exceptions", "role_bindings"}
+		"exceptions", "role_bindings", "alerts", "audit_schedules"}
 	for _, t := range byHospital {
 		var n int64
 		if err := db.QueryRow(`SELECT COUNT(*) FROM "`+t+`" WHERE hospital_id = ?`, id).Scan(&n); err != nil {
@@ -106,6 +106,8 @@ func DeleteHospital(db *sql.DB, id string) (map[string]int64, error) {
 		{"reports", `DELETE FROM reports WHERE hospital_id = ?`},
 		{"correlation_reports", `DELETE FROM correlation_reports WHERE hospital_id = ?`},
 		{"audit_events", `DELETE FROM audit_events WHERE hospital_id = ?`},
+		{"alerts", `DELETE FROM alerts WHERE hospital_id = ?`},
+		{"audit_schedules", `DELETE FROM audit_schedules WHERE hospital_id = ?`},
 		{"collection_plans", `DELETE FROM collection_plans WHERE hospital_id = ?`},
 		{"baselines", `DELETE FROM baselines WHERE hospital_id = ?`},
 		{"role_bindings", `DELETE FROM role_bindings WHERE hospital_id = ?`},
@@ -190,6 +192,10 @@ func UpdateAsset(db *sql.DB, id, kind, name string, endpoint, labels *string) er
 // 该资产的历史事实包/问题/报告作为审计证据保留（仍可在事实包页查看），
 // 类别页与工作台不再显示该对象。删除不存在的资产返回错误。
 func DeleteAsset(db *sql.DB, id string) error {
+	// 定期复检保存的口令随资产一并删除。
+	if _, err := db.Exec(`DELETE FROM audit_schedules WHERE asset_id = ?`, id); err != nil {
+		return err
+	}
 	res, err := db.Exec(`DELETE FROM assets WHERE id = ?`, id)
 	if err != nil {
 		return err

@@ -367,6 +367,50 @@ function post<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
+export interface BaselineTemplate {
+  id: string
+  name: string
+  system: string
+  target: string
+  status: 'verified' | 'draft'
+  description: string
+  entries: { subject: string; kind: string; value: string; scope: string; reason: string }[]
+  placeholders: string[]
+  source: 'builtin' | 'site'
+}
+
+export interface ScheduleRow {
+  asset_id: string
+  hospital_id: string
+  name: string
+  kind: string
+  cycle_days: number
+  baseline_id: string
+  created_by: string
+  updated_at: string
+  next_run_at: string
+  last_run_at: string
+  last_status: '' | 'running' | 'ok' | 'failed'
+  last_error: string
+  last_bundle_id: string
+}
+
+export interface AlertRow {
+  id: number
+  hospital_id: string
+  asset_id: string
+  kind: 'drift' | 'audit_failed'
+  bundle_id: string
+  prev_bundle_id: string
+  added_count: number
+  title: string
+  items?: { kind: string; subject: string; category: string; detail: string }[]
+  error?: string
+  created_at: string
+  acked_by: string
+  acked_at: string
+}
+
 export interface AuditDueRow {
   asset_id: string
   hospital_id: string
@@ -376,6 +420,7 @@ export interface AuditDueRow {
   due_at: string
   days_left: number
   status: 'never' | 'overdue' | 'due_soon' | 'ok'
+  auto: boolean
 }
 
 export interface OpLogRow {
@@ -417,6 +462,27 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ disabled }),
     }),
+  // 合规框架
+  complianceFrameworks: () => req<{ items: { id: string; name: string; short: string; status: string; source: string; clauses: number; enabled: boolean }[]; errors: string[] }>('/api/v1/compliance/frameworks'),
+  // 基线模板
+  baselineTemplates: () => req<{ items: BaselineTemplate[]; errors: string[] }>('/api/v1/baseline-templates'),
+  applyBaselineTemplate: (id: string, body: { hospital_id: string; baseline_id: string; values: Record<string, string>; skip: number[] }) =>
+    post<{ baseline_id: string; created: boolean; added: number; reevaluated: number; reevaluate_error?: string }>(
+      `/api/v1/baseline-templates/${encodeURIComponent(id)}/apply`, body),
+  // 定期自动复检
+  schedules: () => req<{ items: ScheduleRow[]; key_ready: boolean }>('/api/v1/schedules'),
+  saveSchedule: (assetId: string, body: { cycle_days: number; password?: string }) =>
+    req(`/api/v1/schedules/${encodeURIComponent(assetId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  deleteSchedule: (assetId: string) =>
+    req(`/api/v1/schedules/${encodeURIComponent(assetId)}`, { method: 'DELETE' }),
+  runSchedule: (assetId: string) => post(`/api/v1/schedules/${encodeURIComponent(assetId)}/run`, {}),
+  // 告警（权限漂移 / 定期复检失败）
+  alerts: () => req<AlertRow[]>('/api/v1/alerts'),
+  ackAlert: (id: number) => post(`/api/v1/alerts/${id}/ack`, {}),
   // 复检到期提醒
   auditDue: () => req<{ cycle_days: number; items: AuditDueRow[] }>('/api/v1/audit/due'),
   // 平台操作日志（哈希链防篡改）

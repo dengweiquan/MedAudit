@@ -1,0 +1,10 @@
+id: pacs-oracle
+name: PACS 应用库账号（Oracle）
+system: PACS
+target: db-oracle
+status: draft
+description: |
+  PACS 部署在 Oracle 时常见的厂商要求：应用主账号持有 DBA 角色。套用前把 {…}
+  换成现场实际账号，并取得厂商书面说明留档。
+entries:
+  - {subject: "{PACS应用账号}", kind: role, value: DBA, reason: PACS 厂商部署/升级要求（须厂商书面说明）}

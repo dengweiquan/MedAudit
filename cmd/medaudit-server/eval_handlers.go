@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -294,6 +295,37 @@ func registerEvalRoutes(mux *http.ServeMux, db *sql.DB, reg *rules.Registry) {
 	})
 
 	// GET /api/v1/rules
+	// GET /api/v1/compliance/frameworks：全部合规框架及是否进入报告。
+	mux.HandleFunc("/api/v1/compliance/frameworks", func(w http.ResponseWriter, r *http.Request) {
+		enabled, errs := platform.EnabledFrameworks()
+		on := map[string]bool{}
+		for _, f := range enabled {
+			on[f.ID] = true
+		}
+		dir := os.Getenv("MEDAUDIT_COMPLIANCE_DIR")
+		if dir == "" {
+			dir = "/etc/medaudit/compliance"
+		}
+		all, _ := rules.LoadFrameworks(dir)
+		type fwOut struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			Short   string `json:"short"`
+			Status  string `json:"status"`
+			Source  string `json:"source"`
+			Clauses int    `json:"clauses"`
+			Enabled bool   `json:"enabled"`
+		}
+		out := []fwOut{}
+		for _, f := range all {
+			out = append(out, fwOut{f.ID, f.Name, f.Short, f.Status, f.Source, len(f.Controls), on[f.ID]})
+		}
+		if errs == nil {
+			errs = []string{}
+		}
+		writeJSON(w, map[string]any{"items": out, "errors": errs})
+	})
+
 	mux.HandleFunc("/api/v1/rules", func(w http.ResponseWriter, r *http.Request) {
 		type ruleOut struct {
 			rules.RuleSpec

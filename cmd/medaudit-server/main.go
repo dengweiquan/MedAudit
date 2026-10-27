@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -24,6 +25,8 @@ import (
 const version = "0.35.0-m35"
 
 var authSessions *platform.SessionStore
+
+var scheduler *platform.Scheduler
 
 func main() {
 	webDir := flag.String("web-dir", "web/dist", "前端构建产物目录")
@@ -274,7 +277,11 @@ func main() {
 				}
 			}
 		}
-		registerRemoteRoutes(mux, db, rules.DefaultRegistry(), keyring, collectorBin, collectorWinBin, platform.NewTokenStore())
+		tokens := platform.NewTokenStore()
+		registerRemoteRoutes(mux, db, rules.DefaultRegistry(), keyring, collectorBin, collectorWinBin, tokens)
+		// 定期自动复检：与一键审计/远程推送共用执行实现。
+		scheduler = platform.NewScheduler(db, rules.DefaultRegistry(), keyring, collectorBin, collectorBin, collectorWinBin, tokens)
+		scheduler.Start(context.Background())
 		// M12 登录鉴权：播种默认管理员（仅用户表为空时）+ 会话与 auth 路由
 		if err := platform.SeedDefaultAdmin(db); err != nil {
 			fmt.Fprintf(os.Stderr, "默认管理员播种失败: %v\n", err)
@@ -284,6 +291,9 @@ func main() {
 		registerUserRoutes(mux, db, sessions) // M20 用户管理
 		registerAdminRoutes(mux, db, sessions) // M27 一键清场
 		registerOpLogRoutes(mux, db)           // 平台操作日志
+		registerAlertRoutes(mux, db, sessions) // 权限漂移/复检失败告警
+		registerScheduleRoutes(mux, db, keyring, scheduler, sessions)
+		registerTemplateRoutes(mux, db, rules.DefaultRegistry(), sessions)
 		authSessions = sessions
 		if collectorWinBin != "" {
 			fmt.Fprintf(os.Stderr, "远程推送（WinRM）已启用（Windows 采集器: %s）\n", collectorWinBin)

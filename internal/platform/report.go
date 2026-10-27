@@ -72,6 +72,14 @@ func GenerateReport(db *sql.DB, hospitalID, planID, bundleID, createdBy string) 
 	if sec := remediationSection(bundleRaw, findings); sec != nil {
 		snapshot["remediation"] = sec
 	}
+	// 合规逐条判定（启用的框架；无框架时缺省）。
+	var fb facts.FactBundle
+	if err := json.Unmarshal([]byte(bundleRaw), &fb); err == nil {
+		disabled, _ := DisabledRuleIDs(db)
+		if sec := complianceSection(&fb, findings, disabled); sec != nil {
+			snapshot["compliance"] = sec
+		}
+	}
 	snapJSON, err := json.Marshal(snapshot)
 	if err != nil {
 		return "", err

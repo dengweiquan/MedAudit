@@ -1,0 +1,181 @@
+# 等保 2.0 第三级「安全计算环境」条款与平台规则对照。
+# 条款要求为要点概述，正式引用以 GB/T 22239-2019 原文为准。
+# rules 为空的条款不在本平台技术检查范围，报告中标「本平台未检查」。
+id: djbh2-l3
+name: 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+short: 等保2.0
+status: verified
+controls:
+  - id: "8.1.4.1 a)"
+    group: 身份鉴别
+    title: 身份标识唯一，鉴别信息有复杂度要求并定期更换
+    rules:
+      - db.oracle.profile_password_policy
+      - db.pg.hba_trust
+      - db.pg.hba_weak_method
+      - mw.iis.anon_open
+      - os.hpux.multiple_uid0
+      - os.linux.sudo_nopasswd_all
+  - id: "8.1.4.1 b)"
+    group: 身份鉴别
+    title: 登录失败处理、限制非法登录次数、连接超时自动退出
+    rules:
+      - db.oracle.profile_password_policy
+  - id: "8.1.4.1 c)"
+    group: 身份鉴别
+    title: 远程管理时防止鉴别信息在网络传输中被窃听
+    rules:
+      - db.mysql.remote_no_tls
+      - db.pg.hba_weak_method
+  - id: "8.1.4.1 d)"
+    group: 身份鉴别
+    title: 采用口令、密码技术、生物技术等两种或两种以上组合的鉴别技术
+    rules: []
+  - id: "8.1.4.2 a)"
+    group: 访问控制
+    title: 对登录的用户分配账户和权限
+    rules:
+      - db.oracle.public_object_grant
+      - db.pg.public_db_create
+      - db.pg.public_writable
+      - mw.iis.anon_open
+  - id: "8.1.4.2 b)"
+    group: 访问控制
+    title: 重命名或删除默认账户，修改默认账户的默认口令
+    rules:
+      - db.oracle.default_account_open
+      - mw.iis.default_site
+  - id: "8.1.4.2 c)"
+    group: 访问控制
+    title: 及时删除或停用多余、过期账户，避免共享账户
+    rules:
+      - os.hpux.multiple_uid0
+      - os.windows.unexpected_admin
+  - id: "8.1.4.2 d)"
+    group: 访问控制
+    title: 授予管理用户所需的最小权限，实现权限分离
+    rules:
+      - db.mssql.control_server
+      - db.mssql.cross_db_chaining
+      - db.mssql.sysadmin
+      - db.mssql.xp_cmdshell
+      - db.mysql.global_admin
+      - db.mysql.grant_option
+      - db.oracle.any_privilege
+      - db.oracle.cdb_dba_in_pdb
+      - db.oracle.dba_role
+      - db.oracle.grant_option_spread
+      - db.oracle.public_object_grant
+      - db.oracle.sys_schema_grant
+      - db.oracle.sysdba_pwfile
+      - db.pg.dangerous_role_attrs
+      - db.pg.public_db_create
+      - db.pg.public_writable
+      - db.pg.superuser
+      - mw.iis.apppool_system
+      - mw.nginx.config_writable
+      - mw.nginx.run_as_root
+      - mw.tomcat.config_writable
+      - mw.tomcat.console_admin
+      - mw.tomcat.run_as_root
+      - mw.weblogic.config_writable
+      - mw.weblogic.run_as_root
+      - os.hpux.setuid_unexpected
+      - os.hpux.sudo_all
+      - os.hpux.writable_service_file
+      - os.linux.high_capabilities
+      - os.linux.root_mismatch
+      - os.linux.sudo_all
+      - os.linux.sudo_nopasswd_all
+      - os.linux.writable_service_file
+      - os.windows.svc_account_mismatch
+      - os.windows.unexpected_admin
+      - os.windows.writable_service_binary
+  - id: "8.1.4.2 e)"
+    group: 访问控制
+    title: 由授权主体配置访问控制策略
+    rules:
+      - db.mysql.grant_option
+      - db.oracle.grant_option_spread
+  - id: "8.1.4.2 f)"
+    group: 访问控制
+    title: 访问控制粒度：主体为用户级或进程级，客体为文件、数据库表级
+    rules: []
+  - id: "8.1.4.2 g)"
+    group: 访问控制
+    title: 对重要主体和客体设置安全标记，并控制其访问
+    rules: []
+  - id: "8.1.4.3 a)"
+    group: 安全审计
+    title: 启用安全审计功能，覆盖每个用户，对重要用户行为和安全事件进行审计
+    rules: []
+  - id: "8.1.4.3 b)"
+    group: 安全审计
+    title: 审计记录包括事件的日期和时间、用户、事件类型、是否成功等
+    rules: []
+  - id: "8.1.4.3 c)"
+    group: 安全审计
+    title: 对审计记录进行保护，定期备份，避免未预期的删除、修改或覆盖
+    rules: []
+  - id: "8.1.4.3 d)"
+    group: 安全审计
+    title: 对审计进程进行保护，防止未经授权的中断
+    rules: []
+  - id: "8.1.4.4 a)"
+    group: 入侵防范
+    title: 遵循最小安装原则，仅安装需要的组件和应用程序
+    rules:
+      - db.mssql.clr_enabled
+      - mw.iis.default_site
+      - mw.tomcat.manager_deployed
+      - mw.tomcat.sample_apps
+      - mw.weblogic.console_deployed
+      - mw.weblogic.dev_mode
+  - id: "8.1.4.4 b)"
+    group: 入侵防范
+    title: 关闭不需要的系统服务、默认共享和高危端口
+    rules:
+      - db.mssql.adhoc_distributed
+      - db.mssql.xp_cmdshell
+      - db.mysql.local_infile
+      - mw.nginx.autoindex
+      - os.hpux.inetd_risky_service
+  - id: "8.1.4.4 c)"
+    group: 入侵防范
+    title: 限制管理终端的接入方式或网络地址范围
+    rules:
+      - db.mysql.name_resolve_on
+      - db.pg.hba_open_network
+      - db.pg.listen_all
+      - mw.tomcat.manager_deployed
+      - mw.weblogic.console_deployed
+  - id: "8.1.4.4 d)"
+    group: 入侵防范
+    title: 提供数据有效性检验功能，保证输入内容符合系统设定要求
+    rules: []
+  - id: "8.1.4.4 e)"
+    group: 入侵防范
+    title: 能发现可能存在的已知漏洞，并在充分测试评估后及时修补
+    rules: []
+  - id: "8.1.4.4 f)"
+    group: 入侵防范
+    title: 能检测到对重要节点的入侵行为，并在发生严重入侵事件时报警
+    rules: []
+  - id: "8.1.4.8 a)"
+    group: 数据保密性
+    title: 采用密码技术保证重要数据在传输过程中的保密性
+    rules:
+      - db.mysql.remote_no_tls
+      - mw.iis.plain_binding
+      - mw.nginx.plain_listener
+      - mw.nginx.tls_weak
+      - mw.tomcat.plain_listener
+      - mw.tomcat.tls_weak
+      - mw.weblogic.plain_listener
+  - id: "8.1.4.8 b)"
+    group: 数据保密性
+    title: 采用密码技术保证重要数据在存储过程中的保密性
+    rules:
+      - db.mysql.general_log_on
+      - db.pg.password_encryption_weak
+      - os.hpux.weak_password_store

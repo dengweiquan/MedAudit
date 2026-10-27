@@ -21,7 +21,8 @@ import (
 )
 
 // RemoteConfig 远程推送连接参数（非机密部分），登记在 assets.labels 的 JSON 中。
-// 口令永不落库：审计时由用户在页面输入，仅在本次传输会话中使用。
+// 口令默认不落库：审计时由用户在页面输入，仅在本次传输会话中使用；
+// 对象开启定期自动复检时例外，口令加密存于 audit_schedules（见 schedule.go）。
 type RemoteConfig struct {
 	Transport string `json:"transport,omitempty"` // ssh|winrm（可空，按资产类型推断）
 	Host      string `json:"host"`
@@ -115,6 +116,9 @@ func stderrTail(b []byte) string {
 	return tailRunes(strings.TrimSpace(string(b)), 500)
 }
 
+// AutoBaseline 作为 baselineID 传入时，评估自动套用该医院全部匹配基线（同在线评估）。
+const AutoBaseline = "@auto"
+
 // importEvaluateReport 事实包收尾管线（DB 一键审计与远程推送共用）：
 // 解 zip → 校验 → 导入 → 评估 → 生成报告。
 func importEvaluateReport(db *sql.DB, reg *rules.Registry, kr *EvidenceKeyring,
@@ -153,7 +157,12 @@ func importEvaluateReport(db *sql.DB, reg *rules.Registry, kr *EvidenceKeyring,
 	if err := ImportBundle(db, &bundle, rawZip, kr); err != nil {
 		return nil, fmt.Errorf("导入失败: %w", err)
 	}
-	summary, err := EvaluateBundle(db, reg, bundle.BundleID, baselineID)
+	var summary *EvaluationSummary
+	if baselineID == AutoBaseline {
+		summary, err = EvaluateBundleAuto(db, reg, bundle.BundleID, "", false)
+	} else {
+		summary, err = EvaluateBundle(db, reg, bundle.BundleID, baselineID)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("评估失败: %w", err)
 	}

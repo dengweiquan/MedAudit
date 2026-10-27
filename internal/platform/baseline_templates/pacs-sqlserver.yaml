@@ -1,0 +1,12 @@
+id: pacs-sqlserver
+name: PACS 应用登录（SQL Server）
+system: PACS
+target: db-sqlserver
+status: draft
+description: |
+  PACS 部署在 SQL Server 时，部分厂商要求应用登录加入 sysadmin，或启用
+  xp_cmdshell 做影像归档/迁移。套用前把 {…} 换成现场实际登录名，并取得厂商
+  书面说明留档；xp_cmdshell 项确不需要的请取消勾选。
+entries:
+  - {subject: "{PACS应用登录}", kind: role, value: sysadmin, scope: server, reason: PACS 厂商部署要求（须厂商书面说明）}
+  - {subject: server, kind: config, value: xp_cmdshell, reason: PACS 影像归档脚本需要（须厂商书面说明）}

@@ -1,4 +1,6 @@
 <template>
+  <TemplateCard :hospital-id="hospitalId" @applied="load" />
+
   <div class="card">
     <h2>基线（按医院）</h2>
     <div class="inline-form">
@@ -90,6 +92,7 @@ import { selectedHospital } from '../store'
 import { api, type BaselineRow, type Hospital } from '../api'
 import { reviewerName } from '../store'
 import { loadSite, baselineKindLabel } from '../util'
+import TemplateCard from '../components/TemplateCard.vue'
 
 interface Allow { subject: string; kind: string; value: string; scope: string; reason?: string }
 

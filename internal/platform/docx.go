@@ -296,6 +296,7 @@ type reportSnapshot struct {
 	PrivilegePaths    map[string]any            `json:"privilege_paths"`
 	Drift             map[string]any            `json:"drift"`
 	Remediation       map[string]any            `json:"remediation"`
+	Compliance        []ComplianceResult        `json:"compliance"`
 }
 
 // 显示时区见 display_time.go（displayZone，默认 Asia/Shanghai）
@@ -675,7 +676,7 @@ func RenderReportDocx(snapshotJSON string, reportID string) ([]byte, error) {
 				ca.rules = append(ca.rules, ruleName(a.ruleID))
 			}
 		}
-		if len(byCtl) > 0 {
+		if len(byCtl) > 0 && len(snap.Compliance) == 0 { // 旧快照：无逐条判定时沿用按问题归集
 			ctls := make([]*ctlAgg, 0, len(byCtl))
 			for _, ca := range byCtl {
 				ctls = append(ctls, ca)
@@ -748,6 +749,31 @@ func RenderReportDocx(snapshotJSON string, reportID string) ([]byte, error) {
 		body.WriteString(docxTableEx(rows, tableOpts{Widths: []int{2600, 6900}, LabelFirst: true}))
 	}
 	body.WriteString(leadPara("口径说明：", "问题清单与问题分布以平台落库结论为准（生成报告时点的评估结果，含当时启用的基线与规则启停状态）；通过数与可判定率由生成报告时以技术口径（无基线）对同一事实包重评估得到，两者口径不同属正常现象。可判定率 =（通过 + 不通过）/ 适用检查项。"))
+
+	// ---------- 合规条款逐条判定 ----------
+	if len(snap.Compliance) > 0 {
+		body.WriteString(secTitle("合规条款逐条判定"))
+		body.WriteString(grayPara("「满足」指该条款对应的本平台技术检查项全部通过（含经基线放行的例外），条款中的管理类要求不在本平台检查范围；「本平台未检查」的条款需另行人工测评。条款要求为要点概述，正式引用以标准原文为准。"))
+		for _, fw := range snap.Compliance {
+			body.WriteString(docxPara(fw.Name, "Heading2"))
+			if fw.Status != "verified" {
+				body.WriteString(grayPara("本框架为草稿，条款号待合规人员对照原文核实。"))
+			}
+			body.WriteString(docxPara(fmt.Sprintf("满足 %d 条，不满足 %d 条，无法判定 %d 条，不涉及 %d 条，本平台未检查 %d 条。",
+				fw.Counts["pass"], fw.Counts["fail"], fw.Counts["unknown"], fw.Counts["na"], fw.Counts["unchecked"]), ""))
+			rows := [][]string{{"条款", "要求要点", "结论", "依据"}}
+			for _, c := range fw.Clauses {
+				label := c.ID
+				if c.Ref != "" {
+					label = c.Ref
+				} else if fw.Status != "verified" {
+					label += "（条款号待核实）"
+				}
+				rows = append(rows, []string{label + " " + c.Group, c.Title, clauseStatusCN(c.Status), clauseBasis(c)})
+			}
+			body.WriteString(docxTableEx(rows, tableOpts{Widths: []int{1700, 3100, 1100, 3300}, Header: true, FontSz: 19}))
+		}
+	}
 
 	// ---------- 问题明细 ----------
 	body.WriteString(secTitle("问题明细"))
@@ -991,4 +1017,48 @@ func kindFactCN(k string) string {
 		return "数据库"
 	}
 	return k
+}
+
+func clauseStatusCN(s string) string {
+	switch s {
+	case "pass":
+		return "满足"
+	case "fail":
+		return "不满足"
+	case "unknown":
+		return "无法判定"
+	case "na":
+		return "不涉及"
+	case "unchecked":
+		return "本平台未检查"
+	}
+	return s
+}
+
+// clauseBasis 条款依据：逐条列出对应规则的本次结果。
+func clauseBasis(c ComplianceClause) string {
+	if c.Status == "unchecked" {
+		return "不在本平台技术检查范围，需人工测评"
+	}
+	if len(c.Rules) == 0 {
+		return "对应检查项对本对象不适用"
+	}
+	parts := make([]string, 0, len(c.Rules))
+	for _, r := range c.Rules {
+		var o string
+		switch r.Outcome {
+		case outFail:
+			o = fmt.Sprintf("不通过 %d 项", r.Fails)
+		case outUnknown:
+			o = "证据不足"
+		case outPass:
+			o = "通过"
+		case outExempt:
+			o = "通过（基线放行）"
+		case outDisabled:
+			o = "本站已停用"
+		}
+		parts = append(parts, r.Name+"："+o)
+	}
+	return strings.Join(parts, "；")
 }

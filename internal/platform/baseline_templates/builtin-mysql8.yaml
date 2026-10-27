@@ -1,0 +1,21 @@
+id: builtin-mysql8
+name: MySQL 8.0 内置账号
+system: 通用
+target: db-mysql
+status: verified
+description: |
+  MySQL 8.0 安装即带的系统账号（mysql.session、mysql.sys、mysql.infoschema）
+  持有的全局权限由数据库自身使用，账号默认锁定、不可登录；root@localhost 为
+  本机管理员。注意：root@%（任意来源的 root）不在此列，仍应整改。
+entries:
+  - {subject: mysql.session@localhost, kind: privilege, value: SUPER, scope: "*.*", reason: MySQL 内置系统账号（锁定）}
+  - {subject: mysql.session@localhost, kind: privilege, value: SYSTEM_USER, scope: "*.*", reason: MySQL 内置系统账号（锁定）}
+  - {subject: mysql.session@localhost, kind: privilege, value: SHUTDOWN, scope: "*.*", reason: MySQL 内置系统账号（锁定）}
+  - {subject: mysql.sys@localhost, kind: privilege, value: SYSTEM_USER, scope: "*.*", reason: MySQL 内置系统账号（锁定）}
+  - {subject: mysql.infoschema@localhost, kind: privilege, value: SYSTEM_USER, scope: "*.*", reason: MySQL 内置系统账号（锁定）}
+  - {subject: root@localhost, kind: privilege, value: SUPER, scope: "*.*", reason: 本机数据库管理员}
+  - {subject: root@localhost, kind: privilege, value: SYSTEM_USER, scope: "*.*", reason: 本机数据库管理员}
+  - {subject: root@localhost, kind: privilege, value: FILE, scope: "*.*", reason: 本机数据库管理员}
+  - {subject: root@localhost, kind: privilege, value: RELOAD, scope: "*.*", reason: 本机数据库管理员}
+  - {subject: root@localhost, kind: privilege, value: SHUTDOWN, scope: "*.*", reason: 本机数据库管理员}
+  - {subject: root@localhost, kind: privilege, value: PROCESS, scope: "*.*", reason: 本机数据库管理员}

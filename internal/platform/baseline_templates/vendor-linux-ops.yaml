@@ -1,0 +1,10 @@
+id: vendor-linux-ops
+name: 厂商运维账号 sudo（Linux 应用主机）
+system: 通用
+target: os-linux
+status: draft
+description: |
+  HIS/LIS/PACS 应用主机上，厂商驻场运维账号常被授予 sudo 全命令。套用前把 {…}
+  换成实际账号，并与院方确认运维协议；能收窄到具体命令的应优先整改。
+entries:
+  - {subject: "{厂商运维账号}", kind: sudo, value: ALL, reason: 厂商驻场运维（按运维协议，须院方批准）}

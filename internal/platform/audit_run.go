@@ -28,7 +28,8 @@ func licenseGate() error {
 }
 
 // ConnConfig 数据库连接参数（非机密部分），登记在 assets.labels 的 JSON 中。
-// 口令永不落库：审计时由用户在页面输入，仅经子进程环境变量传递给采集器。
+// 口令默认不落库：审计时由用户在页面输入，仅经子进程环境变量传递给采集器；
+// 对象开启定期自动复检时例外，口令加密存于 audit_schedules（见 schedule.go）。
 type ConnConfig struct {
 	Engine  string `json:"engine"`
 	Host    string `json:"host"`
