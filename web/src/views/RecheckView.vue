@@ -51,7 +51,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BundleSummary, type Finding, type Rule } from '../api'
 import { goto, nav, filterByHospital, engineerMode } from '../store'
-import { bundlesOfAsset, comparePair, exportLatestReport, latestFail } from '../util'
+import { bundlesOfAsset, comparePair, exportLatestReport, latestFail, fmtLocal } from '../util'
 
 const assets = ref<Asset[]>([])
 const bundles = ref<BundleSummary[]>([])
@@ -75,7 +75,8 @@ function ruleName(id: string): string {
   return rulesMap.value.get(id)?.Name ?? id
 }
 function shortDate(ts: string): string {
-  return ts.slice(5, 10)
+  // 与 fmtLocal 同一本地化口径：先转本地时间再取月日，避免 UTC 日期与本地日期差一天。
+  return fmtLocal(ts).slice(5, 10)
 }
 const summaryLine = computed(() => {
   if (!oldBundle.value || !newBundle.value) return ''
@@ -159,7 +160,12 @@ async function doExport() {
 onMounted(async () => {
   try {
     assets.value = filterByHospital(await api.assets())
-    bundles.value = filterByHospital(await api.bundles())
+    // 候选对象需每对象包数量：改按对象逐个取全部包再合并，不再用全局 100 条列表（M37-fix-3）。
+    try {
+      const latest = filterByHospital(await api.latestBundles())
+      const lists = await Promise.all(latest.map(b => api.assetBundles(b.asset_id)))
+      bundles.value = lists.flat()
+    } catch { bundles.value = [] }
     try {
       const rs = await api.rules()
       rulesMap.value = new Map(rs.map(r => [r.ID, r]))

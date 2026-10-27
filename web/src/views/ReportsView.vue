@@ -3,7 +3,7 @@
     <h2>生成报告</h2>
     <div class="inline-form">
       <label>对象
-        <select v-model="genAsset" @change="genBundle = latestBundleOf(bundles, genAsset)?.id ?? ''">
+        <select v-model="genAsset" @change="loadGenBundles">
           <option v-for="a in reportableAssets" :key="a.id" :value="a.id">{{ a.name }}</option>
         </select>
       </label>
@@ -64,6 +64,23 @@
       </tbody>
     </table>
     <div v-else-if="loaded" class="empty">暂无报告。</div>
+    <div v-else class="empty">加载中…</div>
+  </div>
+
+  <div class="card">
+    <h2>业务接口报告</h2>
+    <table v-if="loaded && apiReportRows.length">
+      <thead><tr><th>目标</th><th>时间</th><th>不通过数</th><th>操作</th></tr></thead>
+      <tbody>
+        <tr v-for="r in apiReportRows" :key="r.report_id">
+          <td>{{ r.name }}</td>
+          <td>{{ fmtLocal(r.imported_at) }}</td>
+          <td>{{ r.fail_count > 0 ? `不通过 ${r.fail_count} 条` : '通过' }}</td>
+          <td><a class="btn small" :href="api.apiAuditDocxUrl(r.report_id)" download>下载 Word</a></td>
+        </tr>
+      </tbody>
+    </table>
+    <div v-else-if="loaded" class="empty">暂无业务接口报告。</div>
     <div v-else class="empty">加载中…</div>
   </div>
 
@@ -147,14 +164,29 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { api, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule } from '../api'
-import { fmtLocal, latestBundleOf, latestFail } from '../util'
+import { api, type ApiAuditSummary, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule } from '../api'
+import { fmtLocal, latestBundleOf, countSnapshotRisks } from '../util'
 import { conclLabel, riskLabel, reviewLabel } from '../labels'
 import { reviewerName, filterByHospital, engineerMode } from '../store'
 
-const bundles = ref<BundleSummary[]>([])
 const assets = ref<Asset[]>([])
 const reports = ref<ReportRow[]>([])
+const latestByAsset = ref(new Map<string, BundleSummary>())
+const genBundles = ref<BundleSummary[]>([])
+async function loadGenBundles() {
+  if (!genAsset.value) { genBundles.value = []; genBundle.value = ''; return }
+  try {
+    genBundles.value = await api.assetBundles(genAsset.value)
+    genBundle.value = latestBundleOf(genBundles.value, genAsset.value)?.id ?? ''
+  } catch { genBundles.value = []; genBundle.value = '' }
+}
+const apiReports = ref<ApiAuditSummary[]>([])
+const apiReportRows = computed(() => {
+  const byEndpoint = new Map(assets.value.filter(a => a.endpoint).map(a => [a.endpoint as string, a.name]))
+  return apiReports.value
+    .map(r => ({ ...r, name: byEndpoint.get(r.target) ?? r.target }))
+    .sort((x, y) => y.imported_at.localeCompare(x.imported_at))
+})
 const loaded = ref(false)
 const rulesMap = ref<Map<string, Rule>>(new Map())
 const genAsset = ref('')
@@ -162,16 +194,15 @@ const genBundle = ref('')
 const createdBy = ref(reviewerName())
 const historyOpen = reactive(new Set<string>())
 
-const reportableAssets = computed(() => assets.value.filter(a => bundles.value.some(b => b.asset_id === a.id)))
+const reportableAssets = computed(() => assets.value.filter(a => latestByAsset.value.has(a.id)))
 function bundlesOfAsset(assetId: string): BundleSummary[] {
-  return bundles.value.filter(b => b.asset_id === assetId)
+  return genBundles.value.filter(b => b.asset_id === assetId)
 }
 interface ReportGroup { key: string; name: string; reports: ReportRow[] }
 const reportGroups = computed<ReportGroup[]>(() => {
-  const bundleAsset = new Map(bundles.value.map(b => [b.id, b.asset_id]))
   const byKey = new Map<string, ReportRow[]>()
   for (const r of reports.value) {
-    const key = bundleAsset.get(r.bundle_id) ?? r.bundle_id
+    const key = r.asset_id || r.bundle_id
     const list = byKey.get(key) ?? []
     list.push(r)
     byKey.set(key, list)
@@ -238,7 +269,8 @@ async function load() {
   loaded.value = false
   try {
     reports.value = filterByHospital(await api.reports())
-    bundles.value = filterByHospital(await api.bundles())
+    try { latestByAsset.value = new Map(filterByHospital(await api.latestBundles()).map(b => [b.asset_id, b])) } catch { latestByAsset.value = new Map() }
+    try { apiReports.value = await api.apiAudits() } catch { apiReports.value = [] }
     try { assets.value = filterByHospital(await api.assets()) } catch { assets.value = [] }
     loaded.value = true
     try {
@@ -251,27 +283,17 @@ async function load() {
     } catch { /* 未取到登录名时用本地署名 */ }
     if (!genAsset.value && reportableAssets.value.length) {
       genAsset.value = reportableAssets.value[0].id
-      genBundle.value = latestBundleOf(bundles.value, genAsset.value)?.id ?? ''
+      await loadGenBundles()
     }
-    // 最新报告的问题分级与合规不满足条数（逐份取包问题与报告详情）。
+    // 最新报告的问题分级与合规不满足条数：只取报告详情快照，不取包的实时问题
+    // （M37-fix-5：重评或改基线后历史报告行的数字不再变）。
     const rm = new Map<string, { high: number; medium: number; low: number; other: number }>()
     const cm = new Map<string, number | null>()
     for (const g of reportGroups.value) {
       const latest = g.reports[0]
       try {
-        const fails = latestFail(await api.findings(latest.bundle_id))
-        const c = { high: 0, medium: 0, low: 0, other: 0 }
-        for (const f of fails) {
-          const r = (rulesMap.value.get(f.rule_id)?.Risk ?? '').toLowerCase()
-          if (r === 'high') c.high++
-          else if (r === 'medium') c.medium++
-          else if (r === 'low') c.low++
-          else c.other++
-        }
-        rm.set(latest.id, c)
-      } catch { /* 未评估包 */ }
-      try {
         const d = await api.getReport(latest.id)
+        rm.set(latest.id, countSnapshotRisks((d.findings as Finding[]) || [], id => rulesMap.value.get(id)?.Risk ?? ''))
         const comp = d.compliance as { counts?: Record<string, number> }[] | undefined
         let fail = 0
         let found = false
@@ -292,23 +314,12 @@ async function load() {
 async function expandHistory(g: ReportGroup) {
   historyOpen.add(g.key)
   for (const r of g.reports.slice(1)) {
-    if (!riskByReport.value.has(r.id)) {
-      try {
-        const fails = latestFail(await api.findings(r.bundle_id))
-        const c = { high: 0, medium: 0, low: 0, other: 0 }
-        for (const f of fails) {
-          const rk = (rulesMap.value.get(f.rule_id)?.Risk ?? '').toLowerCase()
-          if (rk === 'high') c.high++
-          else if (rk === 'medium') c.medium++
-          else if (rk === 'low') c.low++
-          else c.other++
-        }
-        riskByReport.value.set(r.id, c)
-      } catch { /* 未评估包 */ }
-    }
-    if (!complianceFailByReport.value.has(r.id)) {
+    if (!riskByReport.value.has(r.id) || !complianceFailByReport.value.has(r.id)) {
       try {
         const d = await api.getReport(r.id)
+        if (!riskByReport.value.has(r.id)) {
+          riskByReport.value.set(r.id, countSnapshotRisks((d.findings as Finding[]) || [], id => rulesMap.value.get(id)?.Risk ?? ''))
+        }
         const comp = d.compliance as { counts?: Record<string, number> }[] | undefined
         let fail = 0
         let found = false
@@ -325,7 +336,7 @@ async function expandHistory(g: ReportGroup) {
 
 async function generate() {
   genMsg.value = ''; genErr.value = ''
-  const b = bundles.value.find(x => x.id === genBundle.value)
+  const b = genBundles.value.find(x => x.id === genBundle.value)
   if (!b) return
   try {
     const r = await api.createReport({

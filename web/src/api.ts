@@ -185,6 +185,7 @@ export interface ReportRow {
   hospital_id: string
   plan_id: string
   bundle_id: string
+  asset_id?: string
   created_by: string
   created_at: string
   conclusion_summary?: Record<string, number>
@@ -524,6 +525,8 @@ export const api = {
   hospitalSummaries: () => req<HospitalSummary[]>('/api/v1/summary/hospitals'),
   bundles: () => req<BundleSummary[]>('/api/v1/bundles'),
   latestBundles: () => req<BundleSummary[]>('/api/v1/assets/latest-bundles'),
+  assetBundles: (assetId: string) => req<BundleSummary[]>(`/api/v1/asset-bundles?asset_id=${encodeURIComponent(assetId)}`),
+  bundleDetail: (id: string) => req<{ asset_id: string }>(`/api/v1/bundles/${encodeURIComponent(id)}`),
   uploadBundle: async (file: File) => {
     const r = await fetch('/api/v1/bundles', { method: 'POST', body: file })
     const data = await r.json().catch(() => ({}))

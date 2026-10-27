@@ -13,7 +13,7 @@
         <template v-for="a in shown" :key="a.id">
           <tr>
             <td>{{ a.name }}</td>
-            <td>{{ catLabel(kindCategory(a.kind)) }}</td>
+            <td>{{ categoryLabel(kindCategory(a.kind)) }}</td>
             <td>
               <template v-if="lastAt(a)">{{ lastAt(a) }}</template>
               <span v-else>未审计</span>
@@ -69,7 +69,7 @@
       <label>基线
         <select v-model="auditForm.baseline_id">
           <option value="">无基线</option>
-          <option v-for="b in baselinesOf(auditAsset.hospital_id)" :key="b.id" :value="b.id">{{ b.id }}</option>
+          <option v-for="b in baselinesOf(auditAsset.hospital_id)" :key="b.id" :value="b.id">{{ engineerMode.on ? b.id : (b.target || '基线') }}</option>
         </select>
       </label>
       <input v-model="auditForm.created_by" placeholder="审计人" />
@@ -99,9 +99,9 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { api, parseRemote, type ApiAuditCheck, type ApiAuditSummary, type Asset, type AuditRunResult, type BaselineRow, type BundleSummary, type ConnConfig } from '../api'
 import RemoteAuditCard from '../components/RemoteAuditCard.vue'
 import { kindCategory, type CategoryKey } from '../categories'
-import { nav, goto, filterByHospital, reviewerName, selectedHospital } from '../store'
+import { nav, goto, filterByHospital, reviewerName, selectedHospital, engineerMode } from '../store'
 import { exportLatestReport, latestBundleOf, latestFail, fmtLocal } from '../util'
-import { conclLabel } from '../labels'
+import { conclLabel, categoryLabel, riskLabel } from '../labels'
 
 const MW_PRODUCTS = [
   { kind: 'mw-tomcat', label: 'Tomcat', supported: true, type: 'tomcat' },
@@ -133,19 +133,16 @@ const filters = computed(() => {
   const count = (k: CategoryKey) => assets.value.filter(a => kindCategory(a.kind) === k).length
   return [
     { key: 'all' as const, label: '全部', count: assets.value.length },
-    { key: 'db' as const, label: '数据库', count: count('db') },
-    { key: 'os' as const, label: '操作系统', count: count('os') },
-    { key: 'mw' as const, label: '中间件', count: count('mw') },
-    { key: 'api' as const, label: '业务接口', count: count('api') },
+    { key: 'db' as const, label: categoryLabel('db'), count: count('db') },
+    { key: 'os' as const, label: categoryLabel('os'), count: count('os') },
+    { key: 'mw' as const, label: categoryLabel('mw'), count: count('mw') },
+    { key: 'api' as const, label: categoryLabel('api'), count: count('api') },
   ]
 })
 const shown = computed(() => filter.value === 'all'
   ? assets.value
   : assets.value.filter(a => kindCategory(a.kind) === filter.value))
 
-function catLabel(c: CategoryKey | 'unknown'): string {
-  return { db: '数据库', os: '操作系统', mw: '中间件', api: '业务接口', unknown: '未分类' }[c]
-}
 function connOf(a: Asset): ConnConfig | null {
   if (!a.labels) return null
   try {
@@ -169,7 +166,10 @@ function problemText(a: Asset): string {
   if (r) {
     const total = r.high + r.medium + r.low + r.other
     if (total === 0) return '通过'
-    const parts = [`高 ${r.high}`, `中 ${r.medium}`, `低 ${r.low}`].filter((_, i) => [r.high, r.medium, r.low][i] > 0)
+    const counts = { high: r.high, medium: r.medium, low: r.low } as const
+    const parts = (Object.keys(counts) as ('high' | 'medium' | 'low')[])
+      .filter(k => counts[k] > 0)
+      .map(k => `${riskLabel(k)} ${counts[k]}`)
     if (r.other > 0) parts.push(`未分级 ${r.other}`)
     return parts.join(' · ')
   }

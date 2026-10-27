@@ -65,7 +65,7 @@
                               </tr>
                               <tr v-if="openId === f.id">
                                 <td :colspan="engineerMode.on ? 6 : 5">
-                                  <h3>结论：{{ f.conclusion === 'FAIL' ? '有问题，需处理' : f.conclusion === 'UNKNOWN' ? '证据不足，需人工确认' : f.conclusion }}</h3>
+                                  <h3>结论：{{ f.conclusion === 'FAIL' ? '有问题，需处理' : f.conclusion === 'UNKNOWN' ? '证据不足，需人工确认' : conclLabel(f.conclusion) }}</h3>
                                   <p v-if="ruleOf(f)"><b>{{ ruleOf(f)?.Name }}</b> · 风险等级 {{ riskLabel(ruleOf(f)?.Risk) }}</p>
                                   <p><b>问题原因：</b>{{ f.subject }}：{{ detailText(f) || f.subject }}<span v-if="ruleOf(f)">。{{ ruleOf(f)?.Description }}</span></p>
                                   <div>
@@ -92,7 +92,7 @@
 
                                   <template v-if="f.conclusion === 'FAIL'">
                                     <h3>加入基线（确认是例外时）</h3>
-                                    <p class="todo">确认为业务必需的例外（如厂商账号固有权限）时，可把这一条加入基线：加入后，之后评估默认自动套用本院基线，这一条不再计为问题。加入基线只影响平台结论，不修改目标系统。</p>
+                                    <p class="todo">确认为业务必需的例外时，可把这一条加入基线。<span title="如厂商账号固有权限；加入后，之后评估默认自动套用本院基线，这一条不再计为问题；加入基线只影响平台结论，不修改目标系统。">?</span></p>
                                     <div class="inline-form">
                                       <button class="btn" @click="openExempt(f)">加入基线…</button>
                                     </div>
@@ -333,14 +333,14 @@ function sameAssetBundles(f: Finding): BundleSummary[] {
 }
 
 const assetOptions = computed(() => {
-  const ids = new Set(bundles.value.map(b => b.asset_id))
-  return assets.value.filter(a => ids.has(a.id))
+  return assets.value.filter(a => latestByAsset.value.has(a.id))
 })
 const bundlesOfAsset = computed(() => bundles.value.filter(b => b.asset_id === assetId.value))
 function latestBundleOfAsset(id: string): BundleSummary | undefined {
   return latestByAsset.value.get(id) ?? latestBundleOf(bundles.value, id)
 }
 async function onAssetChange() {
+  try { bundles.value = await api.assetBundles(assetId.value) } catch { bundles.value = [] }
   const lb = latestBundleOfAsset(assetId.value)
   bundleId.value = lb?.id ?? ''
   await load()
@@ -472,7 +472,6 @@ async function doRemediation(f: Finding) {
 onMounted(async () => {
   try {
     assets.value = filterByHospital(await api.assets())
-    bundles.value = filterByHospital(await api.bundles())
     try { latestByAsset.value = new Map(filterByHospital(await api.latestBundles()).map(b => [b.asset_id, b])) } catch { latestByAsset.value = new Map() }
     try {
       const rs = await api.rules()
@@ -480,15 +479,25 @@ onMounted(async () => {
     } catch { /* 无规则说明时降级为仅原始详情 */ }
     rulesReady.value = true
     // 默认该对象最新一次审计：显式指定的包优先，其次指定对象，再次首个对象。
-    if (nav.bundleId && bundles.value.some(b => b.id === nav.bundleId)) {
-      bundleId.value = nav.bundleId
-      assetId.value = bundles.value.find(b => b.id === nav.bundleId)?.asset_id ?? ''
-    } else if (nav.assetId && latestBundleOfAsset(nav.assetId)) {
-      assetId.value = nav.assetId
-      bundleId.value = latestBundleOfAsset(nav.assetId)?.id ?? ''
-    } else {
-      assetId.value = assetOptions.value[0]?.id ?? ''
-      bundleId.value = latestBundleOfAsset(assetId.value)?.id ?? ''
+    if (nav.bundleId) {
+      try {
+        const d = await api.bundleDetail(nav.bundleId)
+        assetId.value = d.asset_id
+        bundles.value = await api.assetBundles(assetId.value)
+        bundleId.value = nav.bundleId
+      } catch { /* 包不存在时回落默认对象 */ }
+    }
+    if (!bundleId.value) {
+      if (nav.assetId && latestBundleOfAsset(nav.assetId)) {
+        assetId.value = nav.assetId
+        bundleId.value = latestBundleOfAsset(nav.assetId)?.id ?? ''
+      } else {
+        assetId.value = assetOptions.value[0]?.id ?? ''
+        bundleId.value = latestBundleOfAsset(assetId.value)?.id ?? ''
+      }
+      if (assetId.value) {
+        try { bundles.value = await api.assetBundles(assetId.value) } catch { bundles.value = [] }
+      }
     }
     await load()
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }

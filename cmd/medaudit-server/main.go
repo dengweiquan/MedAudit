@@ -85,29 +85,16 @@ func main() {
 		}
 	}
 
+	// 令牌来源限制配置检查（M37-fix-1）：非法条目导致令牌登录全部拒绝，启动时警告。
+	if bad := platform.TokenAllowCIDRInvalid(); len(bad) > 0 {
+		fmt.Printf("警告：MEDAUDIT_TOKEN_ALLOW_CIDR 含非法条目 %v，令牌登录将被全部拒绝\n", bad)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"status": "ok", "version": version})
 	})
-	mux.HandleFunc("/api/v1/admin/backup", func(w http.ResponseWriter, r *http.Request) {
-		if db == nil {
-			http.Error(w, "平台库未配置", http.StatusServiceUnavailable)
-			return
-		}
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		path, err := platform.BackupSnapshot(db, os.TempDir())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer os.Remove(path)
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", "attachment; filename=medaudit-platform-backup.db")
-		http.ServeFile(w, r, path)
-	})
+	registerBackupRoute(mux, db)
 	mux.HandleFunc("/api/v1/assets", func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {
 			http.Error(w, "平台库未配置", http.StatusServiceUnavailable)
@@ -155,6 +142,7 @@ func main() {
 		}
 		writeJSON(w, summaries)
 	})
+	registerAssetBundlesRoute(mux, db)
 	// 事实包导入：POST zip → 校验 → 去重 → 落库
 	mux.HandleFunc("/api/v1/bundles", func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {
@@ -367,6 +355,58 @@ func importBundle(w http.ResponseWriter, r *http.Request, db *sql.DB, kr *platfo
 	writeJSON(w, map[string]any{
 		"bundle_id": b.BundleID, "status": "imported",
 		"facts": len(b.Facts), "receipts": len(b.Receipts),
+	})
+}
+
+// 平台库备份下载：GET /api/v1/admin/backup（M37-fix-9：从 main 内联抽出，
+// 供测试复用同一注册，测试不再复制 handler）。
+func registerBackupRoute(mux *http.ServeMux, db *sql.DB) {
+	mux.HandleFunc("/api/v1/admin/backup", func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			http.Error(w, "平台库未配置", http.StatusServiceUnavailable)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		path, err := platform.BackupSnapshot(db, os.TempDir())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer os.Remove(path)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", "attachment; filename=medaudit-platform-backup.db")
+		http.ServeFile(w, r, path)
+	})
+}
+
+// 某对象全部事实包：GET /api/v1/asset-bundles?asset_id=...（M37-fix-3，不受
+// ListBundles 的 LIMIT 100 影响；返回结构与 /api/v1/bundles 相同）。
+// 路径特意不用 /api/v1/assets/{id}/...（会被资产 PUT/DELETE 前缀路由按 id 含 / 拒绝）
+// 也不用 /api/v1/bundles/by-asset（会被事实包 {id} 路由当成包 ID）。
+func registerAssetBundlesRoute(mux *http.ServeMux, db *sql.DB) {
+	mux.HandleFunc("/api/v1/asset-bundles", func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			http.Error(w, "平台库未配置", http.StatusServiceUnavailable)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		assetID := r.URL.Query().Get("asset_id")
+		if assetID == "" {
+			http.Error(w, "asset_id 必填", http.StatusBadRequest)
+			return
+		}
+		summaries, err := platform.ListBundlesByAsset(db, assetID)
+		if err != nil {
+			http.Error(w, "查询失败: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, summaries)
 	})
 }
 

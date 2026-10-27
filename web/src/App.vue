@@ -113,7 +113,8 @@ const hospitals = ref<Hospital[]>([])
 const hospitalLabel = computed(() => {
   if (!selectedHospital.id) return '全部医院'
   const h = hospitals.value.find(x => x.id === selectedHospital.id)
-  return h ? `${h.id}（${h.name}）` : selectedHospital.id
+  if (!h) return engineerMode.on ? selectedHospital.id : '未知医院'
+  return engineerMode.on ? `${h.id}（${h.name}）` : h.name
 })
 async function resolveHospital() {
   try {

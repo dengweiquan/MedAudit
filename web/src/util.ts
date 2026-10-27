@@ -28,6 +28,22 @@ export function latestRunFindings(rows: Finding[]): Finding[] {
   return sorted.slice(start)
 }
 
+// 报告表问题数（M37-fix-5）：只按报告快照的 findings 计算，不取包的实时问题，
+// 否则重新评估或改基线后历史报告行的数字会变。快照本身就是一轮评估结果，
+// 只需过滤结论为不通过（FAIL）的项，按规则风险分级。
+export function countSnapshotRisks(findings: Finding[], riskOf: (ruleId: string) => string): { high: number; medium: number; low: number; other: number } {
+  const c = { high: 0, medium: 0, low: 0, other: 0 }
+  for (const f of findings) {
+    if (f.conclusion !== 'FAIL') continue
+    const r = riskOf(f.rule_id).toLowerCase()
+    if (r === 'high') c.high++
+    else if (r === 'medium') c.medium++
+    else if (r === 'low') c.low++
+    else c.other++
+  }
+  return c
+}
+
 export function latestFail(rows: Finding[]): Finding[] {
   return latestRunFindings(rows).filter(f => f.conclusion === 'FAIL')
 }
@@ -62,6 +78,20 @@ export interface ComparePair { old: BundleSummary; new: BundleSummary }
 
 // comparePair 取同一对象按导入时间升序的最后两次：old=上次，new=本次。
 // 服务端按 imported_at DESC 返回，直接取末尾会把新旧颠倒（M37-1.1），故此处显式排序。
+// 首页结论（M37-fix-4）：未审计对象不计为通过；只有全部对象都审计过且
+// 都没有问题，才说「全部对象检查通过」。
+export function buildConclusion(scope: string, total: number, unaudited: number, problems: number, high: number): string {
+  if (total === 0) return '暂无审计对象'
+  if (problems === 0 && unaudited === 0) return '全部对象检查通过'
+  const parts = [`${scope} ${total} 个对象`]
+  if (unaudited > 0) parts.push(`${unaudited} 个未审计`)
+  if (problems > 0) parts.push(`${problems} 个有问题`)
+  let s = parts.join('，')
+  if (problems > 0) s += `；高风险 ${high} 项待整改。`
+  else s += '。'
+  return s
+}
+
 export function comparePair(bundles: BundleSummary[], assetId: string): ComparePair | null {
   const list = bundles.filter(b => b.asset_id === assetId)
     .sort((a, b) => a.imported_at.localeCompare(b.imported_at) || a.id.localeCompare(b.id))

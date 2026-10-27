@@ -10,7 +10,9 @@ import { defineConfig } from '@playwright/test'
 //   E2E_CHROMIUM_EXECUTABLE_PATH  本地无 Playwright 浏览器时指向已装的 Chromium
 export default defineConfig({
   testDir: './e2e',
-  timeout: 60_000,
+  // 单条冒烟用例走完全部页面 + 复检服务端重算 + 末尾 reload，隧道下实测 45–60 秒，
+  // 60 秒时限已多次在最后一步超时（非产品回归），放宽到 120 秒。
+  timeout: 120_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,

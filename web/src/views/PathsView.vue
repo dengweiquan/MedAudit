@@ -25,7 +25,7 @@
     <div v-if="!detail.result.paths.length" class="empty">未发现提权路径（在已采集事实范围内）。</div>
     <div v-for="(p, i) in detail.result.paths" :key="i" style="margin:10px 0;padding:10px;border:1px solid #e5e7eb;border-radius:8px">
       <div>
-        <span class="concl" :class="p.risk === 'high' ? 'c-FAIL' : 'c-UNKNOWN'">{{ p.risk === 'high' ? '高' : '中' }}</span>
+        <span class="concl" :class="p.risk === 'high' ? 'c-FAIL' : 'c-UNKNOWN'">{{ riskLabel(p.risk) }}</span>
         <b>{{ p.source }}</b> → <b>{{ p.target }}</b>
         <span class="todo">（{{ p.hops.length }} 步）</span>
       </div>
@@ -63,6 +63,7 @@ import { computed, onMounted, ref } from 'vue'
 import { api, type BundleSummary, type CorrelationDetail, type CorrelationSummary } from '../api'
 import { fmtLocal } from '../util'
 import { filterByHospital } from '../store'
+import { riskLabel } from '../labels'
 
 const bundles = ref<BundleSummary[]>([])
 const history = ref<CorrelationSummary[]>([])

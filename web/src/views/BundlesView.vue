@@ -22,7 +22,7 @@
           <template v-for="b in g.bundles" :key="b.id">
             <tr :class="{ selected: explorerId === b.id || effectiveId === b.id }">
               <td>{{ fmtLocal(b.imported_at) }}<div class="todo">{{ b.id }}</div></td>
-              <td><span class="concl" :class="b.execution === 'COMPLETE' ? 'c-PASS' : 'c-UNKNOWN'">{{ b.execution }}</span></td>
+              <td><span class="concl" :class="b.execution === 'COMPLETE' ? 'c-PASS' : 'c-UNKNOWN'">{{ executionLabel(b.execution) }}</span></td>
               <td>{{ b.fact_count }}</td>
               <td><span v-if="(failOf(b.id) ?? 0) > 0" class="concl c-FAIL">{{ failOf(b.id) }}</span><span v-else-if="failOf(b.id) === 0">0</span><span v-else>—</span></td>
               <td>
@@ -140,6 +140,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BaselineRow, type BundleSummary, type DriftReport, type EffectiveEntry, type Fact } from '../api'
 import { goto, filterByHospital } from '../store'
+import { executionLabel } from '../labels'
 import { latestFail, fmtLocal} from '../util'
 
 const bundles = ref<BundleSummary[]>([])
