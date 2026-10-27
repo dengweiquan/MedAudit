@@ -11,11 +11,12 @@ import (
 
 // BaselineRow 基线行。
 type BaselineRow struct {
-	ID       string `json:"id"`
-	Hospital string `json:"hospital_id"`
-	Target   string `json:"target"`
-	Version  int    `json:"version"`
-	Spec     string `json:"spec"`
+	ID        string `json:"id"`
+	Hospital  string `json:"hospital_id"`
+	Target    string `json:"target"`
+	Version   int    `json:"version"`
+	Spec      string `json:"spec"`
+	CreatedAt string `json:"created_at"`
 }
 
 // CreateBaseline 新建基线版本。
@@ -90,7 +91,7 @@ func LoadBaseline(db *sql.DB, id string) (*rules.Baseline, error) {
 // ListBaselines 列出基线。
 func ListBaselines(db *sql.DB, hospitalID string) ([]BaselineRow, error) {
 	rows, err := db.Query(
-		`SELECT id, hospital_id, target, version, spec FROM baselines WHERE hospital_id = ? ORDER BY created_at DESC`,
+		`SELECT id, hospital_id, target, version, spec, created_at FROM baselines WHERE hospital_id = ? ORDER BY created_at DESC`,
 		hospitalID)
 	if err != nil {
 		return nil, err
@@ -99,7 +100,7 @@ func ListBaselines(db *sql.DB, hospitalID string) ([]BaselineRow, error) {
 	var out []BaselineRow
 	for rows.Next() {
 		var r BaselineRow
-		if err := rows.Scan(&r.ID, &r.Hospital, &r.Target, &r.Version, &r.Spec); err != nil {
+		if err := rows.Scan(&r.ID, &r.Hospital, &r.Target, &r.Version, &r.Spec, &r.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
