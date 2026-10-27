@@ -38,17 +38,14 @@
 
     <template v-if="!mustChange">
     <nav class="tabs">
-      <button v-for="t in tabs" :key="t.key" :class="{ active: nav.view === t.key }" @click="goto(t.key)">
+      <button v-for="t in tabs" :key="t.key" :class="{ active: nav.view === t.key || (t.key === 'objects' && ['databases', 'os', 'middleware', 'api'].includes(nav.view)) }" @click="goto(t.key)">
         {{ t.label }}
       </button>
     </nav>
 
     <DashboardView v-if="nav.view === 'dashboard'" />
-    <ObjectsView v-else-if="nav.view === 'objects'" />
-    <DatabasesView v-else-if="nav.view === 'databases'" />
-    <OsView v-else-if="nav.view === 'os'" />
-    <MiddlewareView v-else-if="nav.view === 'middleware'" />
-    <ApiView v-else-if="nav.view === 'api'" />
+    <!-- 旧类别路由（数据库/操作系统/中间件/业务接口）保留并跳转到审计对象页对应筛选（M37-2.2）。 -->
+    <ObjectsView v-else-if="nav.view === 'objects' || nav.view === 'databases' || nav.view === 'os' || nav.view === 'middleware' || nav.view === 'api'" />
     <BundlesView v-else-if="nav.view === 'bundles'" />
     <FindingsView v-else-if="nav.view === 'findings'" />
     <ReportsView v-else-if="nav.view === 'reports'" />
@@ -70,10 +67,6 @@ import { loadSite } from './util'
 import LoginView from './views/LoginView.vue'
 import SiteFooter from './components/SiteFooter.vue'
 import DashboardView from './views/DashboardView.vue'
-import DatabasesView from './views/DatabasesView.vue'
-import OsView from './views/OsView.vue'
-import MiddlewareView from './views/MiddlewareView.vue'
-import ApiView from './views/ApiView.vue'
 import BundlesView from './views/BundlesView.vue'
 import FindingsView from './views/FindingsView.vue'
 import ReportsView from './views/ReportsView.vue'

@@ -5,11 +5,19 @@ export const nav = reactive({
   view: 'dashboard' as string,
   bundleId: '' as string,
   assetId: '' as string,
+  // 审计对象页的类别筛选（全部/数据库/操作系统/中间件/业务接口），由首页
+  // 类别卡与旧类别路由跳转时设定；审计对象页挂载与视图切换时读取。
+  objectsFilter: '' as string,
 })
 
 export function goto(view: string, bundleId?: string) {
   nav.view = view
   if (bundleId !== undefined) nav.bundleId = bundleId
+}
+
+export function gotoObjects(filter: string) {
+  nav.objectsFilter = filter
+  nav.view = 'objects'
 }
 
 export function gotoAsset(view: string, assetId: string) {
