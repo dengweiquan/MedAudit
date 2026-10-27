@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BundleSummary } from './api'
-import { buildConclusion, comparePair, countSnapshotRisks, latestBundleOf } from './util'
+import { buildConclusion, comparePair, countSnapshotRisks, latestBundleOf, loadBundlesByAssets } from './util'
 
 // M37-1.1：服务端按 imported_at DESC 返回，直接取末尾会把新旧颠倒；
 // 下面用例固定：无论输入顺序如何，本次一定是导入时间更晚的那个包。
@@ -123,5 +123,23 @@ describe('countSnapshotRisks 最新一轮（M37-fix2-1）', () => {
       f('r1', 'FAIL', '2026-10-20 11:00:00'), f('r2', 'FAIL', '2026-10-20 11:00:30'), f('r3', 'FAIL', '2026-10-20 11:00:59'),
     ]
     expect(countSnapshotRisks(rows, riskOf)).toEqual({ high: 1, medium: 1, low: 1, other: 0 })
+  })
+})
+
+describe('loadBundlesByAssets（M37-fix2-2）', () => {
+  const b = (id: string, asset_id: string): BundleSummary => ({
+    id, plan_id: 'p', hospital_id: 'h', asset_id, schema_version: '1',
+    adapter: 'db-mysql', execution: 'COMPLETE', fact_count: 0, receipt_count: 0, imported_at: '2026-10-20 10:00:00',
+  })
+  it('一个对象取包失败时跳过该对象，其他对象仍可复检', async () => {
+    const fetchFn = (assetId: string) => assetId === 'a-bad'
+      ? Promise.reject(new Error('boom'))
+      : Promise.resolve([b(`b-${assetId}`, assetId)])
+    const out = await loadBundlesByAssets(['a1', 'a-bad', 'a2'], fetchFn)
+    expect(out.map(x => x.id)).toEqual(['b-a1', 'b-a2'])
+  })
+  it('全部失败时返回空数组，不抛错', async () => {
+    const out = await loadBundlesByAssets(['a-bad'], () => Promise.reject(new Error('boom')))
+    expect(out).toEqual([])
   })
 })

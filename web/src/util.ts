@@ -109,6 +109,17 @@ export function bundlesOfAsset(bundles: BundleSummary[], assetId: string): Bundl
   return bundles.filter(b => b.asset_id === assetId)
 }
 
+// loadBundlesByAssets 按对象逐个取全部包（复检候选，M37-fix2-2）：
+// 单个对象取包失败时跳过该对象，不影响其他对象；此前 Promise.all 任一
+// 失败就清空全部，整页复检不可用。
+export async function loadBundlesByAssets(
+  assetIds: string[],
+  fetchFn: (assetId: string) => Promise<BundleSummary[]>,
+): Promise<BundleSummary[]> {
+  const lists = await Promise.allSettled(assetIds.map(fetchFn))
+  return lists.flatMap(r => r.status === 'fulfilled' ? r.value : [])
+}
+
 // exportLatestReport 为事实包生成报告并直接下载 Word（客户主路径）。
 export async function exportLatestReport(b: BundleSummary): Promise<string> {
   const created = await api.createReport({

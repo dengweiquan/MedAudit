@@ -51,7 +51,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BundleSummary, type Finding, type Rule } from '../api'
 import { goto, nav, filterByHospital, engineerMode } from '../store'
-import { bundlesOfAsset, comparePair, exportLatestReport, latestFail, fmtLocal } from '../util'
+import { bundlesOfAsset, comparePair, exportLatestReport, latestFail, fmtLocal, loadBundlesByAssets } from '../util'
 
 const assets = ref<Asset[]>([])
 const bundles = ref<BundleSummary[]>([])
@@ -163,8 +163,7 @@ onMounted(async () => {
     // 候选对象需每对象包数量：改按对象逐个取全部包再合并，不再用全局 100 条列表（M37-fix-3）。
     try {
       const latest = filterByHospital(await api.latestBundles())
-      const lists = await Promise.all(latest.map(b => api.assetBundles(b.asset_id)))
-      bundles.value = lists.flat()
+      bundles.value = await loadBundlesByAssets(latest.map(b => b.asset_id), id => api.assetBundles(id))
     } catch { bundles.value = [] }
     try {
       const rs = await api.rules()
