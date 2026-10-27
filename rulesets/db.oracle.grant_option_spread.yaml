@@ -9,3 +9,6 @@ description: |
 requires: [privilege]
 remediation: |
   回收 GRANT OPTION 后以普通授权重新下发；确需分级下发的场景记入基线（privilege 以 :grant 后缀登记）。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.2 d) 访问控制：授予管理用户所需的最小权限，实现权限分离"
+  - "8.1.4.2 e) 访问控制：由授权主体配置访问控制策略"

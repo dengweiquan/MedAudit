@@ -9,3 +9,5 @@ description: |
 requires: [account_config]
 remediation: |
   锁定不使用的默认账号（ALTER USER ... ACCOUNT LOCK）；确在用者改强口令并记入基线说明用途。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.2 b) 访问控制：重命名或删除默认账户，修改默认账户的默认口令"

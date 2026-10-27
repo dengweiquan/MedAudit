@@ -9,3 +9,5 @@ description: |
 requires: [process]
 remediation: |
   确认 worker 进程为低权用户（user 指令）；master 必须 root 时在基线登记例外。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.2 d) 访问控制：授予管理用户所需的最小权限，实现权限分离"

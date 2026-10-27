@@ -21,6 +21,13 @@ func MetadataYAML(s RuleSpec) string {
 	}
 	b.WriteString("requires: [" + strings.Join(req, ", ") + "]\n")
 	writeBlock(&b, "remediation", s.Remediation)
+	cs := ControlsFor(s.ID)
+	if len(cs) > 0 {
+		b.WriteString("compliance: # " + ComplianceFramework + "\n")
+		for _, c := range cs {
+			b.WriteString("  - \"" + c.ID + " " + c.Group + "：" + c.Title + "\"\n")
+		}
+	}
 	return b.String()
 }
 

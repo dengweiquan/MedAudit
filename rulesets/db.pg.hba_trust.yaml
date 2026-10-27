@@ -9,3 +9,5 @@ description: |
 requires: [account_config]
 remediation: |
   将 trust 改为 scram-sha-256（或证书认证），至少收紧来源地址范围。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.1 a) 身份鉴别：身份标识唯一，鉴别信息有复杂度要求并定期更换"

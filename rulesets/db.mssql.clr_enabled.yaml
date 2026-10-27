@@ -9,3 +9,5 @@ description: |
 requires: [account_config]
 remediation: |
   无业务依赖时关闭 CLR 集成。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.4 a) 入侵防范：遵循最小安装原则，仅安装需要的组件和应用程序"

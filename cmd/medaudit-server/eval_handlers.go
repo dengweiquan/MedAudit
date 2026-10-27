@@ -295,7 +295,16 @@ func registerEvalRoutes(mux *http.ServeMux, db *sql.DB, reg *rules.Registry) {
 
 	// GET /api/v1/rules
 	mux.HandleFunc("/api/v1/rules", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, reg.Rules())
+		type ruleOut struct {
+			rules.RuleSpec
+			Compliance []rules.Control
+		}
+		specs := reg.Rules()
+		out := make([]ruleOut, len(specs))
+		for i, s := range specs {
+			out[i] = ruleOut{RuleSpec: s, Compliance: rules.ControlsFor(s.ID)}
+		}
+		writeJSON(w, out)
 	})
 
 	// POST /api/v1/reports {hospital_id, plan_id, bundle_id, created_by}

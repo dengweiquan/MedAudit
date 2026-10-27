@@ -9,3 +9,5 @@ description: |
 requires: [service_config]
 remediation: |
   在 /etc/inetd.conf 注释对应行并 inetd -c 重读；业务必需的（如个别设备 tftp）记入基线并做来源网段限制。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.4 b) 入侵防范：关闭不需要的系统服务、默认共享和高危端口"

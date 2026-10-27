@@ -86,6 +86,8 @@ export interface Rule {
   Requires: string[]
   Risk: string
   Remediation: string
+  /** 对应等保 2.0 第三级条款 */
+  Compliance?: { id: string; group: string; title: string }[]
 }
 
 /** 基线放行项（服务端 Go 结构体字段名，首字母大写）。 */

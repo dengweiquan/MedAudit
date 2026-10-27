@@ -34,7 +34,8 @@
             <span v-else class="concl c-PASS">启用</span>
             <div v-if="isOff(r.ID)" class="todo">{{ toggleOf(r.ID)?.reason }}（{{ toggleOf(r.ID)?.updated_by }} · {{ fmtLocal(toggleOf(r.ID)?.updated_at) }}）</div>
           </td>
-          <td style="font-size:13px">{{ r.Description }}<div class="todo">整改：{{ r.Remediation }}</div></td>
+          <td style="font-size:13px">{{ r.Description }}<div class="todo">整改：{{ r.Remediation }}</div>
+            <div class="todo" v-if="r.Compliance?.length">等保条款：<span v-for="(c, i) in r.Compliance" :key="c.id" :title="c.title">{{ i ? '；' : '' }}{{ c.id }} {{ c.group }}</span></div></td>
           <td>
             <button v-if="!isOff(r.ID)" class="btn small" @click="askOff(r.ID)">关闭</button>
             <button v-else class="btn small primary" @click="setOne(r.ID, true)">开启</button>

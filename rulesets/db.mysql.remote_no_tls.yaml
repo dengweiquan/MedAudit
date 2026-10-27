@@ -9,3 +9,6 @@ description: |
 requires: [account_config]
 remediation: |
   对远程账号设置 REQUIRE SSL/X509，或收紧 host 范围；例外记入基线。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.1 c) 身份鉴别：远程管理时防止鉴别信息在网络传输中被窃听"
+  - "8.1.4.8 a) 数据保密性：采用密码技术保证重要数据在传输过程中的保密性"
