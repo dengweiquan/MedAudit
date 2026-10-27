@@ -484,3 +484,54 @@ entries:                        # kind/value 口径与「加入基线」一致
 
 接口：`GET /api/v1/baseline-templates`、`POST /api/v1/baseline-templates/{id}/apply`
 （`{hospital_id, baseline_id, values:{"{占位}":"账号"}, skip:[序号]}`）。
+
+## 10. 合规逐条判定
+
+Word 报告第「合规条款逐条判定」章对每个启用的合规框架逐条给出结论：
+
+| 结论 | 含义 |
+| --- | --- |
+| 满足 | 该条款对应的本平台检查项全部通过（含经基线放行的例外） |
+| 不满足 | 对应检查项有不通过的问题 |
+| 无法判定 | 对应检查项证据不足或未执行 |
+| 不涉及 | 对应检查项对本对象类型不适用，或已在本站停用 |
+| 本平台未检查 | 条款不在本平台技术检查范围（如安全审计、漏洞修补），需另行人工测评 |
+
+「满足」只代表本平台的技术检查项通过，条款中的管理类要求不在其内，对外表述时请注意。
+规则页顶部显示当前哪些框架进入报告。报告是生成时点的快照，改了框架后需重新导出。
+
+**内置框架**
+
+- `djbh2-l3`：等保 2.0（GB/T 22239-2019）第三级「安全计算环境」23 条，已核实，默认启用。
+  条款要求为要点概述，正式引用以标准原文为准。
+- `medical-draft`：医疗卫生行业网络与数据安全要求，10 条要点，整理自《医疗卫生机构网络
+  安全管理办法》（国卫规划发〔2022〕29号）与 GB/T 39725-2020《健康医疗数据安全指南》。
+  **具体条款号尚未逐条核对原文**，所以是草稿、默认不进报告。
+
+**启用医疗行业条款（推荐流程）**
+
+1. 复制 `internal/rules/compliance/medical-draft.yaml` 到 `/etc/medaudit/compliance/medical.yaml`。
+2. 合规人员对照原文，为每条填写 `ref`（如 `《办法》第X条`、`GB/T 39725 x.x`），按需
+   调整 `title` 和 `rules`，增删条目。
+3. 把 `status: draft` 改为 `status: verified`，保持 `id: medical-draft` 不变（覆盖内置）。
+4. `systemctl restart medaudit-server`，重新导出报告。
+
+临时预览可不改文件：设 `MEDAUDIT_COMPLIANCE_ENABLE=medical-draft` 并重启，报告中该框架的
+条款会标「条款号待核实」。
+
+同样的格式也可以新增其他标准（如省级卫健委要求、院内制度），`id` 取新值即可：
+
+```yaml
+id: hosp-policy
+name: 某院信息安全管理制度
+short: 院内制度
+status: verified
+controls:
+  - id: 第5条
+    ref: 《某院信息安全管理制度》第5条
+    group: 账号管理
+    title: 数据库特权账号须经信息科审批
+    rules: [db.oracle.dba_role, db.mssql.sysadmin, db.mysql.global_admin, db.pg.superuser]
+```
+
+接口：`GET /api/v1/compliance/frameworks`。

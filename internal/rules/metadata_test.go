@@ -59,22 +59,22 @@ func TestRulesetsInSync(t *testing.T) {
 	}
 }
 
-// TestComplianceMappingComplete 每条内置规则都须映射到至少一个条款，映射不得指向不存在的规则或条款。
+// TestComplianceMappingComplete 每条内置规则都须映射到主框架至少一个条款；
+// 所有内置框架引用的规则都必须存在。
 func TestComplianceMappingComplete(t *testing.T) {
 	known := map[string]bool{}
 	for _, s := range DefaultRegistry().Rules() {
 		known[s.ID] = true
 		if len(ControlsFor(s.ID)) == 0 {
-			t.Errorf("%s 未映射合规条款", s.ID)
+			t.Errorf("%s 未映射主框架条款", s.ID)
 		}
 	}
-	for id, keys := range ruleControls {
-		if !known[id] {
-			t.Errorf("条款映射引用了不存在的规则 %s", id)
-		}
-		for _, k := range keys {
-			if _, ok := controls[k]; !ok {
-				t.Errorf("%s 引用了不存在的条款 %s", id, k)
+	for _, f := range BuiltinFrameworks() {
+		for _, c := range f.Controls {
+			for _, r := range c.Rules {
+				if !known[r] {
+					t.Errorf("框架 %s 条款 %s 引用了不存在的规则 %s", f.ID, c.ID, r)
+				}
 			}
 		}
 	}

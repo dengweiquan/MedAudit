@@ -6,6 +6,10 @@
       关闭后该项在评估时整体跳过——不产生问题、报告不体现。关闭必须填写原因，操作留痕。
       注意与基线的分工：基线豁免单个主体，启停关闭整项检查。
     </p>
+    <div class="todo" v-if="frameworks.length" style="margin-bottom:8px">
+      报告中的合规逐条判定：
+      <span v-for="(f, i) in frameworks" :key="f.id">{{ i ? '；' : '' }}{{ f.name }}（{{ f.clauses }} 条，{{ f.status === 'verified' ? '已核实' : '草稿' }}，<b>{{ f.enabled ? '已启用' : '未启用' }}</b>）</span>
+    </div>
     <div class="chips">
       <button class="chip" :class="{ active: target === '' }" @click="target = ''">全部</button>
       <button v-for="t in targets" :key="t" class="chip" :class="{ active: target === t }" @click="target = t">{{ t }}</button>
@@ -65,6 +69,8 @@ import { fmtLocal } from '../util'
 import { reviewerName } from '../store'
 
 const rules = ref<Rule[]>([])
+const frameworks = ref<{ id: string; name: string; status: string; clauses: number; enabled: boolean }[]>([])
+api.complianceFrameworks().then(r => { frameworks.value = r.items }).catch(() => { frameworks.value = [] })
 const toggles = ref<Map<string, RuleToggle>>(new Map())
 const target = ref('')
 const error = ref('')

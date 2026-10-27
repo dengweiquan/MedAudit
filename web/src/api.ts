@@ -462,6 +462,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ disabled }),
     }),
+  // 合规框架
+  complianceFrameworks: () => req<{ items: { id: string; name: string; short: string; status: string; source: string; clauses: number; enabled: boolean }[]; errors: string[] }>('/api/v1/compliance/frameworks'),
   // 基线模板
   baselineTemplates: () => req<{ items: BaselineTemplate[]; errors: string[] }>('/api/v1/baseline-templates'),
   applyBaselineTemplate: (id: string, body: { hospital_id: string; baseline_id: string; values: Record<string, string>; skip: number[] }) =>
