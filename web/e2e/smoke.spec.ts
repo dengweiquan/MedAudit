@@ -211,4 +211,11 @@ test('医院模式冒烟：菜单、术语与复检对比顺序', async ({ page 
     added += n - common
   }
   expect([uiFixed, uiAdded, uiRest]).toEqual([fixed, added, still + added])
+
+  // fix-6：选定医院后顶栏只显示名称，页面不含医院 ID。
+  await page.evaluate(() => localStorage.setItem('medaudit-hospital', 'h-demo'))
+  await page.reload()
+  await expect(page.getByText('当前医院：演示医院（试点演示数据）')).toBeVisible()
+  await expect(page.locator('body')).not.toContainText('h-demo')
+
 })
