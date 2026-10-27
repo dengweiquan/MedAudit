@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -91,9 +92,18 @@ func registerAuthRoutes(mux *http.ServeMux, db *sql.DB, sessions *platform.Sessi
 				return
 			}
 			opNote(r, "", "令牌登录")
-			if !platform.AuthenticateSuperToken(db, req.Token) {
+			ok, expired := platform.AuthenticateSuperToken(db, req.Token)
+			if !ok {
 				guard.fail(r, "__token")
-				http.Error(w, "令牌无效", http.StatusUnauthorized)
+				if expired {
+					http.Error(w, "令牌已过期，请重新生成", http.StatusUnauthorized)
+				} else {
+					http.Error(w, "令牌无效", http.StatusUnauthorized)
+				}
+				return
+			}
+			if !platform.TokenSourceAllowed(clientIP(r)) {
+				http.Error(w, "令牌来源不在允许网段内", http.StatusForbidden)
 				return
 			}
 			guard.success(r, "__token")
@@ -136,7 +146,22 @@ func registerAuthRoutes(mux *http.ServeMux, db *sql.DB, sessions *platform.Sessi
 			http.Error(w, "未登录", http.StatusUnauthorized)
 			return
 		}
-		tok, err := platform.GenerateSuperToken(db, sessions)
+		var genReq struct {
+			Days int `json:"days"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&genReq); err != nil && err != io.EOF {
+			http.Error(w, "请求解析失败", http.StatusBadRequest)
+			return
+		}
+		days := genReq.Days
+		if days == 0 {
+			days = 90
+		}
+		if days < 1 || days > 365 {
+			http.Error(w, "令牌有效期须在 1–365 天内", http.StatusBadRequest)
+			return
+		}
+		tok, err := platform.GenerateSuperToken(db, sessions, days)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

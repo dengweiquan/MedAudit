@@ -409,3 +409,50 @@ func TestServerTemplateApplyPlaceholder(t *testing.T) {
 		t.Errorf("占位未填应提示请填写，实际 %s", data)
 	}
 }
+
+func TestServerTokenExpiryAndCIDR(t *testing.T) {
+	s := newTestServer(t, nil)
+	mint := func(cookie *http.Cookie) string {
+		t.Helper()
+		status, data, _ := s.do(t, http.MethodPost, "/api/v1/auth/token", map[string]any{}, []*http.Cookie{cookie})
+		if status != http.StatusOK {
+			t.Fatalf("铸造令牌应 200，实际 %d：%s", status, data)
+		}
+		var tokResp struct {
+			Token string `json:"token"`
+		}
+		if err := json.Unmarshal(data, &tokResp); err != nil || tokResp.Token == "" {
+			t.Fatalf("铸造令牌响应异常: %v %s", err, data)
+		}
+		return tokResp.Token
+	}
+	cookie := s.login(t, platform.DefaultAdminUser, platform.DefaultAdminPassword)
+	// 过期：把 expires_at 改到过去，令牌登录 401 且提示重新生成。
+	expired := mint(cookie)
+	if _, err := s.db.Exec(`UPDATE auth_tokens SET expires_at = '2000-01-01 00:00:00' WHERE name = 'super'`); err != nil {
+		t.Fatal(err)
+	}
+	status, data, _ := s.do(t, http.MethodPost, "/api/v1/auth/login", map[string]string{"token": expired}, nil)
+	if status != http.StatusUnauthorized {
+		t.Fatalf("过期令牌登录应 401，实际 %d：%s", status, data)
+	}
+	if !strings.Contains(string(data), "已过期") {
+		t.Errorf("过期令牌应提示重新生成，实际 %s", data)
+	}
+	// 来源限制：铸造新令牌（铸造吊销 admin 会话，故先重登口令）。
+	cookie = s.login(t, platform.DefaultAdminUser, platform.DefaultAdminPassword)
+	tok := mint(cookie)
+	t.Setenv("MEDAUDIT_TOKEN_ALLOW_CIDR", "10.0.0.0/8")
+	status, data, _ = s.do(t, http.MethodPost, "/api/v1/auth/login", map[string]string{"token": tok}, nil)
+	if status != http.StatusForbidden {
+		t.Fatalf("网段外令牌登录应 403，实际 %d：%s", status, data)
+	}
+	if !strings.Contains(string(data), "允许网段") {
+		t.Errorf("网段外应提示允许网段，实际 %s", data)
+	}
+	t.Setenv("MEDAUDIT_TOKEN_ALLOW_CIDR", "127.0.0.0/8")
+	status, _, _ = s.do(t, http.MethodPost, "/api/v1/auth/login", map[string]string{"token": tok}, nil)
+	if status != http.StatusOK {
+		t.Fatalf("网段内令牌登录应 200，实际 %d", status)
+	}
+}
