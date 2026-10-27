@@ -283,6 +283,7 @@ func main() {
 		registerAuthRoutes(mux, db, sessions)
 		registerUserRoutes(mux, db, sessions) // M20 用户管理
 		registerAdminRoutes(mux, db, sessions) // M27 一键清场
+		registerOpLogRoutes(mux, db)           // 平台操作日志
 		authSessions = sessions
 		if collectorWinBin != "" {
 			fmt.Fprintf(os.Stderr, "远程推送（WinRM）已启用（Windows 采集器: %s）\n", collectorWinBin)
@@ -302,7 +303,7 @@ func main() {
 	fmt.Printf("medaudit-server %s listening on %s\n", version, *addr)
 	handler := http.Handler(mux)
 	if authSessions != nil {
-		handler = authMiddleware(mux, authSessions)
+		handler = opLogMiddleware(authMiddleware(mux, authSessions), db, authSessions)
 	}
 	if err := http.ListenAndServe(*addr, handler); err != nil {
 		fmt.Println("server stopped:", err)

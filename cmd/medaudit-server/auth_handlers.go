@@ -90,12 +90,14 @@ func registerAuthRoutes(mux *http.ServeMux, db *sql.DB, sessions *platform.Sessi
 				http.Error(w, "尝试过于频繁，请 5 分钟后再试", http.StatusTooManyRequests)
 				return
 			}
+			opNote(r, "", "令牌登录")
 			if !platform.AuthenticateSuperToken(db, req.Token) {
 				guard.fail(r, "__token")
 				http.Error(w, "令牌无效", http.StatusUnauthorized)
 				return
 			}
 			guard.success(r, "__token")
+			opNote(r, platform.DefaultAdminUser, "")
 			tok := sessions.Create(platform.DefaultAdminUser)
 			http.SetCookie(w, &http.Cookie{
 				Name: sessionCookieName, Value: tok, Path: "/",
@@ -104,6 +106,7 @@ func registerAuthRoutes(mux *http.ServeMux, db *sql.DB, sessions *platform.Sessi
 			writeJSON(w, map[string]string{"username": platform.DefaultAdminUser})
 			return
 		}
+		opNote(r, req.Username, "口令登录")
 		if !guard.allow(r, req.Username) {
 			http.Error(w, "尝试过于频繁，请 5 分钟后再试", http.StatusTooManyRequests)
 			return

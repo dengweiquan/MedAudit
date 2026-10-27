@@ -365,6 +365,17 @@ function post<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
+export interface OpLogRow {
+  id: number
+  at: string
+  actor: string
+  method: string
+  path: string
+  status: number
+  client_ip: string
+  note: string
+}
+
 export const api = {
   health: () => req<Health>('/api/v1/health'),
   site: () => req<SiteInfo>('/api/v1/site'),
@@ -393,6 +404,10 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ disabled }),
     }),
+  // 平台操作日志（哈希链防篡改）
+  opLog: (offset = 0, limit = 50) =>
+    req<{ total: number; items: OpLogRow[] }>(`/api/v1/admin/oplog?offset=${offset}&limit=${limit}`),
+  verifyOpLog: () => req<{ ok: boolean; rows: number; broken_at: number }>('/api/v1/admin/oplog/verify'),
   hospitals: () => req<Hospital[]>('/api/v1/hospitals'),
   createHospital: (id: string, name: string) => post('/api/v1/hospitals', { id, name }),
   assets: () => req<Asset[]>('/api/v1/assets'),
