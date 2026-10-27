@@ -423,3 +423,16 @@ MYSQL_PW=<只读审计账号口令>
 ---
 
 *配套文档：`docs/cli-guide.md`（CLI 完整手册，命令与旗标全量）、`pilot/deployment-guide.md`（部署细则）、`pilot/operator-manual.md`（操作手册）、`docs/m21-hpux.md`（HP-UX 专题）。*
+
+## 8. 告警（权限新增 / 复检失败）
+
+每个新事实包入库（一键审计、远程审计、定期复检、`ma` 或 API 导入）后，平台自动与
+**同一对象的上一次审计**比对：出现新增授权、新增角色关系或新增账号时，生成一条
+「权限新增」告警，显示在工作台顶部，点「看明细」查看具体变化，处理后点「已知悉」。
+定期自动复检执行失败时生成「复检失败」告警。
+
+推送到群：在 `/etc/medaudit/medaudit.env` 设 `MEDAUDIT_ALERT_WEBHOOK=<群机器人地址>`
+并重启服务。消息为 `{"msgtype":"text","text":{"content":"…"}}`，企业微信与钉钉群
+机器人均可直接接收（钉钉机器人若开启「自定义关键词」安全设置，关键词填 `MedAudit`）。
+推送失败只写服务日志，不影响告警落库。接口：`GET /api/v1/alerts`（`?all=1` 含已确认）、
+`POST /api/v1/alerts/{id}/ack`。

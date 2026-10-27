@@ -172,3 +172,6 @@ div.stat.clickable:hover { transform: translateY(-2px); box-shadow: 0 10px 22px 
 .fixscript summary { cursor: pointer; }
 .fixscript pre { background: #f1f5f9; color: #1e293b; padding: 8px 10px; border-radius: 8px; overflow-x: auto; margin: 2px 0 8px; max-height: none; }
 .fixlabel { font-weight: 600; margin: 8px 0 2px; font-size: 13px; }
+
+.alert-row { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.alert-row:last-child { border-bottom: none; }

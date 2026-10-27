@@ -367,6 +367,22 @@ function post<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
+export interface AlertRow {
+  id: number
+  hospital_id: string
+  asset_id: string
+  kind: 'drift' | 'audit_failed'
+  bundle_id: string
+  prev_bundle_id: string
+  added_count: number
+  title: string
+  items?: { kind: string; subject: string; category: string; detail: string }[]
+  error?: string
+  created_at: string
+  acked_by: string
+  acked_at: string
+}
+
 export interface AuditDueRow {
   asset_id: string
   hospital_id: string
@@ -417,6 +433,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ disabled }),
     }),
+  // 告警（权限漂移 / 定期复检失败）
+  alerts: () => req<AlertRow[]>('/api/v1/alerts'),
+  ackAlert: (id: number) => post(`/api/v1/alerts/${id}/ack`, {}),
   // 复检到期提醒
   auditDue: () => req<{ cycle_days: number; items: AuditDueRow[] }>('/api/v1/audit/due'),
   // 平台操作日志（哈希链防篡改）

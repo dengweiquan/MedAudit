@@ -50,7 +50,7 @@ func HospitalDataCounts(db *sql.DB, id string) (map[string]int64, error) {
 	counts := map[string]int64{}
 	byHospital := []string{"assets", "fact_bundles", "findings", "reports",
 		"correlation_reports", "collection_plans", "baselines", "audit_events",
-		"exceptions", "role_bindings"}
+		"exceptions", "role_bindings", "alerts"}
 	for _, t := range byHospital {
 		var n int64
 		if err := db.QueryRow(`SELECT COUNT(*) FROM "`+t+`" WHERE hospital_id = ?`, id).Scan(&n); err != nil {
@@ -106,6 +106,7 @@ func DeleteHospital(db *sql.DB, id string) (map[string]int64, error) {
 		{"reports", `DELETE FROM reports WHERE hospital_id = ?`},
 		{"correlation_reports", `DELETE FROM correlation_reports WHERE hospital_id = ?`},
 		{"audit_events", `DELETE FROM audit_events WHERE hospital_id = ?`},
+		{"alerts", `DELETE FROM alerts WHERE hospital_id = ?`},
 		{"collection_plans", `DELETE FROM collection_plans WHERE hospital_id = ?`},
 		{"baselines", `DELETE FROM baselines WHERE hospital_id = ?`},
 		{"role_bindings", `DELETE FROM role_bindings WHERE hospital_id = ?`},

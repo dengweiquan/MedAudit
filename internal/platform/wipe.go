@@ -15,7 +15,7 @@ var wipeTables = []string{
 	"reviews", "retests", "remediations", "exceptions", "findings",
 	"fact_bundle_evidence", "fact_bundles", "collection_plans",
 	"assets", "reports", "api_audit_reports", "correlation_reports",
-	"baselines", "rule_toggles", "audit_events", "role_bindings",
+	"baselines", "rule_toggles", "audit_events", "alerts", "role_bindings",
 	"hospitals", "users", "rules",
 }
 
