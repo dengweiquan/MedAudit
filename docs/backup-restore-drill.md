@@ -19,7 +19,7 @@ PASS。备份恢复链路可用；恢复要点：dump 需配合手动建库，�
 ## 2026-10-20 升级路径演练（M4-3c）
 
 用 13:01 的旧版备份（16 表，迁移 004/005 之前）在容器 medaudit-upgrade-test（13310）恢复，
-依次应用 migrations/004_evidence.sql、005_api_audits.sql（18 表），用 0.2.0-m4 服务端拉起：
+依次应用 sqlite_migrations/004_evidence.sql、005_api_audits.sql（18 表），用 0.2.0-m4 服务端拉起：
 health 正常、17 规则、bundle-mysql 旧数据 findings 66 条与生产一致、/api/v1/api-audits 可查。
 结论 PASS：向前兼容迁移可直接在生产库版本链上执行，无数据丢失与接口断裂。
 

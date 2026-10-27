@@ -39,11 +39,11 @@ type builder struct {
 func (b *builder) fact(kind facts.FactKind, subject, source string, status facts.FieldStatus, attrs map[string]string) {
 	b.seq++
 	b.facts = append(b.facts, facts.Fact{
-		FactID:  fmt.Sprintf("mw-fact-%06d", b.seq),
-		Kind:    kind,
-		Subject: subject,
-		Status:  status,
-		Source:  source,
+		FactID:     fmt.Sprintf("mw-fact-%06d", b.seq),
+		Kind:       kind,
+		Subject:    subject,
+		Status:     status,
+		Source:     source,
 		Attributes: attrs,
 	})
 }

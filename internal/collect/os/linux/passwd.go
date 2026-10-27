@@ -22,7 +22,7 @@ func collectPasswdGroups(b *facts.FactBundle, rootDir string, addReceipt func(fa
 	receipt := facts.Receipt{
 		TemplateID: "linux.passwd_groups", TemplateVersion: "1",
 		Started: rStart.UTC().Truncate(time.Second),
-		Status: "ok", Visibility: "full",
+		Status:  "ok", Visibility: "full",
 	}
 	finish := func() {
 		receipt.Finished = time.Now().UTC().Truncate(time.Second)

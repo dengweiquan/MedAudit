@@ -26,9 +26,9 @@ type SSHClient struct {
 func DialSSH(ctx context.Context, host string, port int, user, password, expectedFP string) (*SSHClient, error) {
 	c := &SSHClient{}
 	cfg := &ssh.ClientConfig{
-		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
-		Timeout:         20 * time.Second,
+		User:    user,
+		Auth:    []ssh.AuthMethod{ssh.Password(password)},
+		Timeout: 20 * time.Second,
 		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
 			fp := ssh.FingerprintSHA256(key)
 			c.Fingerprint = fp

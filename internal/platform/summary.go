@@ -4,14 +4,14 @@ import "database/sql"
 
 // HospitalSummary 医院级风险汇总（M8-4）。
 type HospitalSummary struct {
-	HospitalID     string `json:"hospital_id"`
-	Assets         int    `json:"assets"`
-	Bundles        int    `json:"bundles"`
-	FailTotal      int    `json:"fail_total"`
-	FailOpen       int    `json:"fail_open"` // FAIL 且未复核处理
-	UnknownTotal   int    `json:"unknown_total"`
-	CorrPaths      int    `json:"corr_paths"`
-	LastBundleAt   string `json:"last_bundle_at"`
+	HospitalID   string `json:"hospital_id"`
+	Assets       int    `json:"assets"`
+	Bundles      int    `json:"bundles"`
+	FailTotal    int    `json:"fail_total"`
+	FailOpen     int    `json:"fail_open"` // FAIL 且未复核处理
+	UnknownTotal int    `json:"unknown_total"`
+	CorrPaths    int    `json:"corr_paths"`
+	LastBundleAt string `json:"last_bundle_at"`
 }
 
 // HospitalSummaries 按医院聚合资产/包/问题/关联路径。

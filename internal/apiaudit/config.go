@@ -16,10 +16,10 @@ import (
 type AccessKind string
 
 const (
-	AccessPublic       AccessKind = "public"        // 匿名可达
-	AccessAuthenticated AccessKind = "authenticated" // 任意已认证身份
-	AccessAdminOnly    AccessKind = "admin_only"    // 仅管理员
-	AccessOwnerOrAdmin AccessKind = "owner_or_admin" // 资源属主或管理员
+	AccessPublic        AccessKind = "public"         // 匿名可达
+	AccessAuthenticated AccessKind = "authenticated"  // 任意已认证身份
+	AccessAdminOnly     AccessKind = "admin_only"     // 仅管理员
+	AccessOwnerOrAdmin  AccessKind = "owner_or_admin" // 资源属主或管理员
 )
 
 // Identity 一个探测身份（会话）。匿名身份不带任何头。
@@ -66,14 +66,14 @@ type Expectation struct {
 // Config 引擎配置。
 type Config struct {
 	BaseURL       string        `yaml:"base_url"`
-	SpecURL       string        `yaml:"spec_url"`  // 与 SpecFile/HARFile 三选一
+	SpecURL       string        `yaml:"spec_url"` // 与 SpecFile/HARFile 三选一
 	SpecFile      string        `yaml:"spec_file"`
 	HARFile       string        `yaml:"har_file"`
 	Identities    []Identity    `yaml:"identities"`
 	Expectations  []Expectation `yaml:"expectations"`
 	ProbeWrites   bool          `yaml:"probe_writes"` // 默认 false：写方法只登记 NOT_RUN
 	TimeoutSecond int           `yaml:"timeout_seconds"`
-	Replay        *ReplayConfig `yaml:"replay"`       // M31：会话重放探针；留空则不跑重放
+	Replay        *ReplayConfig `yaml:"replay"` // M31：会话重放探针；留空则不跑重放
 }
 
 // LoadConfig 读取 YAML 配置并做基本校验。

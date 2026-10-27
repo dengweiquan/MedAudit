@@ -280,7 +280,9 @@ func main() {
 		} else {
 			fmt.Fprintln(os.Stderr, "一键审计未启用（未找到采集器，可设 MEDAUDIT_COLLECTOR_BIN）")
 		}
-		registerM6Routes(mux, db, rules.DefaultRegistry(), keyring, collectorBin)
+		registerAuditRoutes(mux, db, rules.DefaultRegistry(), keyring, collectorBin)
+		registerHospitalRoutes(mux, db)
+		registerAssetRoutes(mux, db)
 		registerCorrelationRoutes(mux, db)
 		registerSummaryRoutes(mux, db)
 		registerSiteRoutes(mux, db)
@@ -306,7 +308,7 @@ func main() {
 		}
 		sessions := platform.NewSessionStore()
 		registerAuthRoutes(mux, db, sessions)
-		registerUserRoutes(mux, db, sessions) // M20 用户管理
+		registerUserRoutes(mux, db, sessions)  // M20 用户管理
 		registerAdminRoutes(mux, db, sessions) // M27 一键清场
 		registerOpLogRoutes(mux, db)           // 平台操作日志
 		registerAlertRoutes(mux, db, sessions) // 权限漂移/复检失败告警

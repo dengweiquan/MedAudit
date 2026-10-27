@@ -30,7 +30,7 @@ type iisPools struct {
 }
 
 type iisPool struct {
-	Name        string       `xml:"name,attr"`
+	Name         string       `xml:"name,attr"`
 	ProcessModel iisProcModel `xml:"processModel"`
 }
 
@@ -44,10 +44,10 @@ type iisSites struct {
 }
 
 type iisSite struct {
-	Name     string         `xml:"name,attr"`
-	ID       string         `xml:"id,attr"`
-	Apps     []iisApp       `xml:"application"`
-	Bindings iisBindings    `xml:"bindings"`
+	Name     string      `xml:"name,attr"`
+	ID       string      `xml:"id,attr"`
+	Apps     []iisApp    `xml:"application"`
+	Bindings iisBindings `xml:"bindings"`
 }
 
 type iisApp struct {
@@ -65,8 +65,8 @@ type iisBinding struct {
 }
 
 type iisLocation struct {
-	Path        string        `xml:"path,attr"`
-	WebServer   iisWebServer  `xml:"system.webServer"`
+	Path      string       `xml:"path,attr"`
+	WebServer iisWebServer `xml:"system.webServer"`
 }
 
 type iisWebServer struct {

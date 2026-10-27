@@ -17,11 +17,11 @@ import (
 
 // BundleInput 一个待关联的事实包。
 type BundleInput struct {
-	BundleID  string
-	Adapter   string
-	AssetID   string
-	Hospital  string
-	Facts     []facts.Fact
+	BundleID string
+	Adapter  string
+	AssetID  string
+	Hospital string
+	Facts    []facts.Fact
 }
 
 // Hop 路径中的一步。
@@ -82,8 +82,8 @@ func winShort(name string) string {
 	}
 	return name
 }
-func fileNode(path string) string  { return "file:" + path }
-func mwNode(asset string) string   { return "mw:" + asset }
+func fileNode(path string) string { return "file:" + path }
+func mwNode(asset string) string  { return "mw:" + asset }
 func dbAcctNode(adapter, acct string) string {
 	return "dbacct:" + adapter + ":" + acct
 }

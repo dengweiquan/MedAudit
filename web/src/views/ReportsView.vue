@@ -3,7 +3,7 @@
     <h2>生成报告</h2>
     <div class="inline-form">
       <label>对象
-        <select v-model="genAsset" @change="genBundle = latestBundleOf(bundles.value, genAsset)?.id ?? ''">
+        <select v-model="genAsset" @change="genBundle = latestBundleOf(bundles, genAsset)?.id ?? ''">
           <option v-for="a in reportableAssets" :key="a.id" :value="a.id">{{ a.name }}</option>
         </select>
       </label>

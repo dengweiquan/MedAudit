@@ -53,12 +53,12 @@ func evalHpux(t *testing.T, dir string) map[string][]rules.TechnicalResult {
 func TestHpuxPlantedHits(t *testing.T) {
 	res := evalHpux(t, "testdata/planted")
 	want := map[string]int{
-		"os.hpux.multiple_uid0":        1,
-		"os.hpux.weak_password_store":  1,
-		"os.hpux.inetd_risky_service":  3,
+		"os.hpux.multiple_uid0":         1,
+		"os.hpux.weak_password_store":   1,
+		"os.hpux.inetd_risky_service":   3,
 		"os.hpux.writable_service_file": 1,
-		"os.hpux.setuid_unexpected":    1,
-		"os.hpux.sudo_all":             1,
+		"os.hpux.setuid_unexpected":     1,
+		"os.hpux.sudo_all":              1,
 	}
 	if len(res) != len(want) {
 		t.Fatalf("应有 %d 条 hpux 规则结果，实际 %d：%v", len(want), len(res), keysOf(res))

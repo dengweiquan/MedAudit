@@ -131,7 +131,7 @@
                                   <h3>判定详情</h3>
                                   <div v-if="detailInfo(f)">
                                     <p><b>问题：</b>{{ detailInfo(f)?.detail }}</p>
-                                    <p v-if="detailInfo(f)?.evidence?.length"><b>证据：</b>{{ detailInfo(f)?.evidence.join('、') }}</p>
+                                    <p v-if="detailInfo(f)?.evidence?.length"><b>证据：</b>{{ detailInfo(f)?.evidence?.join('、') }}</p>
                                     <p v-if="detailInfo(f)?.missing"><b>缺失：</b>{{ detailInfo(f)?.missing }}</p>
                                     <p v-if="detailInfo(f)?.risk"><b>风险：</b>{{ detailInfo(f)?.risk }}</p>
                                   </div>

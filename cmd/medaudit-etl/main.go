@@ -1,8 +1,9 @@
 // medaudit-etl：一次性迁移工具（M5）——把平台数据从 MySQL 全量迁入 SQLite。
 //
 // 用法：
-//   ETL_MYSQL_DSN='user:pass@tcp(127.0.0.1:13306)/medaudit' \
-//     medaudit-etl --out /path/to/medaudit.db
+//
+//	ETL_MYSQL_DSN='user:pass@tcp(127.0.0.1:13306)/medaudit' \
+//	  medaudit-etl --out /path/to/medaudit.db
 //
 // 行为：先在目标文件上执行内嵌 SQLite 迁移建空库，再逐表复制
 // （schema_migrations 除外，由迁移执行器自理）；逐表行数对账，
@@ -79,7 +80,7 @@ func main() {
 			fatal("复制 "+t, err)
 		}
 		var want int
-		if err := src.QueryRow("SELECT COUNT(*) FROM `"+t+"`").Scan(&want); err != nil {
+		if err := src.QueryRow("SELECT COUNT(*) FROM `" + t + "`").Scan(&want); err != nil {
 			fatal("源计数 "+t, err)
 		}
 		if want != n {

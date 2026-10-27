@@ -183,7 +183,7 @@ func iisAppPoolSystem(subject string, ev []facts.Fact) *Script {
 	return &Script{
 		RuleID: "mw.iis.apppool_system", Subject: subject, Scope: pool,
 		Precheck: fmt.Sprintf("%s list apppool %s /text:processModel.identityType", appcmd, sq(pool)),
-		Fix: fmt.Sprintf("%s set apppool %s /processModel.identityType:ApplicationPoolIdentity\n%s recycle apppool %s", appcmd, sq(pool), appcmd, sq(pool)),
+		Fix:      fmt.Sprintf("%s set apppool %s /processModel.identityType:ApplicationPoolIdentity\n%s recycle apppool %s", appcmd, sq(pool), appcmd, sq(pool)),
 		Verify:   fmt.Sprintf("%s list apppool %s /text:processModel.identityType;  -- 应为 ApplicationPoolIdentity；访问站点确认无 500/503", appcmd, sq(pool)),
 		Rollback: fmt.Sprintf("%s set apppool %s /processModel.identityType:%s\n%s recycle apppool %s", appcmd, sq(pool), cur, appcmd, sq(pool)),
 		Note:     "改身份后应用对站点目录的访问身份变为 IIS AppPool\\<池名> 虚拟账号：站点目录与上传目录需给该虚拟账号授权；连数据库用 Windows 集成登录的，要同步在库侧建对应登录。回收（recycle）会短暂中断在途请求，放在维护窗口。",

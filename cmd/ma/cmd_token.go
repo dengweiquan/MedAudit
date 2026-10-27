@@ -4,21 +4,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 // ---------- 超级令牌管理（M32；铸造只经 ma CLI） ----------
 
 func cmdToken(args []string) error {
-	p, err := parseArgs(args, nil)
+	p, err := parseArgs(args, []flagSpec{{name: "d", value: true}})
 	if err != nil {
 		return err
 	}
-	_ = p
+	days := 90
+	if p.has("d") {
+		n, err := strconv.Atoi(p.str("d"))
+		if err != nil || n < 1 || n > 365 {
+			return errors.New(T("无效天数：-d 须为 1–365", "invalid days: -d must be 1–365"))
+		}
+		days = n
+	}
 	c, err := newClient()
 	if err != nil {
 		return errors.New(T("未登录或会话已过期：先运行 ma login", "not logged in or session expired: run ma login first"))
 	}
-	_, raw, err := c.do("POST", "/api/v1/auth/token", map[string]string{})
+	_, raw, err := c.do("POST", "/api/v1/auth/token", map[string]any{"days": days})
 	if err != nil {
 		return err
 	}
@@ -28,8 +36,8 @@ func cmdToken(args []string) error {
 	if err := json.Unmarshal(raw, &res); err != nil || res.Token == "" {
 		return errors.New(T("服务端未返回令牌", "server did not return a token"))
 	}
-	fmt.Println(T("超级令牌（只显示一次，请立即妥善保存；轮换后旧令牌立即失效，admin 全部会话已吊销）：",
-		"Super token (shown only once — save it now; the old token is invalid immediately and all admin sessions are revoked):"))
+	fmt.Println(fmt.Sprintf(T("超级令牌（只显示一次，请立即妥善保存；有效期 %d 天；轮换后旧令牌立即失效，admin 全部会话已吊销）：",
+		"Super token (shown only once — save it now; valid for %d days; the old token is invalid immediately and all admin sessions are revoked):"), days))
 	fmt.Println(res.Token)
 	fmt.Println(T("登录用法：ma login -t <令牌>，或设置环境变量 MEDAUDIT_TOKEN；Web 登录页选“令牌登录”。",
 		"Log in with: ma login -t <token>, or set MEDAUDIT_TOKEN; on the Web login page choose token login."))

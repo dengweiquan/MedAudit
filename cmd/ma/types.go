@@ -3,13 +3,13 @@ package main
 // 与服务端 API 对齐的响应结构（字段以 web/src/api.ts 与实测响应为准）。
 
 type evalSummary struct {
-	BundleID       string `json:"bundle_id"`
-	Total          int    `json:"total"`
-	Pass           int    `json:"pass"`
-	Fail           int    `json:"fail"`
-	Unknown        int    `json:"unknown"`
-	NotApplicable  int    `json:"not_applicable"`
-	NotRun         int    `json:"not_run"`
+	BundleID         string   `json:"bundle_id"`
+	Total            int      `json:"total"`
+	Pass             int      `json:"pass"`
+	Fail             int      `json:"fail"`
+	Unknown          int      `json:"unknown"`
+	NotApplicable    int      `json:"not_applicable"`
+	NotRun           int      `json:"not_run"`
 	FindingsStored   int      `json:"findings_stored"`
 	BaselineMode     string   `json:"baseline_mode"`
 	BaselinesApplied []string `json:"baselines_applied"`

@@ -138,7 +138,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		rc := facts.Receipt{
 			TemplateID: "ora.cdb_context", TemplateVersion: "1",
 			Started: rStart.UTC().Truncate(time.Second),
-			Status: "ok", Visibility: "full",
+			Status:  "ok", Visibility: "full",
 		}
 		prows, perr := dbutil.QueryRows(ctx, db,
 			"SELECT SYS_CONTEXT('USERENV', 'CON_NAME') AS con_name FROM DUAL", 0, 0, 0)
@@ -317,11 +317,11 @@ func mapTemplate(tid string, b *facts.FactBundle, nextID func() string) func(*db
 			case "ora.cdb_sys_privs":
 				g := strings.EqualFold(m["admin_option"], "YES")
 				b.Facts = append(b.Facts, facts.Fact{
-					FactID:     nextID(),
-					Kind:       facts.FactPrivilege,
-					Subject:    m["grantee"],
-					Status:     facts.StatusObserved,
-					Source:     tid,
+					FactID:  nextID(),
+					Kind:    facts.FactPrivilege,
+					Subject: m["grantee"],
+					Status:  facts.StatusObserved,
+					Source:  tid,
 					Attributes: map[string]string{
 						"privilege": m["privilege"], "common": m["common"], "con_id": m["con_id"],
 					},

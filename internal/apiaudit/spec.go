@@ -12,7 +12,7 @@ import (
 // Operation 一个待测端点（方法 + 路径模板）。
 type Operation struct {
 	Method string `json:"method"`
-	Path   string `json:"path"` // 模板形式，如 /api/users/{user_id}
+	Path   string `json:"path"`   // 模板形式，如 /api/users/{user_id}
 	Source string `json:"source"` // openapi | har
 }
 

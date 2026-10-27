@@ -43,12 +43,12 @@ const (
 type TargetType string
 
 const (
-	TargetOSLinux   TargetType = "os-linux"
-	TargetOSWindows TargetType = "os-windows"
-	TargetOSHpux    TargetType = "os-hpux" // M21
-	TargetDBOracle  TargetType = "db-oracle"
-	TargetDBSQLSrv  TargetType = "db-sqlserver"
-	TargetDBMySQL   TargetType = "db-mysql"
+	TargetOSLinux    TargetType = "os-linux"
+	TargetOSWindows  TargetType = "os-windows"
+	TargetOSHpux     TargetType = "os-hpux" // M21
+	TargetDBOracle   TargetType = "db-oracle"
+	TargetDBSQLSrv   TargetType = "db-sqlserver"
+	TargetDBMySQL    TargetType = "db-mysql"
 	TargetDBPostgres TargetType = "db-postgres"
 	TargetMWTomcat   TargetType = "mw-tomcat"
 	TargetMWNginx    TargetType = "mw-nginx"

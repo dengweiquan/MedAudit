@@ -12,13 +12,13 @@ import (
 // Config Linux 采集配置。采集范围限定在指定服务及其关联对象，
 // 不做无边界全机遍历。
 type Config struct {
-	Node     string // 节点名，默认取 hostname
+	Node       string // 节点名，默认取 hostname
 	HospitalID string
-	AssetID  string
-	PlanID   string
+	AssetID    string
+	PlanID     string
 	// Services systemd 单元名（如 cron.service）；为空则只做本机基础采集
 	//（CLI 层在用户未指定时以 RunningServices 的枚举结果填充，见 cmd 层）。
-	Services []string
+	Services         []string
 	CollectorVersion string
 	// SudoersDir sudoers 所在根目录，默认 /etc；离线根目录分析时可指定挂载路径。
 	SudoersDir string
@@ -72,7 +72,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 	receipt := facts.Receipt{
 		TemplateID: "linux.boot_id", TemplateVersion: "1",
 		Started: rStart.UTC().Truncate(time.Second),
-		Status: "ok", Visibility: "full",
+		Status:  "ok", Visibility: "full",
 	}
 	if bootErr != nil {
 		receipt.Status = "failed"
@@ -121,7 +121,7 @@ func collectService(ctx context.Context, b *facts.FactBundle, node, bootID, svc 
 	receipt := facts.Receipt{
 		TemplateID: "linux.unit_info", TemplateVersion: "1",
 		Started: rStart.UTC().Truncate(time.Second),
-		Status: "ok", Visibility: "full",
+		Status:  "ok", Visibility: "full",
 	}
 	factBase := fmt.Sprintf("fact-unit-%d", idx)
 	if uerr != nil {
@@ -169,14 +169,14 @@ func collectService(ctx context.Context, b *facts.FactBundle, node, bootID, svc 
 	procReceipt := facts.Receipt{
 		TemplateID: "linux.proc_scan", TemplateVersion: "1",
 		Started: rStart.UTC().Truncate(time.Second),
-		Status: "ok", Visibility: "full",
+		Status:  "ok", Visibility: "full",
 	}
 	for j, pid := range pids {
 		p, perr := ReadProc(pid)
 		if perr != nil {
 			b.Facts = append(b.Facts, facts.Fact{
 				FactID: fmt.Sprintf("fact-proc-%d-%d", idx, j),
-				Kind: facts.FactProcess, Subject: fmt.Sprintf("pid:%d", pid),
+				Kind:   facts.FactProcess, Subject: fmt.Sprintf("pid:%d", pid),
 				Status: facts.StatusPermissionDenied, Source: "linux.proc_scan",
 				Attributes: map[string]string{"error": perr.Error()},
 			})
@@ -217,7 +217,7 @@ func collectService(ctx context.Context, b *facts.FactBundle, node, bootID, svc 
 		}
 		b.Facts = append(b.Facts, facts.Fact{
 			FactID: fmt.Sprintf("fact-proc-%d-%d", idx, j),
-			Kind: facts.FactProcess, Subject: ProcKey(node, bootID, p),
+			Kind:   facts.FactProcess, Subject: ProcKey(node, bootID, p),
 			Status: status, Source: "linux.proc_scan", Attributes: attrs,
 		})
 		procReceipt.RowCount++
@@ -242,7 +242,7 @@ func collectFilePerms(b *facts.FactBundle, factID, path, source string) {
 	receipt := facts.Receipt{
 		TemplateID: "linux.file_perm", TemplateVersion: "1",
 		Started: rStart.UTC().Truncate(time.Second),
-		Status: "ok", Visibility: "full",
+		Status:  "ok", Visibility: "full",
 	}
 	checked := 0
 	cur := path
@@ -251,7 +251,7 @@ func collectFilePerms(b *facts.FactBundle, factID, path, source string) {
 		if err != nil {
 			b.Facts = append(b.Facts, facts.Fact{
 				FactID: fmt.Sprintf("%s-d%d", factID, depth),
-				Kind: facts.FactFilePerm, Subject: cur,
+				Kind:   facts.FactFilePerm, Subject: cur,
 				Status: facts.StatusPermissionDenied, Source: source,
 				Attributes: map[string]string{"error": err.Error()},
 			})
@@ -278,7 +278,7 @@ func collectFilePerms(b *facts.FactBundle, factID, path, source string) {
 		}
 		b.Facts = append(b.Facts, facts.Fact{
 			FactID: fmt.Sprintf("%s-d%d", factID, depth),
-			Kind: facts.FactFilePerm, Subject: cur,
+			Kind:   facts.FactFilePerm, Subject: cur,
 			Status: facts.StatusObserved, Source: source, Attributes: attrs,
 		})
 		checked++

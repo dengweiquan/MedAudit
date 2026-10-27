@@ -120,7 +120,7 @@ type EvaluationSummary struct {
 	NotApplicable    int      `json:"not_applicable"`
 	NotRun           int      `json:"not_run"`
 	Findings         int      `json:"findings_stored"`
-	BaselineMode     string   `json:"baseline_mode"`              // auto | baseline | bare
+	BaselineMode     string   `json:"baseline_mode"`               // auto | baseline | bare
 	BaselinesApplied []string `json:"baselines_applied,omitempty"` // 本次实际套用的基线 ID
 }
 
@@ -147,9 +147,10 @@ func EvaluateBundle(db *sql.DB, reg *rules.Registry, bundleID, baselineID string
 }
 
 // EvaluateBundleAuto 在线评估（M35 自动屏蔽）：
-//   baselineID 指定 → 只用该基线（显式选择，语义不变）；
-//   bare=true → 裸评（不套用任何基线，保留裸评对比）；
-//   否则 → 自动套用该包所属医院的全部基线（目标匹配者），加基线后默认屏蔽。
+//
+//	baselineID 指定 → 只用该基线（显式选择，语义不变）；
+//	bare=true → 裸评（不套用任何基线，保留裸评对比）；
+//	否则 → 自动套用该包所属医院的全部基线（目标匹配者），加基线后默认屏蔽。
 func EvaluateBundleAuto(db *sql.DB, reg *rules.Registry, bundleID, baselineID string, bare bool) (*EvaluationSummary, error) {
 	raw, hospitalID, assetID, err := loadBundleMeta(db, bundleID)
 	if err != nil {

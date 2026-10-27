@@ -102,7 +102,7 @@ func collectSudo(b *facts.FactBundle, dir string, addReceipt func(facts.Receipt)
 	receipt := facts.Receipt{
 		TemplateID: "linux.sudo", TemplateVersion: "1",
 		Started: rStart.UTC().Truncate(time.Second),
-		Status: "ok", Visibility: "full",
+		Status:  "ok", Visibility: "full",
 	}
 	finish := func() {
 		receipt.Finished = time.Now().UTC().Truncate(time.Second)

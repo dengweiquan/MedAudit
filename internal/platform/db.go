@@ -37,10 +37,10 @@ func Open(path string) (*sql.DB, error) {
 type Asset struct {
 	ID         string  `json:"id"`
 	HospitalID string  `json:"hospital_id"`
-	Kind     string  `json:"kind"`
-	Name     string  `json:"name"`
-	Endpoint *string `json:"endpoint"`
-	Labels   *string `json:"labels"`
+	Kind       string  `json:"kind"`
+	Name       string  `json:"name"`
+	Endpoint   *string `json:"endpoint"`
+	Labels     *string `json:"labels"`
 }
 
 // ListAssets 列出全部资产（M0：最小列表）。

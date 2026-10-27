@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// SQLite 版迁移（自 migrations/ 的 MySQL 版逐文件翻译，版本号一一对应）。
+// SQLite 版迁移（唯一迁移来源；早期 MySQL 版已于 M37-3.3 清理）。
 //
 //go:embed sqlite_migrations/*.sql
 var sqliteMigrations embed.FS

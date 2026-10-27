@@ -26,10 +26,10 @@ type apiAuditSummary struct {
 }
 
 type apiAuditReportHead struct {
-	ReportID  string         `json:"report_id"`
-	Target    string         `json:"target"`
-	Execution string         `json:"execution"`
-	Summary   map[string]int `json:"summary"`
+	ReportID  string            `json:"report_id"`
+	Target    string            `json:"target"`
+	Execution string            `json:"execution"`
+	Summary   map[string]int    `json:"summary"`
 	Checks    []json.RawMessage `json:"checks"`
 }
 

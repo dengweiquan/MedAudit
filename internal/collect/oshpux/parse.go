@@ -150,7 +150,7 @@ func collectAuthPolicy(b *facts.FactBundle, get getter, nextID idGen, rc receipt
 		mode = "shadow"
 	}
 	attrs := map[string]string{
-		"mode": mode,
+		"mode":           mode,
 		"shadow_present": strconv.FormatBool(shadow),
 		"tcb_present":    strconv.FormatBool(tcb),
 	}
@@ -288,7 +288,7 @@ func collectSudoRbac(b *facts.FactBundle, get getter, nextID idGen, rc receiptFn
 			Status: facts.StatusObserved, Source: "hpux.sudo_rbac",
 			Attributes: map[string]string{
 				"sudoers_present": strconv.FormatBool(strings.TrimSpace(out) != ""),
-				"grants":           "0",
+				"grants":          "0",
 			},
 		})
 		rows = 1
