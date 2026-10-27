@@ -56,7 +56,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BundleSummary, type Finding } from '../api'
 import { goto, nav, filterByHospital } from '../store'
-import { bundlesOfAsset, exportLatestReport, latestFail, fmtLocal} from '../util'
+import { bundlesOfAsset, comparePair, exportLatestReport, latestFail, fmtLocal} from '../util'
 
 const assets = ref<Asset[]>([])
 const bundles = ref<BundleSummary[]>([])
@@ -104,10 +104,12 @@ async function compare() {
   fixed.value = []; still.value = []; added.value = []
   oldBundle.value = null; newBundle.value = null
   if (!assetId.value) return
-  const list = bundlesOfAsset(bundles.value, assetId.value)
-  if (list.length < 2) return
-  const nb = list[list.length - 1]
-  const ob = list[list.length - 2]
+  // 服务端按 imported_at DESC 返回，直接取末尾会把新旧颠倒（M37-1.1），
+  // 故用 comparePair 显式按时间升序取最后两次。
+  const pair = comparePair(bundles.value, assetId.value)
+  if (!pair) return
+  const nb = pair.new
+  const ob = pair.old
   newBundle.value = nb; oldBundle.value = ob
   try {
     const [of, nf] = await Promise.all([api.findings(ob.id), api.findings(nb.id)])

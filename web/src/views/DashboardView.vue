@@ -131,6 +131,7 @@ interface RecentRow { b: BundleSummary; fail: number; cat: CategoryKey | 'unknow
 
 const assets = ref<Asset[]>([])
 const bundles = ref<BundleSummary[]>([])
+const latestByAsset = ref(new Map<string, BundleSummary>())
 const hospitals = ref<Hospital[]>([])
 const reports = ref<ReportRow[] | null>(null)
 const rulesCount = ref<number | null>(null)
@@ -173,7 +174,7 @@ const catCards = computed<CatCard[]>(() => {
     for (const a of catAssets) {
       const f = failByAsset.value.get(a.id) ?? 0
       if (f > 0) { problem++; fail += f }
-      const lb = latestBundleOf(bundles.value, a.id)
+      const lb = latestOfAsset(a.id)
       if (lb && lb.imported_at > lastAt) lastAt = lb.imported_at
     }
     return { key: d.key, view: d.view, label: d.label, assets: catAssets.length, problem, fail, lastAt }
@@ -191,7 +192,7 @@ const hospitalRows = computed<HospRow[]>(() => hospitals.value
   for (const a of hs) {
     const f = failByAsset.value.get(a.id) ?? 0
     if (f > 0) { problem++; fail += f }
-    const lb = latestBundleOf(bundles.value, a.id)
+    const lb = latestOfAsset(a.id)
     if (lb) { audited++; if (lb.imported_at > lastAt) lastAt = lb.imported_at }
   }
   return {
@@ -228,6 +229,11 @@ async function doExport(b: BundleSummary) {
   finally { exporting.value = '' }
 }
 
+// 最新包优先用 /assets/latest-bundles，取不到时回退到列表内按时间取最大。
+function latestOfAsset(assetId: string): BundleSummary | undefined {
+  return latestByAsset.value.get(assetId) ?? latestBundleOf(bundles.value, assetId)
+}
+
 async function load() {
   try {
     site.value = await loadSite()
@@ -235,6 +241,9 @@ async function load() {
       api.bundles(), api.assets(), api.hospitals(), api.reports(), api.rules(),
     ])
     bundles.value = filterByHospital(bs); assets.value = filterByHospital(as); hospitals.value = hs; reports.value = filterByHospital(rs)
+    // 每对象最新包单独取（M37-1.2）：bundles 列表只返回 100 条，老对象
+    // 的最近审计不能用它算；取不到时各处回退到列表内按时间取最大。
+    try { latestByAsset.value = new Map(filterByHospital(await api.latestBundles()).map(b => [b.asset_id, b])) } catch { latestByAsset.value = new Map() }
     // 启用规则 = 规则总数 − 本站已关闭数（M17 规则启停）
     let off = 0
     try { off = (await api.ruleToggles()).filter(t => !t.enabled).length } catch { off = 0 }
@@ -245,7 +254,7 @@ async function load() {
     const byBundle = new Map<string, number>()
     // 顶部合计须与所选医院一致：用过滤后的资产算，勿用原始全院数组。
     for (const a of assets.value) {
-      const lb = latestBundleOf(bs, a.id)
+      const lb = latestOfAsset(a.id)
       if (!lb) { byAsset.set(a.id, 0); continue }
       let fail = 0
       try { fail = latestFail(await api.findings(lb.id)).length } catch { fail = 0 }

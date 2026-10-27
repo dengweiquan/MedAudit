@@ -3,7 +3,7 @@
     <h2>生成报告</h2>
     <div class="inline-form">
       <label>对象
-        <select v-model="genAsset" @change="genBundle = latestBundleOfAsset(genAsset)?.id ?? ''">
+        <select v-model="genAsset" @change="genBundle = latestBundleOf(bundles.value, genAsset)?.id ?? ''">
           <option v-for="a in reportableAssets" :key="a.id" :value="a.id">{{ a.name }}（{{ a.id }}）</option>
         </select>
       </label>
@@ -134,7 +134,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow } from '../api'
-import { fmtLocal } from '../util'
+import { fmtLocal , latestBundleOf} from '../util'
 import { reviewerName, filterByHospital } from '../store'
 
 const bundles = ref<BundleSummary[]>([])
@@ -149,11 +149,6 @@ const reportableAssets = computed(() => assets.value.filter(a => bundles.value.s
 function bundlesOfAsset(assetId: string): BundleSummary[] {
   return bundles.value.filter(b => b.asset_id === assetId)
 }
-function latestBundleOfAsset(assetId: string): BundleSummary | undefined {
-  const list = bundlesOfAsset(assetId)
-  return list.length ? list[list.length - 1] : undefined
-}
-
 interface ReportGroup { key: string; name: string; reports: ReportRow[] }
 const reportGroups = computed<ReportGroup[]>(() => {
   const bundleAsset = new Map(bundles.value.map(b => [b.id, b.asset_id]))
@@ -209,7 +204,7 @@ async function load() {
     } catch { /* 未取到登录名时用本地署名 */ }
     if (!genAsset.value && reportableAssets.value.length) {
       genAsset.value = reportableAssets.value[0].id
-      genBundle.value = latestBundleOfAsset(genAsset.value)?.id ?? ''
+      genBundle.value = latestBundleOf(bundles.value, genAsset.value)?.id ?? ''
     }
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
 }
