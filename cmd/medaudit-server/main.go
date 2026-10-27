@@ -280,7 +280,9 @@ func main() {
 		} else {
 			fmt.Fprintln(os.Stderr, "一键审计未启用（未找到采集器，可设 MEDAUDIT_COLLECTOR_BIN）")
 		}
-		registerM6Routes(mux, db, rules.DefaultRegistry(), keyring, collectorBin)
+		registerAuditRoutes(mux, db, rules.DefaultRegistry(), keyring, collectorBin)
+		registerHospitalRoutes(mux, db)
+		registerAssetRoutes(mux, db)
 		registerCorrelationRoutes(mux, db)
 		registerSummaryRoutes(mux, db)
 		registerSiteRoutes(mux, db)
