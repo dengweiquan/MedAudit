@@ -367,6 +367,22 @@ function post<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
+export interface ScheduleRow {
+  asset_id: string
+  hospital_id: string
+  name: string
+  kind: string
+  cycle_days: number
+  baseline_id: string
+  created_by: string
+  updated_at: string
+  next_run_at: string
+  last_run_at: string
+  last_status: '' | 'running' | 'ok' | 'failed'
+  last_error: string
+  last_bundle_id: string
+}
+
 export interface AlertRow {
   id: number
   hospital_id: string
@@ -392,6 +408,7 @@ export interface AuditDueRow {
   due_at: string
   days_left: number
   status: 'never' | 'overdue' | 'due_soon' | 'ok'
+  auto: boolean
 }
 
 export interface OpLogRow {
@@ -433,6 +450,17 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ disabled }),
     }),
+  // 定期自动复检
+  schedules: () => req<{ items: ScheduleRow[]; key_ready: boolean }>('/api/v1/schedules'),
+  saveSchedule: (assetId: string, body: { cycle_days: number; password?: string }) =>
+    req(`/api/v1/schedules/${encodeURIComponent(assetId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  deleteSchedule: (assetId: string) =>
+    req(`/api/v1/schedules/${encodeURIComponent(assetId)}`, { method: 'DELETE' }),
+  runSchedule: (assetId: string) => post(`/api/v1/schedules/${encodeURIComponent(assetId)}/run`, {}),
   // 告警（权限漂移 / 定期复检失败）
   alerts: () => req<AlertRow[]>('/api/v1/alerts'),
   ackAlert: (id: number) => post(`/api/v1/alerts/${id}/ack`, {}),

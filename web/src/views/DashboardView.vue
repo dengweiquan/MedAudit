@@ -39,7 +39,7 @@
       <thead><tr><th>对象</th><th>上次审计</th><th>状态</th><th>操作</th></tr></thead>
       <tbody>
         <tr v-for="d in dueRows" :key="d.asset_id">
-          <td>{{ d.name }}<div class="todo">{{ d.asset_id }}</div></td>
+          <td>{{ d.name }} <span v-if="d.auto" class="concl c-PASS">自动</span><div class="todo">{{ d.asset_id }}</div></td>
           <td>{{ d.last_audit_at ? fmtLocal(d.last_audit_at) : '—' }}</td>
           <td>
             <span v-if="d.status === 'overdue'" class="concl c-FAIL">已逾期 {{ -d.days_left }} 天</span>
@@ -51,7 +51,7 @@
       </tbody>
     </table>
     <div v-else class="todo">全部对象都在复检周期内。</div>
-    <div class="todo" style="margin-top:8px">每个对象每 {{ cycleDays }} 天复检一次（7 天内到期即提醒）。平台不保存目标口令，复检由工程师点「开始审计」，或用 ma audit 配合定时任务完成。</div>
+    <div class="todo" style="margin-top:8px">每个对象每 {{ cycleDays }} 天复检一次（7 天内到期即提醒）。标「自动」的对象已开启定期自动复检（在「管理」页设置），到期由平台自动执行；其余对象由工程师点「开始审计」复检。</div>
   </div>
 
   <div class="card">
