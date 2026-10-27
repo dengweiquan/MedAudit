@@ -46,9 +46,27 @@ export function bundleCategory(b: BundleSummary, kindByAsset: Map<string, string
   return 'unknown'
 }
 
+// latestBundleOf 取同一对象导入时间最晚的包。服务端按 imported_at DESC 返回，
+// 直接取末尾会拿到最旧的包（M37-1.1 同类 Bug），故此处显式按时间取最大。
 export function latestBundleOf(bundles: BundleSummary[], assetId: string): BundleSummary | undefined {
+  let best: BundleSummary | undefined
+  for (const b of bundles) {
+    if (b.asset_id !== assetId) continue
+    if (!best || b.imported_at.localeCompare(best.imported_at) > 0 ||
+      (b.imported_at === best.imported_at && b.id.localeCompare(best.id) > 0)) best = b
+  }
+  return best
+}
+
+export interface ComparePair { old: BundleSummary; new: BundleSummary }
+
+// comparePair 取同一对象按导入时间升序的最后两次：old=上次，new=本次。
+// 服务端按 imported_at DESC 返回，直接取末尾会把新旧颠倒（M37-1.1），故此处显式排序。
+export function comparePair(bundles: BundleSummary[], assetId: string): ComparePair | null {
   const list = bundles.filter(b => b.asset_id === assetId)
-  return list.length ? list[list.length - 1] : undefined
+    .sort((a, b) => a.imported_at.localeCompare(b.imported_at) || a.id.localeCompare(b.id))
+  if (list.length < 2) return null
+  return { old: list[list.length - 2], new: list[list.length - 1] }
 }
 
 export function bundlesOfAsset(bundles: BundleSummary[], assetId: string): BundleSummary[] {
