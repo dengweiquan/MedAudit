@@ -1,0 +1,14 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.pg.hba_weak_method
+version: "1"
+name: PostgreSQL pg_hba 使用弱认证方法
+target: db-postgres
+risk: medium
+description: |
+  网络连接使用 password（明文口令）或 ident（不可靠的外部身份断言）认证。
+requires: [account_config]
+remediation: |
+  改用 scram-sha-256 或证书认证；ident 仅限 local 且映射严格受控的场景。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.1 a) 身份鉴别：身份标识唯一，鉴别信息有复杂度要求并定期更换"
+  - "8.1.4.1 c) 身份鉴别：远程管理时防止鉴别信息在网络传输中被窃听"

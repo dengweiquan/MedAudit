@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mysql.name_resolve_on
+version: "1"
+name: MySQL 未禁用名称解析
+target: db-mysql
+risk: low
+description: |
+  skip_name_resolve=OFF 时基于主机名的授权依赖 DNS 解析结果，存在解析欺骗放大授权的风险。
+requires: [account_config]
+remediation: |
+  启用 skip_name_resolve 并将授权改为 IP/网段形式。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.4 c) 入侵防范：限制管理终端的接入方式或网络地址范围"

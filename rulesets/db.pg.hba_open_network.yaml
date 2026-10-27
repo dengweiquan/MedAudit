@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.pg.hba_open_network
+version: "1"
+name: PostgreSQL pg_hba 向全网段开放
+target: db-postgres
+risk: medium
+description: |
+  host 规则地址为 0.0.0.0/0 或 ::0/0 且非 reject：认证入口暴露于全部网络来源。
+requires: [account_config]
+remediation: |
+  把来源收紧到应用网段/跳板机；确需全网开放的记入基线并确保强认证。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.4 c) 入侵防范：限制管理终端的接入方式或网络地址范围"

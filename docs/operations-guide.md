@@ -352,6 +352,29 @@ curl -b <会话Cookie> -o api报告.docx \
 
 ---
 
+## 5.1 定期复检
+
+工作台「该复检了」卡片列出逾期、从未审计、7 天内到期的对象，周期由
+`/etc/medaudit/medaudit.env` 的 `MEDAUDIT_AUDIT_CYCLE_DAYS` 设定（缺省 30
+天）。接口：`GET /api/v1/audit/due`。
+
+平台不保存目标口令，因此**服务端不会自动采集**。需要无人值守复检时，在
+工程师机上用 cron 调 `ma`，口令放在仅本人可读（0600）的环境文件里：
+
+```bash
+# /home/eng/.medaudit/recheck.env （chmod 600）
+MEDAUDIT_USER=recheck          # 管理页新建的专用账号，操作日志里一眼可辨
+MEDAUDIT_PASS=<recheck 口令>
+MYSQL_PW=<只读审计账号口令>
+
+# crontab -e：每月 1 日 02:30 复检
+30 2 1 * * set -a; . /home/eng/.medaudit/recheck.env; ma -s http://<服务器>:8080 login && ma audit db-mysql-01 -e MYSQL_PW >> /home/eng/.medaudit/recheck.log 2>&1
+```
+
+复检结果在「复检对比」查看；每次审计与登录都会记入操作日志。
+
+---
+
 ## 6. 验收检查清单
 
 部署与账号

@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.iis.plain_binding
+version: "1"
+name: IIS 明文绑定对外暴露
+target: mw-iis
+risk: medium
+description: |
+  站点存在 http 绑定且 IP 非回环（* 或具体网卡地址）。
+requires: [service_config]
+remediation: |
+  明文绑定仅绑回环或下线，对外走 https。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.8 a) 数据保密性：采用密码技术保证重要数据在传输过程中的保密性"

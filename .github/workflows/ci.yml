@@ -1,0 +1,44 @@
+name: ci
+
+# 每次推送与 PR 跑一遍：Go 构建/vet/测试（含 pilot/demo-data 结论快照）、
+# 前端构建。发版仍走 release.yml。
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Cross-build (arm64, windows collector)
+        run: |
+          GOARCH=arm64 go build ./...
+          GOOS=windows go build ./cmd/medaudit-collector
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build web frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build

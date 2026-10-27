@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.nginx.plain_listener
+version: "1"
+name: Nginx 明文监听对外暴露
+target: mw-nginx
+risk: medium
+description: |
+  server 块存在未启用 SSL 且监听非回环地址的 listen。
+requires: [service_config]
+remediation: |
+  明文仅绑回环或跳转 HTTPS，对外服务走 TLS。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.8 a) 数据保密性：采用密码技术保证重要数据在传输过程中的保密性"

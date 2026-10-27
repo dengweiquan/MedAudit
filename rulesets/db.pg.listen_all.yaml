@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.pg.listen_all
+version: "1"
+name: PostgreSQL 监听全部网卡
+target: db-postgres
+risk: low
+description: |
+  listen_addresses 含 * 或 0.0.0.0：服务在所有网卡监听，实际暴露面由 pg_hba 与网络层共同决定。
+requires: [account_config]
+remediation: |
+  收紧 listen_addresses 到业务网卡，或确认 pg_hba 与防火墙已收口并记入基线。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.4 c) 入侵防范：限制管理终端的接入方式或网络地址范围"

@@ -28,3 +28,16 @@ POST /api/v1/auth/token/disable（停用）。轮换与停用即吊销 admin 全
 会话（与管理员重置口令同口径）。令牌哈希存 auth_tokens 表（迁移 010），
 单行 name='super'；令牌铸造与用户管理同口径（M20 无 RBAC 设计），
 只要求登录会话。
+
+## 平台操作日志
+
+服务端对平台上的每个写操作（POST/PUT/PATCH/DELETE，含登录成功与失败）
+以及每次文件下载（证据、报告、备份、采集器）记一条操作日志：时间（UTC）、
+操作人、请求、结果状态码、来源 IP。请求体不记录，口令不会入库。
+
+- 存于平台库 `op_log` 表，逐条哈希链串联（每条含上一条的哈希），改动
+  或删除任一条都会在校验时断链并定位到具体行。
+- 一键清场（`/api/v1/admin/wipe`）不清除操作日志，清场本身也会记入。
+- Web「管理」页底部「操作日志」可分页查看，并一键「校验日志完整性」。
+- 接口：`GET /api/v1/admin/oplog?offset=&limit=`（倒序分页），
+  `GET /api/v1/admin/oplog/verify`（返回 `ok`、`rows`、`broken_at`）。

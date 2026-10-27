@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mssql.cross_db_chaining
+version: "1"
+name: SQL Server 跨库所有权链已启用
+target: db-sqlserver
+risk: medium
+description: |
+  cross db ownership chaining 打开时，低权库的所有权链可跨库放大权限。
+requires: [account_config]
+remediation: |
+  关闭服务器级跨库所有权链，按库单独评估。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.2 d) 访问控制：授予管理用户所需的最小权限，实现权限分离"

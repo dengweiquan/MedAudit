@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.hpux.sudo_all
+version: "1"
+name: sudo 全命令授权
+target: os-hpux
+risk: high
+description: |
+  非 root 主体可 sudo 执行任意命令（NOPASSWD 形态尤甚：凭据泄漏即等同无口令 root）。与 os.linux 两条 sudo 规则等效，本规则按授权形态在一个结论内区分。
+requires: [account_config]
+remediation: |
+  收窄到具体命令或取消 NOPASSWD；确属运维必需的逐个记入基线。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.2 d) 访问控制：授予管理用户所需的最小权限，实现权限分离"

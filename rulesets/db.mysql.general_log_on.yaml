@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mysql.general_log_on
+version: "1"
+name: MySQL 通用查询日志开启
+target: db-mysql
+risk: low
+description: |
+  general_log 记录全部语句（含可能出现的明文口令与业务数据），且持续写盘影响性能与磁盘。
+requires: [account_config]
+remediation: |
+  生产环境关闭 general_log，排障窗口后及时关停。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.8 b) 数据保密性：采用密码技术保证重要数据在存储过程中的保密性"

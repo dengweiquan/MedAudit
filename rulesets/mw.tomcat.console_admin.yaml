@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.tomcat.console_admin
+version: "1"
+name: 控制台账号持有管理角色
+target: mw-tomcat
+risk: high
+description: |
+  tomcat-users 中存在持有 manager/admin 类角色的账号且不在基线。
+requires: [identity]
+remediation: |
+  删除不必要的管理账号；确需保留的记入基线并配合访问来源限制。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.2 d) 访问控制：授予管理用户所需的最小权限，实现权限分离"

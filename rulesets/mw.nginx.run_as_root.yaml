@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.nginx.run_as_root
+version: "1"
+name: Nginx 主进程以 root 运行
+target: mw-nginx
+risk: medium
+description: |
+  Nginx master 进程 EUID=0（master 以 root 起始本身常见，但需结合 worker 用户判定；本规则仅提示复核）。
+requires: [process]
+remediation: |
+  确认 worker 进程为低权用户（user 指令）；master 必须 root 时在基线登记例外。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.2 d) 访问控制：授予管理用户所需的最小权限，实现权限分离"

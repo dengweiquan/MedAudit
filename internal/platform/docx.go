@@ -656,6 +656,42 @@ func RenderReportDocx(snapshotJSON string, reportID string) ([]byte, error) {
 		}
 		body.WriteString(docxPara("问题分布（按规则汇总）", "Heading2"))
 		body.WriteString(docxTableEx(rows, tableOpts{Widths: []int{4900, 900, 1100, 1300}, Header: true}))
+
+		// 等保条款对照：把不通过的问题按条款归集，便于对照测评要求整改。
+		type ctlAgg struct {
+			c     rules.Control
+			count int
+			rules []string
+		}
+		byCtl := map[string]*ctlAgg{}
+		for _, a := range list {
+			for _, c := range rules.ControlsFor(a.ruleID) {
+				ca := byCtl[c.ID]
+				if ca == nil {
+					ca = &ctlAgg{c: c}
+					byCtl[c.ID] = ca
+				}
+				ca.count += a.count
+				ca.rules = append(ca.rules, ruleName(a.ruleID))
+			}
+		}
+		if len(byCtl) > 0 {
+			ctls := make([]*ctlAgg, 0, len(byCtl))
+			for _, ca := range byCtl {
+				ctls = append(ctls, ca)
+			}
+			sort.Slice(ctls, func(i, j int) bool { return ctls[i].c.ID < ctls[j].c.ID })
+			crow := [][]string{{"条款", "要求要点", "问题数", "涉及问题类别"}}
+			for _, ca := range ctls {
+				crow = append(crow, []string{
+					ca.c.ID + " " + ca.c.Group, ca.c.Title,
+					fmt.Sprintf("%d", ca.count), strings.Join(ca.rules, "；"),
+				})
+			}
+			body.WriteString(docxPara("等保条款对照", "Heading2"))
+			body.WriteString(grayPara("依据：" + rules.ComplianceFramework + "。条款要求为要点概述，正式引用以标准原文为准；一个问题可能对应多个条款。"))
+			body.WriteString(docxTableEx(crow, tableOpts{Widths: []int{1700, 3300, 900, 3300}, Header: true, FontSz: 19}))
+		}
 	}
 
 	// ---------- 审计说明 ----------
@@ -767,6 +803,13 @@ func RenderReportDocx(snapshotJSON string, reportID string) ([]byte, error) {
 			}
 			if hasSpec && spec.Remediation != "" {
 				body.WriteString(leadPara("整改建议：", spec.Remediation))
+			}
+			if cs := rules.ControlsFor(rid); len(cs) > 0 {
+				refs := make([]string, len(cs))
+				for i, c := range cs {
+					refs[i] = c.ID + " " + c.Group
+				}
+				body.WriteString(grayPara("对应等保条款：" + strings.Join(refs, "；")))
 			}
 			rows := [][]string{{"序号", "主体", "结论", "问题说明", "证据"}}
 			for i, it := range g {

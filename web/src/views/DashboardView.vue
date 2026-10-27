@@ -8,6 +8,27 @@
   </div>
 
   <div class="card">
+    <h2>该复检了（{{ dueRows.length }}）</h2>
+    <table v-if="dueRows.length">
+      <thead><tr><th>对象</th><th>上次审计</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>
+        <tr v-for="d in dueRows" :key="d.asset_id">
+          <td>{{ d.name }}<div class="todo">{{ d.asset_id }}</div></td>
+          <td>{{ d.last_audit_at ? fmtLocal(d.last_audit_at) : '—' }}</td>
+          <td>
+            <span v-if="d.status === 'overdue'" class="concl c-FAIL">已逾期 {{ -d.days_left }} 天</span>
+            <span v-else-if="d.status === 'never'" class="concl c-UNKNOWN">从未审计</span>
+            <span v-else class="concl c-UNKNOWN">{{ d.days_left }} 天后到期</span>
+          </td>
+          <td><button class="btn small primary" @click="gotoAsset(viewOfKind(d.kind), d.asset_id)">去审计</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <div v-else class="todo">全部对象都在复检周期内。</div>
+    <div class="todo" style="margin-top:8px">每个对象每 {{ cycleDays }} 天复检一次（7 天内到期即提醒）。平台不保存目标口令，复检由工程师点「开始审计」，或用 ma audit 配合定时任务完成。</div>
+  </div>
+
+  <div class="card">
     <h2>哪类有问题</h2>
     <div class="stat-grid">
       <div v-for="c in catCards" :key="c.key" class="stat clickable" :class="catAccent(c.key)" style="cursor:pointer" @click="goto(c.view)">
@@ -71,7 +92,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, type Asset, type BundleSummary, type Hospital, type ReportRow, type SiteInfo } from '../api'
+import { api, type AuditDueRow, type Asset, type BundleSummary, type Hospital, type ReportRow, type SiteInfo } from '../api'
 import { kindCategory, type CategoryKey } from '../categories'
 import { goto, gotoAsset, selectedHospital, filterByHospital } from '../store'
 import { bundleCategory, exportLatestReport, latestBundleOf, latestFail, loadSite, fmtLocal} from '../util'
@@ -94,6 +115,13 @@ const exportErr = ref('')
 const failByAsset = ref<Map<string, number>>(new Map())
 // 每包最新轮 FAIL 数（bundleId -> fail），仅最新包计算
 const failByBundle = ref<Map<string, number>>(new Map())
+
+const dueAll = ref<AuditDueRow[]>([])
+const cycleDays = ref(30)
+const dueRows = computed(() => filterByHospital(dueAll.value).filter(d => d.status !== 'ok'))
+function viewOfKind(kind: string): string {
+  return { db: 'databases', os: 'os', mw: 'middleware', api: 'api' }[kindCategory(kind) as string] ?? 'admin'
+}
 
 const kindByAsset = computed(() => new Map(assets.value.map(a => [a.id, a.kind])))
 
@@ -176,6 +204,7 @@ async function load() {
     let off = 0
     try { off = (await api.ruleToggles()).filter(t => !t.enabled).length } catch { off = 0 }
     rulesCount.value = ru.length - off
+    try { const due = await api.auditDue(); dueAll.value = due.items; cycleDays.value = due.cycle_days } catch { dueAll.value = [] }
     const byAsset = new Map<string, number>()
     const byBundle = new Map<string, number>()
     // 顶部合计须与所选医院一致：用过滤后的资产算，勿用原始全院数组。

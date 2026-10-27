@@ -1,0 +1,14 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.tomcat.manager_deployed
+version: "1"
+name: Tomcat 管理控制台已部署
+target: mw-tomcat
+risk: medium
+description: |
+  webapps 中存在 manager / host-manager 应用，管理面扩大了攻击面。
+requires: [service_config]
+remediation: |
+  生产环境移除管理应用，或限制其访问来源并在基线登记。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.4 a) 入侵防范：遵循最小安装原则，仅安装需要的组件和应用程序"
+  - "8.1.4.4 c) 入侵防范：限制管理终端的接入方式或网络地址范围"

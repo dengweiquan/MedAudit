@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.nginx.tls_weak
+version: "1"
+name: Nginx TLS 启用了弱协议
+target: mw-nginx
+risk: medium
+description: |
+  ssl_protocols 含 TLSv1 / TLSv1.1 / SSL。
+requires: [service_config]
+remediation: |
+  ssl_protocols 收紧为 TLSv1.2 TLSv1.3。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.8 a) 数据保密性：采用密码技术保证重要数据在传输过程中的保密性"

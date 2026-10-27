@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.weblogic.dev_mode
+version: "1"
+name: WebLogic 域处于开发模式
+target: mw-weblogic
+risk: medium
+description: |
+  config.xml 的 production-mode-enabled 非 true（开发模式自动部署等行为开启）。
+requires: [service_config]
+remediation: |
+  生产域切换为生产模式（production-mode-enabled=true）后重启域。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.4 a) 入侵防范：遵循最小安装原则，仅安装需要的组件和应用程序"

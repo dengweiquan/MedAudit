@@ -86,6 +86,8 @@ export interface Rule {
   Requires: string[]
   Risk: string
   Remediation: string
+  /** 对应等保 2.0 第三级条款 */
+  Compliance?: { id: string; group: string; title: string }[]
 }
 
 /** 基线放行项（服务端 Go 结构体字段名，首字母大写）。 */
@@ -365,6 +367,28 @@ function post<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
+export interface AuditDueRow {
+  asset_id: string
+  hospital_id: string
+  name: string
+  kind: string
+  last_audit_at: string
+  due_at: string
+  days_left: number
+  status: 'never' | 'overdue' | 'due_soon' | 'ok'
+}
+
+export interface OpLogRow {
+  id: number
+  at: string
+  actor: string
+  method: string
+  path: string
+  status: number
+  client_ip: string
+  note: string
+}
+
 export const api = {
   health: () => req<Health>('/api/v1/health'),
   site: () => req<SiteInfo>('/api/v1/site'),
@@ -393,6 +417,12 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ disabled }),
     }),
+  // 复检到期提醒
+  auditDue: () => req<{ cycle_days: number; items: AuditDueRow[] }>('/api/v1/audit/due'),
+  // 平台操作日志（哈希链防篡改）
+  opLog: (offset = 0, limit = 50) =>
+    req<{ total: number; items: OpLogRow[] }>(`/api/v1/admin/oplog?offset=${offset}&limit=${limit}`),
+  verifyOpLog: () => req<{ ok: boolean; rows: number; broken_at: number }>('/api/v1/admin/oplog/verify'),
   hospitals: () => req<Hospital[]>('/api/v1/hospitals'),
   createHospital: (id: string, name: string) => post('/api/v1/hospitals', { id, name }),
   assets: () => req<Asset[]>('/api/v1/assets'),

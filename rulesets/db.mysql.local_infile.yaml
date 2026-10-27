@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mysql.local_infile
+version: "1"
+name: MySQL local_infile 已开启
+target: db-mysql
+risk: medium
+description: |
+  服务端 local_infile=ON 允许客户端 LOAD DATA LOCAL 读取服务端可达的客户端文件，配合恶意服务端/中间人可窃取文件。
+requires: [account_config]
+remediation: |
+  关闭 local_infile，除非 ETL 明确依赖且来源受控。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.4 b) 入侵防范：关闭不需要的系统服务、默认共享和高危端口"

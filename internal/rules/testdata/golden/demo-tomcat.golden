@@ -1,0 +1,8 @@
+mw.tomcat.config_writable	FAIL	high	/opt/mw-fixtures/tomcat-demo/conf
+mw.tomcat.config_writable	FAIL	high	/opt/mw-fixtures/tomcat-demo/conf/tomcat-users.xml
+mw.tomcat.console_admin	PASS	high	
+mw.tomcat.manager_deployed	PASS	medium	
+mw.tomcat.plain_listener	PASS	medium	
+mw.tomcat.run_as_root	FAIL	high	tomcat
+mw.tomcat.sample_apps	PASS	low	
+mw.tomcat.tls_weak	PASS	medium	

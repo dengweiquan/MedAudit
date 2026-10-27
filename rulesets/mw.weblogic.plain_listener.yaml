@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: mw.weblogic.plain_listener
+version: "1"
+name: WebLogic 明文监听对外暴露
+target: mw-weblogic
+risk: medium
+description: |
+  服务器的普通（非 SSL）监听端口启用且绑定非回环地址（含未设地址=全网卡）。
+requires: [service_config]
+remediation: |
+  明文监听仅绑内网/回环地址，或禁用普通端口只保留 SSL 监听。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.8 a) 数据保密性：采用密码技术保证重要数据在传输过程中的保密性"
