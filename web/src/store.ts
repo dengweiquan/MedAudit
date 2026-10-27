@@ -33,6 +33,22 @@ export function setHospital(id: string) {
   } catch { /* 隐私模式等写失败时仅本次会话有效 */ }
 }
 
+// 工程师模式：只切换界面显示（菜单与详情层级），不是权限控制——
+// 现在所有账号同权，开关旁悬停提示写明。状态存 localStorage，读写包 try/catch。
+const ENGINEER_KEY = 'medaudit-engineer-mode'
+function loadEngineer(): boolean {
+  try { return localStorage.getItem(ENGINEER_KEY) === '1' } catch { return false }
+}
+export const engineerMode = reactive({ on: loadEngineer() })
+
+export function setEngineerMode(on: boolean) {
+  engineerMode.on = on
+  try {
+    if (on) localStorage.setItem(ENGINEER_KEY, '1')
+    else localStorage.removeItem(ENGINEER_KEY)
+  } catch { /* 隐私模式等写失败时仅本次会话有效 */ }
+}
+
 // 带 hospital_id 的行是否属于当前所选医院（空选 = 全部）。
 export function inSelectedHospital(hospitalId: string): boolean {
   return !selectedHospital.id || selectedHospital.id === hospitalId
