@@ -102,26 +102,25 @@ func AuthenticateSuperToken(db *sql.DB, token string) (ok, expired bool) {
 		return false, false
 	}
 	if expiresAt.Valid && expiresAt.String != "" {
-		if exp, err := time.Parse(tokenTimeFormat, expiresAt.String); err == nil && time.Now().UTC().After(exp) {
+		exp, err := time.Parse(tokenTimeFormat, expiresAt.String)
+		if err != nil {
+			// 无法解析的到期时间按过期处理（fail closed），不放行。
+			return false, true
+		}
+		if time.Now().UTC().After(exp) {
 			return false, true
 		}
 	}
 	return true, false
 }
 
-// TokenSourceAllowed 判断令牌登录的来源 IP 是否在 MEDAUDIT_TOKEN_ALLOW_CIDR
-// 允许范围内。未配置时不限；配置了但无一网段可解析时拒绝全部（fail closed）。
-// 条目可为 CIDR（如 10.0.0.0/8）或单个 IP（视为 /32 或 /128）。
-func TokenSourceAllowed(ip string) bool {
+// parseTokenAllowCIDR 解析 MEDAUDIT_TOKEN_ALLOW_CIDR，返回可用网段与非法条目。
+// 条目可为 CIDR（如 10.0.0.0/8）或单个 IP（视为 /32 或 /128）；空段跳过不计非法。
+func parseTokenAllowCIDR() (nets []*net.IPNet, invalid []string) {
 	raw := strings.TrimSpace(os.Getenv("MEDAUDIT_TOKEN_ALLOW_CIDR"))
 	if raw == "" {
-		return true
+		return nil, nil
 	}
-	addr := net.ParseIP(strings.TrimSpace(ip))
-	if addr == nil {
-		return false
-	}
-	var nets []*net.IPNet
 	for _, part := range strings.Split(raw, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -138,10 +137,33 @@ func TokenSourceAllowed(ip string) bool {
 			}
 			if _, n, err := net.ParseCIDR(fmt.Sprintf("%s/%d", single.String(), bits)); err == nil {
 				nets = append(nets, n)
+				continue
 			}
 		}
+		invalid = append(invalid, part)
 	}
-	if len(nets) == 0 {
+	return nets, invalid
+}
+
+// TokenAllowCIDRInvalid 返回 MEDAUDIT_TOKEN_ALLOW_CIDR 中的非法条目（供启动警告）。
+func TokenAllowCIDRInvalid() []string {
+	_, invalid := parseTokenAllowCIDR()
+	return invalid
+}
+
+// TokenSourceAllowed 判断令牌登录的来源 IP 是否在 MEDAUDIT_TOKEN_ALLOW_CIDR
+// 允许范围内。未配置时不限；只要有任何一条非法即拒绝全部（fail closed）。
+func TokenSourceAllowed(ip string) bool {
+	raw := strings.TrimSpace(os.Getenv("MEDAUDIT_TOKEN_ALLOW_CIDR"))
+	if raw == "" {
+		return true
+	}
+	nets, invalid := parseTokenAllowCIDR()
+	if len(invalid) > 0 || len(nets) == 0 {
+		return false
+	}
+	addr := net.ParseIP(strings.TrimSpace(ip))
+	if addr == nil {
 		return false
 	}
 	for _, n := range nets {

@@ -456,3 +456,30 @@ func TestServerTokenExpiryAndCIDR(t *testing.T) {
 		t.Fatalf("网段内令牌登录应 200，实际 %d", status)
 	}
 }
+
+func TestServerTokenCIDRCheckedFirst(t *testing.T) {
+	s := newTestServer(t, nil)
+	cookie := s.login(t, platform.DefaultAdminUser, platform.DefaultAdminPassword)
+	status, data, _ := s.do(t, http.MethodPost, "/api/v1/auth/token", map[string]any{}, []*http.Cookie{cookie})
+	if status != http.StatusOK {
+		t.Fatalf("铸造令牌应 200，实际 %d：%s", status, data)
+	}
+	var tokResp struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(data, &tokResp); err != nil || tokResp.Token == "" {
+		t.Fatalf("铸造令牌响应异常: %v %s", err, data)
+	}
+	// 过期令牌 + 网段外：应 403（网段先行），而非 401 过期。
+	if _, err := s.db.Exec(`UPDATE auth_tokens SET expires_at = '2000-01-01 00:00:00' WHERE name = 'super'`); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MEDAUDIT_TOKEN_ALLOW_CIDR", "10.0.0.0/8")
+	status, data, _ = s.do(t, http.MethodPost, "/api/v1/auth/login", map[string]string{"token": tokResp.Token}, nil)
+	if status != http.StatusForbidden {
+		t.Fatalf("网段外过期令牌应先 403，实际 %d：%s", status, data)
+	}
+	if !strings.Contains(string(data), "允许网段") {
+		t.Errorf("网段外应提示允许网段，实际 %s", data)
+	}
+}

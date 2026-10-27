@@ -92,6 +92,10 @@ func registerAuthRoutes(mux *http.ServeMux, db *sql.DB, sessions *platform.Sessi
 				return
 			}
 			opNote(r, "", "令牌登录")
+			if !platform.TokenSourceAllowed(clientIP(r)) {
+				http.Error(w, "令牌来源不在允许网段内", http.StatusForbidden)
+				return
+			}
 			ok, expired := platform.AuthenticateSuperToken(db, req.Token)
 			if !ok {
 				guard.fail(r, "__token")
@@ -100,10 +104,6 @@ func registerAuthRoutes(mux *http.ServeMux, db *sql.DB, sessions *platform.Sessi
 				} else {
 					http.Error(w, "令牌无效", http.StatusUnauthorized)
 				}
-				return
-			}
-			if !platform.TokenSourceAllowed(clientIP(r)) {
-				http.Error(w, "令牌来源不在允许网段内", http.StatusForbidden)
 				return
 			}
 			guard.success(r, "__token")
