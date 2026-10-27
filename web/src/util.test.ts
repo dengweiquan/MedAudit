@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BundleSummary } from './api'
-import { buildConclusion, comparePair, countSnapshotRisks, latestBundleOf, loadBundlesByAssets } from './util'
+import { buildConclusion, comparePair, countSnapshotRisks, latestBundleOf, loadBundlesByAssets, filterApiReports } from './util'
+import type { ApiAuditSummary } from './api'
 
 // M37-1.1：服务端按 imported_at DESC 返回，直接取末尾会把新旧颠倒；
 // 下面用例固定：无论输入顺序如何，本次一定是导入时间更晚的那个包。
@@ -141,5 +142,24 @@ describe('loadBundlesByAssets（M37-fix2-2）', () => {
   it('全部失败时返回空数组，不抛错', async () => {
     const out = await loadBundlesByAssets(['a-bad'], () => Promise.reject(new Error('boom')))
     expect(out).toEqual([])
+  })
+})
+
+describe('filterApiReports（M37-fix2-4）', () => {
+  const r = (target: string): ApiAuditSummary => ({
+    report_id: `r-${target}`, target, execution: 'COMPLETE', total: 1,
+    pass_count: 0, fail_count: 1, unknown_count: 0, not_run_count: 0, imported_at: '2026-10-20 10:00:00',
+  })
+  const byEndpoint = new Map([
+    ['http://demo-api', { hospital_id: 'h-demo' }],
+    ['http://other-api', { hospital_id: 'h-other' }],
+  ])
+  const rows = [r('http://demo-api'), r('http://other-api'), r('http://unmatched')]
+  it('全部医院视图下全部显示', () => {
+    expect(filterApiReports(rows, byEndpoint, '').map(x => x.target)).toEqual(
+      ['http://demo-api', 'http://other-api', 'http://unmatched'])
+  })
+  it('选定医院时只留本院已匹配报告，他院已匹配与未匹配都不显示', () => {
+    expect(filterApiReports(rows, byEndpoint, 'h-demo').map(x => x.target)).toEqual(['http://demo-api'])
   })
 })

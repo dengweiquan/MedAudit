@@ -165,9 +165,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api, type ApiAuditSummary, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule } from '../api'
-import { fmtLocal, latestBundleOf, countSnapshotRisks } from '../util'
+import { fmtLocal, latestBundleOf, countSnapshotRisks, filterApiReports } from '../util'
 import { conclLabel, riskLabel, reviewLabel } from '../labels'
-import { reviewerName, filterByHospital, engineerMode } from '../store'
+import { reviewerName, filterByHospital, engineerMode, selectedHospital } from '../store'
 
 const assets = ref<Asset[]>([])
 const reports = ref<ReportRow[]>([])
@@ -181,9 +181,12 @@ async function loadGenBundles() {
   } catch { genBundles.value = []; genBundle.value = '' }
 }
 const apiReports = ref<ApiAuditSummary[]>([])
+// 端点到登记对象的映射须用未过滤的资产表建，否则他院已匹配报告会因
+// assets.value 已过滤而被误判为未匹配、漏进本院视图（M37-fix2-4）。
+const endpointAsset = ref(new Map<string, Asset>())
 const apiReportRows = computed(() => {
   const byEndpoint = new Map(assets.value.filter(a => a.endpoint).map(a => [a.endpoint as string, a.name]))
-  return apiReports.value
+  return filterApiReports(apiReports.value, endpointAsset.value, selectedHospital.id)
     .map(r => ({ ...r, name: byEndpoint.get(r.target) ?? r.target }))
     .sort((x, y) => y.imported_at.localeCompare(x.imported_at))
 })
@@ -271,7 +274,11 @@ async function load() {
     reports.value = filterByHospital(await api.reports())
     try { latestByAsset.value = new Map(filterByHospital(await api.latestBundles()).map(b => [b.asset_id, b])) } catch { latestByAsset.value = new Map() }
     try { apiReports.value = await api.apiAudits() } catch { apiReports.value = [] }
-    try { assets.value = filterByHospital(await api.assets()) } catch { assets.value = [] }
+    try {
+      const allAssets = await api.assets()
+      assets.value = filterByHospital(allAssets)
+      endpointAsset.value = new Map(allAssets.filter(a => a.endpoint).map(a => [a.endpoint as string, a]))
+    } catch { assets.value = []; endpointAsset.value = new Map() }
     loaded.value = true
     try {
       const rs = await api.rules()

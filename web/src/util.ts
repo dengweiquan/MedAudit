@@ -1,4 +1,4 @@
-import { api, type BundleSummary, type Finding, type SiteInfo } from './api'
+import { api, type ApiAuditSummary, type BundleSummary, type Finding, type SiteInfo } from './api'
 
 // loadSite 读取本站医院（单院部署初始化给定），全应用缓存一份。
 let sitePromise: Promise<SiteInfo> | null = null
@@ -107,6 +107,19 @@ export function comparePair(bundles: BundleSummary[], assetId: string): CompareP
 
 export function bundlesOfAsset(bundles: BundleSummary[], assetId: string): BundleSummary[] {
   return bundles.filter(b => b.asset_id === assetId)
+}
+
+// filterApiReports 按医院过滤业务接口报告（M37-fix2-4）：
+// 已匹配到登记对象的，按对象所属医院过滤；未匹配的只在「全部医院」视图
+// 下显示，选定医院时不显示（此前未过滤，他院已匹配报告会以目标地址形式
+// 漏进本院视图，未匹配报告也会出现在选定医院视图里）。
+export function filterApiReports(
+  reports: ApiAuditSummary[],
+  assetByEndpoint: Map<string, { hospital_id: string }>,
+  hospitalId: string,
+): ApiAuditSummary[] {
+  if (!hospitalId) return reports
+  return reports.filter(r => assetByEndpoint.get(r.target)?.hospital_id === hospitalId)
 }
 
 // loadBundlesByAssets 按对象逐个取全部包（复检候选，M37-fix2-2）：
