@@ -64,7 +64,7 @@
       <div v-for="c in catCards" :key="c.key" class="stat clickable" :class="catAccent(c.key)" style="cursor:pointer" @click="gotoObjects(c.key)">
         <div class="num">{{ c.problem }}<span class="todo"> / {{ c.assets }} 个对象</span></div>
         <div class="lbl">
-          {{ c.label }}：<b v-if="c.total" style="color:#b91c1c">高 {{ c.high }} · 中 {{ c.medium }} · 低 {{ c.low }}</b><span v-else-if="c.assets">暂无问题</span><span v-else>暂无对象</span>
+          {{ c.label }}：<b v-if="c.total" style="color:#b91c1c">高 {{ c.high }} · 中 {{ c.medium }} · 低 {{ c.low }}</b><span v-else-if="c.unaudited">{{ c.unaudited }} 个未审计</span><span v-else-if="c.assets">暂无问题</span><span v-else>暂无对象</span>
           <div class="todo">最近审计 {{ c.lastAt || '—' }} →</div>
         </div>
       </div>
@@ -84,6 +84,7 @@
           <td>
             <span v-if="h.status === 'clear'" class="concl c-PASS">已清零</span>
             <span v-else-if="h.status === 'open'" class="concl c-FAIL">整改中</span>
+            <span v-else-if="h.status === 'partial'" class="concl c-UNKNOWN">部分未审计</span>
             <span v-else class="concl c-UNKNOWN">未审计</span>
           </td>
           <td>{{ h.lastAt || '—' }}</td>
@@ -99,12 +100,12 @@ import { computed, onMounted, ref } from 'vue'
 import { api, type AlertRow, type AuditDueRow, type Asset, type BundleSummary, type Finding, type Hospital, type Rule, type SiteInfo } from '../api'
 import { kindCategory, type CategoryKey } from '../categories'
 import { goto, gotoObjects, selectedHospital, filterByHospital } from '../store'
-import { latestBundleOf, latestFail, loadSite, fmtLocal } from '../util'
+import { latestBundleOf, latestFail, loadSite, fmtLocal, buildConclusion } from '../util'
 
 const site = ref<SiteInfo | null>(null)
 
-interface CatCard { key: CategoryKey; label: string; assets: number; problem: number; total: number; high: number; medium: number; low: number; lastAt: string }
-interface HospRow { id: string; name: string; assets: number; problemAssets: number; fail: number; status: 'clear' | 'open' | 'none'; lastAt: string }
+interface CatCard { key: CategoryKey; label: string; assets: number; problem: number; total: number; high: number; medium: number; low: number; lastAt: string; unaudited: number }
+interface HospRow { id: string; name: string; assets: number; problemAssets: number; fail: number; status: 'clear' | 'open' | 'none' | 'partial'; lastAt: string }
 interface TopRisk { ruleId: string; name: string; objectText: string; accounts: number; bundleId: string }
 
 const assets = ref<Asset[]>([])
@@ -148,11 +149,8 @@ const scopeLabel = computed(() => {
   if (site.value?.hospital_id) return '本院'
   return '全部医院'
 })
-const conclusion = computed(() => {
-  if (!assets.value.length) return '暂无审计对象'
-  if (problemAssets.value === 0) return '全部对象检查通过'
-  return `${scopeLabel.value} ${assets.value.length} 个对象，${problemAssets.value} 个有问题；高风险 ${riskTotals.value.high} 项待整改。`
-})
+const unauditedAssets = computed(() => assets.value.filter(a => !latestOfAsset(a.id)).length)
+const conclusion = computed(() => buildConclusion(scopeLabel.value, assets.value.length, unauditedAssets.value, problemAssets.value, riskTotals.value.high))
 
 // 先改这些：高风险问题按类型（规则）取前 5 条。
 const topRisks = computed<TopRisk[]>(() => {
@@ -187,9 +185,10 @@ const catCards = computed<CatCard[]>(() => {
   ]
   return defs.map(d => {
     const catAssets = assets.value.filter(a => kindCategory(a.kind) === d.key)
-    let problem = 0, total = 0, high = 0, medium = 0, low = 0, lastAt = ''
+    let problem = 0, total = 0, high = 0, medium = 0, low = 0, lastAt = '', unaudited = 0
     for (const a of catAssets) {
       const fails = failsByAsset.value.get(a.id) ?? []
+      if (!latestOfAsset(a.id)) unaudited++
       if (fails.length > 0) problem++
       for (const f of fails) {
         total++
@@ -201,7 +200,7 @@ const catCards = computed<CatCard[]>(() => {
       const lb = latestOfAsset(a.id)
       if (lb && lb.imported_at > lastAt) lastAt = lb.imported_at
     }
-    return { key: d.key, label: d.label, assets: catAssets.length, problem, total, high, medium, low, lastAt }
+    return { key: d.key, label: d.label, assets: catAssets.length, problem, total, high, medium, low, lastAt, unaudited }
   })
 })
 
@@ -220,7 +219,7 @@ const hospitalRows = computed<HospRow[]>(() => hospitals.value
   }
   return {
     id: h.id, name: h.name, assets: hs.length, problemAssets: problem, fail,
-    status: audited === 0 ? 'none' : fail > 0 ? 'open' : 'clear', lastAt,
+    status: audited === 0 ? 'none' : audited < hs.length ? 'partial' : fail > 0 ? 'open' : 'clear', lastAt,
   }
 }))
 

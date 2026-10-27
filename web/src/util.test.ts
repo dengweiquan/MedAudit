@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BundleSummary } from './api'
-import { comparePair, latestBundleOf } from './util'
+import { buildConclusion, comparePair, latestBundleOf } from './util'
 
 // M37-1.1：服务端按 imported_at DESC 返回，直接取末尾会把新旧颠倒；
 // 下面用例固定：无论输入顺序如何，本次一定是导入时间更晚的那个包。
@@ -65,5 +65,21 @@ describe('comparePair 120 包场景（M37-fix-3）', () => {
     const pair = comparePair(many, 'a1')
     expect(pair?.new.id).toBe('a1-119')
     expect(pair?.old.id).toBe('a1-118')
+  })
+})
+
+describe('buildConclusion（M37-fix-4）', () => {
+  it('未审计对象计入结论，不说全部通过', () => {
+    expect(buildConclusion('本院', 5, 1, 3, 38)).toBe('本院 5 个对象，1 个未审计，3 个有问题；高风险 38 项待整改。')
+  })
+  it('全部未审计时不说通过', () => {
+    expect(buildConclusion('本院', 5, 5, 0, 0)).toBe('本院 5 个对象，5 个未审计。')
+  })
+  it('全部审计过且无问题时才说全部通过', () => {
+    expect(buildConclusion('本院', 5, 0, 0, 0)).toBe('全部对象检查通过')
+  })
+  it('无对象与只有问题时口径不变', () => {
+    expect(buildConclusion('本院', 0, 0, 0, 0)).toBe('暂无审计对象')
+    expect(buildConclusion('本院', 5, 0, 3, 38)).toBe('本院 5 个对象，3 个有问题；高风险 38 项待整改。')
   })
 })
