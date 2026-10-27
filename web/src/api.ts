@@ -523,6 +523,7 @@ export const api = {
     req<DriftReport>(`/api/v1/bundles/${encodeURIComponent(id)}/drift?against=${encodeURIComponent(against)}`),
   hospitalSummaries: () => req<HospitalSummary[]>('/api/v1/summary/hospitals'),
   bundles: () => req<BundleSummary[]>('/api/v1/bundles'),
+  latestBundles: () => req<BundleSummary[]>('/api/v1/assets/latest-bundles'),
   uploadBundle: async (file: File) => {
     const r = await fetch('/api/v1/bundles', { method: 'POST', body: file })
     const data = await r.json().catch(() => ({}))

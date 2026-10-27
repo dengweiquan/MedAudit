@@ -137,6 +137,24 @@ func main() {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	// 每对象最新包：GET /api/v1/assets/latest-bundles（M37-1.2，不受
+	// ListBundles 的 LIMIT 100 影响；返回结构与 /api/v1/bundles 相同）。
+	mux.HandleFunc("/api/v1/assets/latest-bundles", func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			http.Error(w, "平台库未配置", http.StatusServiceUnavailable)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		summaries, err := platform.LatestBundles(db)
+		if err != nil {
+			http.Error(w, "查询失败: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, summaries)
+	})
 	// 事实包导入：POST zip → 校验 → 去重 → 落库
 	mux.HandleFunc("/api/v1/bundles", func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {
