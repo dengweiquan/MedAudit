@@ -17,7 +17,7 @@
         <tr><td>医院名称</td><td>{{ site.name }}</td></tr>
       </tbody>
     </table>
-    <div class="todo">本平台为单院部署：本站医院在系统初始化时给定，本页不提供多医院管理。登记的所有对象自动归属本站。如需变更本站信息，由工程师修改服务端初始化参数（MEDAUDIT_SITE_HOSPITAL_ID / NAME）后重启服务。当前查看医院已锁定为本站，工作台与各类别页只显示本站信息。</div>
+    <div class="todo">本平台为单院部署：本站医院在系统初始化时给定，本页不提供多医院管理。<span title="登记的所有对象自动归属本站。如需变更本站信息，由工程师修改服务端初始化参数（MEDAUDIT_SITE_HOSPITAL_ID / NAME）后重启服务。当前查看医院已锁定为本站，工作台与各类别页只显示本站信息。">?</span></div>
   </div>
 
   <div class="card" v-else-if="adminTab === 'site' && !site?.hospital_id">
@@ -296,6 +296,7 @@ import { api, type Asset, type BundleSummary, type ConnConfig, type Hospital, ty
 import { DB_ENGINES, engineOfKind, kindCategory } from '../categories'
 import { loadSite, fmtLocal} from '../util'
 import { selectedHospital, setHospital, filterByHospital } from '../store'
+import { categoryLabel } from '../labels'
 import OpLogCard from '../components/OpLogCard.vue'
 import ScheduleCard from '../components/ScheduleCard.vue'
 
@@ -311,10 +312,10 @@ const adminTabs = [
 // 登记表单子标签：数据库 / 主机 / 中间件 / 接口。
 const regTab = ref('db')
 const regTabs = [
-  { key: 'db', label: '数据库' },
-  { key: 'os', label: '主机' },
-  { key: 'mw', label: '中间件' },
-  { key: 'api', label: '接口' },
+  { key: 'db', label: categoryLabel('db') },
+  { key: 'os', label: categoryLabel('os') },
+  { key: 'mw', label: categoryLabel('mw') },
+  { key: 'api', label: categoryLabel('api') },
 ]
 
 // 当前查看医院（管理页的选择器即全局筛选的唯一入口）。

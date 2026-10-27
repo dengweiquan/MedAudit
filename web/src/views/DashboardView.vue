@@ -17,7 +17,7 @@
           <button class="btn small primary" @click="ackAlert(a)">已知悉</button>
         </span>
       </div>
-      <div class="todo" v-if="a.kind === 'drift'">与上次审计相比新增 {{ a.added_count }} 项授权/角色/账号，请确认是否为已批准的变更；不应存在的请回收，业务必需的请加入基线。</div>
+      <div class="todo" v-if="a.kind === 'drift'">与上次审计相比新增 {{ a.added_count }} 项授权/角色/账号。<span title="请确认是否为已批准的变更；不应存在的请回收，业务必需的请加入基线。">?</span></div>
       <div class="todo" v-else>原因：{{ a.error }}</div>
       <table v-if="openAlert === a.id && a.items?.length" style="margin-top:6px">
         <thead><tr><th>变化</th><th>账号</th><th>内容</th></tr></thead>
@@ -101,6 +101,7 @@ import { api, type AlertRow, type AuditDueRow, type Asset, type BundleSummary, t
 import { kindCategory, type CategoryKey } from '../categories'
 import { goto, gotoObjects, selectedHospital, filterByHospital } from '../store'
 import { latestBundleOf, latestFail, loadSite, fmtLocal, buildConclusion } from '../util'
+import { categoryLabel } from '../labels'
 
 const site = ref<SiteInfo | null>(null)
 
@@ -177,14 +178,9 @@ const topRisks = computed<TopRisk[]>(() => {
 })
 
 const catCards = computed<CatCard[]>(() => {
-  const defs: { key: CategoryKey; label: string }[] = [
-    { key: 'db', label: '数据库' },
-    { key: 'os', label: '操作系统' },
-    { key: 'mw', label: '中间件' },
-    { key: 'api', label: '业务接口' },
-  ]
-  return defs.map(d => {
-    const catAssets = assets.value.filter(a => kindCategory(a.kind) === d.key)
+  const defs: CategoryKey[] = ['db', 'os', 'mw', 'api']
+  return defs.map(key => {
+    const catAssets = assets.value.filter(a => kindCategory(a.kind) === key)
     let problem = 0, total = 0, high = 0, medium = 0, low = 0, lastAt = '', unaudited = 0
     for (const a of catAssets) {
       const fails = failsByAsset.value.get(a.id) ?? []
@@ -200,7 +196,7 @@ const catCards = computed<CatCard[]>(() => {
       const lb = latestOfAsset(a.id)
       if (lb && lb.imported_at > lastAt) lastAt = lb.imported_at
     }
-    return { key: d.key, label: d.label, assets: catAssets.length, problem, total, high, medium, low, lastAt, unaudited }
+    return { key, label: categoryLabel(key), assets: catAssets.length, problem, total, high, medium, low, lastAt, unaudited }
   })
 })
 

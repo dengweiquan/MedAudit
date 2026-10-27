@@ -65,7 +65,7 @@
                               </tr>
                               <tr v-if="openId === f.id">
                                 <td :colspan="engineerMode.on ? 6 : 5">
-                                  <h3>结论：{{ f.conclusion === 'FAIL' ? '有问题，需处理' : f.conclusion === 'UNKNOWN' ? '证据不足，需人工确认' : f.conclusion }}</h3>
+                                  <h3>结论：{{ f.conclusion === 'FAIL' ? '有问题，需处理' : f.conclusion === 'UNKNOWN' ? '证据不足，需人工确认' : conclLabel(f.conclusion) }}</h3>
                                   <p v-if="ruleOf(f)"><b>{{ ruleOf(f)?.Name }}</b> · 风险等级 {{ riskLabel(ruleOf(f)?.Risk) }}</p>
                                   <p><b>问题原因：</b>{{ f.subject }}：{{ detailText(f) || f.subject }}<span v-if="ruleOf(f)">。{{ ruleOf(f)?.Description }}</span></p>
                                   <div>
@@ -92,7 +92,7 @@
 
                                   <template v-if="f.conclusion === 'FAIL'">
                                     <h3>加入基线（确认是例外时）</h3>
-                                    <p class="todo">确认为业务必需的例外（如厂商账号固有权限）时，可把这一条加入基线：加入后，之后评估默认自动套用本院基线，这一条不再计为问题。加入基线只影响平台结论，不修改目标系统。</p>
+                                    <p class="todo">确认为业务必需的例外时，可把这一条加入基线。<span title="如厂商账号固有权限；加入后，之后评估默认自动套用本院基线，这一条不再计为问题；加入基线只影响平台结论，不修改目标系统。">?</span></p>
                                     <div class="inline-form">
                                       <button class="btn" @click="openExempt(f)">加入基线…</button>
                                     </div>
