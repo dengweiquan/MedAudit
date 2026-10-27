@@ -84,6 +84,13 @@ export interface ComparePair { old: BundleSummary; new: BundleSummary }
 
 // comparePair 取同一对象按导入时间升序的最后两次：old=上次，new=本次。
 // 服务端按 imported_at DESC 返回，直接取末尾会把新旧颠倒（M37-1.1），故此处显式排序。
+export function comparePair(bundles: BundleSummary[], assetId: string): ComparePair | null {
+  const list = bundles.filter(b => b.asset_id === assetId)
+    .sort((a, b) => a.imported_at.localeCompare(b.imported_at) || a.id.localeCompare(b.id))
+  if (list.length < 2) return null
+  return { old: list[list.length - 2], new: list[list.length - 1] }
+}
+
 // 首页结论（M37-fix-4）：未审计对象不计为通过；只有全部对象都审计过且
 // 都没有问题，才说「全部对象检查通过」。
 export function buildConclusion(scope: string, total: number, unaudited: number, problems: number, high: number): string {
@@ -96,13 +103,6 @@ export function buildConclusion(scope: string, total: number, unaudited: number,
   if (problems > 0) s += `；高风险 ${high} 项待整改。`
   else s += '。'
   return s
-}
-
-export function comparePair(bundles: BundleSummary[], assetId: string): ComparePair | null {
-  const list = bundles.filter(b => b.asset_id === assetId)
-    .sort((a, b) => a.imported_at.localeCompare(b.imported_at) || a.id.localeCompare(b.id))
-  if (list.length < 2) return null
-  return { old: list[list.length - 2], new: list[list.length - 1] }
 }
 
 export function bundlesOfAsset(bundles: BundleSummary[], assetId: string): BundleSummary[] {
