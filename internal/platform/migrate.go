@@ -66,5 +66,11 @@ func Migrate(db *sql.DB) error {
 			return fmt.Errorf("提交迁移 %s: %w", version, err)
 		}
 	}
+	// M37-fix3：给 016 之前的问题行补轮次号（幂等；无待回填行时为空操作）。
+	// 放 Go 里而非 SQL 迁移：间隙聚类是过程逻辑，SQL 窗口函数写法难审；
+	// 聚簇口径与 fix2-9 的 latestRun 完全一致，旧数据行为不变。
+	if err := backfillEvalRuns(db); err != nil {
+		return fmt.Errorf("回填评估轮次: %w", err)
+	}
 	return nil
 }
