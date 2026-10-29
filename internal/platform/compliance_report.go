@@ -2,7 +2,9 @@ package platform
 
 import (
 	"os"
+	"sort"
 	"strings"
+	"time"
 
 	"medaudit/internal/facts"
 	"medaudit/internal/rules"
@@ -78,21 +80,38 @@ func EnabledFrameworks() ([]rules.Framework, []string) {
 	return out, errs
 }
 
-// latestRun 取最近一轮评估落库的问题（同一 created_at 为一轮）。
+// latestRun 取最近一轮评估落库的问题（M37-fix2-9 统一口径）。
+// 评估落库是追加式的（同一包可多次评估）；一轮落库内部时间连续
+// （逐条插入，间隔秒级），轮次之间通常相隔分钟以上——按 120 秒间隙
+// 聚类取最后一簇，与前端 web/src/util.ts latestRunFindings 同口径，
+// 也是文档已定的「最新一轮」口径。
+// 此前是「同一 created_at 为一轮」：DB 时间戳只到秒，一轮落库可达
+// 几十秒时只取最后一秒的行，会漏算大包（合规段会把当轮 FAIL 漏判为
+// 满足/放行）。ListFindings 返回的 CreatedAt 为秒级 "YYYY-MM-DD HH:MM:SS"，
+// 字符串排序即时间排序；解析失败的行视作簇边界（ListFindings 不产生这种行）。
 func latestRun(findings []FindingRow) []FindingRow {
-	last := ""
-	for _, f := range findings {
-		if f.CreatedAt > last {
-			last = f.CreatedAt
-		}
+	if len(findings) == 0 {
+		return findings
 	}
-	var out []FindingRow
-	for _, f := range findings {
-		if f.CreatedAt == last {
-			out = append(out, f)
+	sorted := make([]FindingRow, len(findings))
+	copy(sorted, findings)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].CreatedAt != sorted[j].CreatedAt {
+			return sorted[i].CreatedAt < sorted[j].CreatedAt
 		}
+		return sorted[i].ID < sorted[j].ID
+	})
+	const layout = "2006-01-02 15:04:05"
+	start := len(sorted) - 1
+	for i := len(sorted) - 1; i > 0; i-- {
+		cur, err1 := time.Parse(layout, sorted[i].CreatedAt)
+		prev, err2 := time.Parse(layout, sorted[i-1].CreatedAt)
+		if err1 != nil || err2 != nil || cur.Sub(prev) > 120*time.Second {
+			break
+		}
+		start = i - 1
 	}
-	return out
+	return sorted[start:]
 }
 
 // ruleOutcomes 合并技术口径（无基线）与落库口径（含基线与启停）得出每条规则的结果。

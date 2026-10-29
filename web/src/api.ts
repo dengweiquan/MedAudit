@@ -122,6 +122,7 @@ export interface BaselineRow {
   target: string
   version: number
   spec: string
+  created_at: string
 }
 
 export interface EvalSummary {

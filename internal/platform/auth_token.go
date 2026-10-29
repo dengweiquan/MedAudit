@@ -151,6 +151,25 @@ func TokenAllowCIDRInvalid() []string {
 	return invalid
 }
 
+// TokenAllowCIDRWarning 返回启动时应打印的网段配置警告，空串表示无需警告。
+// 两种情况都要警告：一是含非法条目（fail closed，令牌登录全部拒绝）；
+// 二是变量非空、却解析不出任何网段（如只有分隔符 ","，空段按跳过处理，
+// 导致 nets 为空、令牌登录同样全部拒绝，但此前没有警告）。
+func TokenAllowCIDRWarning() string {
+	raw := strings.TrimSpace(os.Getenv("MEDAUDIT_TOKEN_ALLOW_CIDR"))
+	if raw == "" {
+		return ""
+	}
+	nets, invalid := parseTokenAllowCIDR()
+	if len(invalid) > 0 {
+		return fmt.Sprintf("含非法条目 %v，令牌登录将被全部拒绝", invalid)
+	}
+	if len(nets) == 0 {
+		return "未解析出任何网段，令牌登录将被全部拒绝"
+	}
+	return ""
+}
+
 // TokenSourceAllowed 判断令牌登录的来源 IP 是否在 MEDAUDIT_TOKEN_ALLOW_CIDR
 // 允许范围内。未配置时不限；只要有任何一条非法即拒绝全部（fail closed）。
 func TokenSourceAllowed(ip string) bool {

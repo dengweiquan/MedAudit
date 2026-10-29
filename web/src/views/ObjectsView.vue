@@ -69,7 +69,7 @@
       <label>基线
         <select v-model="auditForm.baseline_id">
           <option value="">无基线</option>
-          <option v-for="b in baselinesOf(auditAsset.hospital_id)" :key="b.id" :value="b.id">{{ engineerMode.on ? b.id : (b.target || '基线') }}</option>
+          <option v-for="b in baselinesOf(auditAsset.hospital_id)" :key="b.id" :value="b.id">{{ engineerMode.on ? b.id : baselineLabel(b.target, b.version, b.created_at) }}</option>
         </select>
       </label>
       <input v-model="auditForm.created_by" placeholder="审计人" />
@@ -101,7 +101,7 @@ import RemoteAuditCard from '../components/RemoteAuditCard.vue'
 import { kindCategory, type CategoryKey } from '../categories'
 import { nav, goto, filterByHospital, reviewerName, selectedHospital, engineerMode } from '../store'
 import { exportLatestReport, latestBundleOf, latestFail, fmtLocal } from '../util'
-import { conclLabel, categoryLabel, riskLabel } from '../labels'
+import { conclLabel, categoryLabel, riskLabel, baselineLabel } from '../labels'
 
 const MW_PRODUCTS = [
   { kind: 'mw-tomcat', label: 'Tomcat', supported: true, type: 'tomcat' },

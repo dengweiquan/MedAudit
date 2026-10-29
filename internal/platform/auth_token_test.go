@@ -313,6 +313,32 @@ func TestAuthenticateSuperTokenUnparseableExpiry(t *testing.T) {
 	}
 }
 
+// M37-fix2-8：变量只有分隔符时，令牌登录全部被拒，且必须能取到警告判定。
+func TestTokenAllowCIDRWarningSeparatorsOnly(t *testing.T) {
+	t.Setenv("MEDAUDIT_TOKEN_ALLOW_CIDR", ",")
+	if TokenSourceAllowed("10.1.2.3") {
+		t.Error("只有分隔符时令牌登录应全部拒绝")
+	}
+	if w := TokenAllowCIDRWarning(); w == "" {
+		t.Error("只有分隔符时启动应有警告")
+	}
+}
+
+func TestTokenAllowCIDRWarningCases(t *testing.T) {
+	t.Setenv("MEDAUDIT_TOKEN_ALLOW_CIDR", "")
+	if w := TokenAllowCIDRWarning(); w != "" {
+		t.Errorf("未设置时不应警告，实际 %q", w)
+	}
+	t.Setenv("MEDAUDIT_TOKEN_ALLOW_CIDR", "10.0.0.0/8")
+	if w := TokenAllowCIDRWarning(); w != "" {
+		t.Errorf("合法网段时不应警告，实际 %q", w)
+	}
+	t.Setenv("MEDAUDIT_TOKEN_ALLOW_CIDR", "10.0.0.0/8, garbage!!!")
+	if w := TokenAllowCIDRWarning(); w == "" {
+		t.Error("含非法条目时应有警告")
+	}
+}
+
 func TestTokenSourceAllowedPartialInvalid(t *testing.T) {
 	t.Setenv("MEDAUDIT_TOKEN_ALLOW_CIDR", "10.0.0.0/8, garbage!!!")
 	if TokenSourceAllowed("10.1.2.3") {

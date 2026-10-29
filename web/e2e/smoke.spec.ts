@@ -60,6 +60,12 @@ interface Finding {
   created_at: string
 }
 
+interface ReportRow {
+  id: string
+  asset_id: string
+  created_at: string
+}
+
 async function assertNoForbiddenText(page: Page) {
   const text = await page.locator('body').innerText()
   for (const token of FORBIDDEN) {
@@ -158,6 +164,41 @@ test('医院模式冒烟：菜单、术语与复检对比顺序', async ({ page 
   await expect(apiCard.locator('tr', { hasText: 'http://127.0.0.1:19090' }).first()).toContainText('不通过 6 条')
   await assertNoForbiddenText(page)
   await shot(page, 'reports')
+
+  // fix2-1：报告页 MySQL 行的问题数 = 服务端数据按最新一轮重算的结果。
+  // 口径与复检对比一致：latestRun（120 秒间隙聚类）取最新一轮，再按规则风险分级。
+  const reportsRes = await page.request.get('/api/v1/reports')
+  expect(reportsRes.ok()).toBeTruthy()
+  const allReports = (await reportsRes.json()) as ReportRow[]
+  const mysqlReports = allReports
+    .filter((r) => r.asset_id === 'db-mysql-demo')
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+  expect(mysqlReports.length).toBeGreaterThan(0)
+  const latestReport = mysqlReports[0]
+  const reportDetailRes = await page.request.get(`/api/v1/reports/${encodeURIComponent(latestReport.id)}`)
+  expect(reportDetailRes.ok()).toBeTruthy()
+  const reportDetail = (await reportDetailRes.json()) as { findings?: Finding[] }
+  const rulesRes = await page.request.get('/api/v1/rules')
+  expect(rulesRes.ok()).toBeTruthy()
+  const rules = (await rulesRes.json()) as { ID: string; Risk: string }[]
+  const riskOf = new Map(rules.map((r) => [r.ID, (r.Risk ?? '').toLowerCase()]))
+  const counts = { high: 0, medium: 0, low: 0, other: 0 }
+  for (const f of latestRun(reportDetail.findings ?? []).filter((f) => f.conclusion === 'FAIL')) {
+    const rk = riskOf.get(f.rule_id) ?? ''
+    if (rk === 'high') counts.high++
+    else if (rk === 'medium') counts.medium++
+    else if (rk === 'low') counts.low++
+    else counts.other++
+  }
+  const total = counts.high + counts.medium + counts.low + counts.other
+  const parts = [`高 ${counts.high}`, `中 ${counts.medium}`, `低 ${counts.low}`]
+    .filter((_, i) => [counts.high, counts.medium, counts.low][i] > 0)
+  if (counts.other > 0) parts.push(`未分级 ${counts.other}`)
+  const expected = total === 0 ? '通过' : parts.join(' · ')
+  // 该行的问题数是逐份报告详情异步算出的，半途是 —，等算出后再读数。
+  const mysqlRow = page.locator('table').first().locator('tr', { hasText: DEMO_MYSQL }).first()
+  await expect(mysqlRow.locator('td').nth(2)).not.toHaveText('—', { timeout: 60000 })
+  await expect(mysqlRow.locator('td').nth(2)).toHaveText(expected)
 
   // 复检对比：选演示 MySQL，等句子出现，再用服务端数据重算三数核对。
   // 句子在新旧包确定后就出现，但三数要等两包的问题取回才算出；

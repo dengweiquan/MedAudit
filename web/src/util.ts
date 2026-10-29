@@ -1,4 +1,4 @@
-import { api, type BundleSummary, type Finding, type SiteInfo } from './api'
+import { api, type ApiAuditSummary, type BundleSummary, type Finding, type SiteInfo } from './api'
 
 // loadSite 读取本站医院（单院部署初始化给定），全应用缓存一份。
 let sitePromise: Promise<SiteInfo> | null = null
@@ -28,12 +28,18 @@ export function latestRunFindings(rows: Finding[]): Finding[] {
   return sorted.slice(start)
 }
 
-// 报告表问题数（M37-fix-5）：只按报告快照的 findings 计算，不取包的实时问题，
-// 否则重新评估或改基线后历史报告行的数字会变。快照本身就是一轮评估结果，
-// 只需过滤结论为不通过（FAIL）的项，按规则风险分级。
+// 报告表问题数（M37-fix-5，M37-fix2-1 修正）：只按报告快照的 findings 计算，
+// 不取包的实时问题，否则重新评估或改基线后历史报告行的数字会变。
+// 注意快照 findings 来自 ListFindings，含该包所有评估轮次的结果（不是一轮），
+// 故先按 latestRunFindings 取最新一轮（120 秒间隙聚类，与复检/最新问题同口径），
+// 再过滤结论为不通过（FAIL）的项，按规则风险分级。
+// 口径差异说明：服务端 compliance_report.go 的 latestRun 是「同一 created_at
+// 为一轮」；但 DB 时间戳只到秒，一轮落库可达几十秒时它只取最后一秒的行，
+// 会漏算大包（前端早年用最大时间戳往前 1.5 秒切分就踩过这个坑），故此处
+// 不用服务端口径，用前端已有的 latestRunFindings。
 export function countSnapshotRisks(findings: Finding[], riskOf: (ruleId: string) => string): { high: number; medium: number; low: number; other: number } {
   const c = { high: 0, medium: 0, low: 0, other: 0 }
-  for (const f of findings) {
+  for (const f of latestRunFindings(findings)) {
     if (f.conclusion !== 'FAIL') continue
     const r = riskOf(f.rule_id).toLowerCase()
     if (r === 'high') c.high++
@@ -78,6 +84,13 @@ export interface ComparePair { old: BundleSummary; new: BundleSummary }
 
 // comparePair 取同一对象按导入时间升序的最后两次：old=上次，new=本次。
 // 服务端按 imported_at DESC 返回，直接取末尾会把新旧颠倒（M37-1.1），故此处显式排序。
+export function comparePair(bundles: BundleSummary[], assetId: string): ComparePair | null {
+  const list = bundles.filter(b => b.asset_id === assetId)
+    .sort((a, b) => a.imported_at.localeCompare(b.imported_at) || a.id.localeCompare(b.id))
+  if (list.length < 2) return null
+  return { old: list[list.length - 2], new: list[list.length - 1] }
+}
+
 // 首页结论（M37-fix-4）：未审计对象不计为通过；只有全部对象都审计过且
 // 都没有问题，才说「全部对象检查通过」。
 export function buildConclusion(scope: string, total: number, unaudited: number, problems: number, high: number): string {
@@ -92,15 +105,48 @@ export function buildConclusion(scope: string, total: number, unaudited: number,
   return s
 }
 
-export function comparePair(bundles: BundleSummary[], assetId: string): ComparePair | null {
-  const list = bundles.filter(b => b.asset_id === assetId)
-    .sort((a, b) => a.imported_at.localeCompare(b.imported_at) || a.id.localeCompare(b.id))
-  if (list.length < 2) return null
-  return { old: list[list.length - 2], new: list[list.length - 1] }
-}
-
 export function bundlesOfAsset(bundles: BundleSummary[], assetId: string): BundleSummary[] {
   return bundles.filter(b => b.asset_id === assetId)
+}
+
+export type HospitalProgressStatus = 'none' | 'partial' | 'open' | 'clear'
+
+// hospitalProgressStatus 医院整改进度状态（M37-fix2-5）：
+// 已审计对象里只要有问题就显示「整改中」，未审计数由调用方在同一格补充
+// 「另有 N 个未审计」；完全没有问题、但有未审计对象时才显示「部分未审计」。
+// 此前部分未审计分支排在有问题分支之前，部分未审计会盖住整改中。
+export function hospitalProgressStatus(
+  total: number, audited: number, fail: number,
+): { status: HospitalProgressStatus; unaudited: number } {
+  const unaudited = total - audited
+  if (audited === 0) return { status: 'none', unaudited }
+  if (fail > 0) return { status: 'open', unaudited }
+  if (unaudited > 0) return { status: 'partial', unaudited }
+  return { status: 'clear', unaudited }
+}
+
+// filterApiReports 按医院过滤业务接口报告（M37-fix2-4）：
+// 已匹配到登记对象的，按对象所属医院过滤；未匹配的只在「全部医院」视图
+// 下显示，选定医院时不显示（此前未过滤，他院已匹配报告会以目标地址形式
+// 漏进本院视图，未匹配报告也会出现在选定医院视图里）。
+export function filterApiReports(
+  reports: ApiAuditSummary[],
+  assetByEndpoint: Map<string, { hospital_id: string }>,
+  hospitalId: string,
+): ApiAuditSummary[] {
+  if (!hospitalId) return reports
+  return reports.filter(r => assetByEndpoint.get(r.target)?.hospital_id === hospitalId)
+}
+
+// loadBundlesByAssets 按对象逐个取全部包（复检候选，M37-fix2-2）：
+// 单个对象取包失败时跳过该对象，不影响其他对象；此前 Promise.all 任一
+// 失败就清空全部，整页复检不可用。
+export async function loadBundlesByAssets(
+  assetIds: string[],
+  fetchFn: (assetId: string) => Promise<BundleSummary[]>,
+): Promise<BundleSummary[]> {
+  const lists = await Promise.allSettled(assetIds.map(fetchFn))
+  return lists.flatMap(r => r.status === 'fulfilled' ? r.value : [])
 }
 
 // exportLatestReport 为事实包生成报告并直接下载 Word（客户主路径）。

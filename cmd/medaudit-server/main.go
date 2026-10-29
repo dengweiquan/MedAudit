@@ -85,9 +85,10 @@ func main() {
 		}
 	}
 
-	// 令牌来源限制配置检查（M37-fix-1）：非法条目导致令牌登录全部拒绝，启动时警告。
-	if bad := platform.TokenAllowCIDRInvalid(); len(bad) > 0 {
-		fmt.Printf("警告：MEDAUDIT_TOKEN_ALLOW_CIDR 含非法条目 %v，令牌登录将被全部拒绝\n", bad)
+	// 令牌来源限制配置检查（M37-fix-1，M37-fix2-8 补只有分隔符的情形）：
+	// 非法条目或解析不出任何网段时，令牌登录都会被全部拒绝，启动时警告。
+	if w := platform.TokenAllowCIDRWarning(); w != "" {
+		fmt.Printf("警告：MEDAUDIT_TOKEN_ALLOW_CIDR %s\n", w)
 	}
 
 	mux := http.NewServeMux()

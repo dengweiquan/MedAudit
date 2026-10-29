@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BundleSummary } from './api'
-import { buildConclusion, comparePair, countSnapshotRisks, latestBundleOf } from './util'
+import { buildConclusion, comparePair, countSnapshotRisks, latestBundleOf, loadBundlesByAssets, filterApiReports, hospitalProgressStatus } from './util'
+import type { ApiAuditSummary } from './api'
 
 // M37-1.1：服务端按 imported_at DESC 返回，直接取末尾会把新旧颠倒；
 // 下面用例固定：无论输入顺序如何，本次一定是导入时间更晚的那个包。
@@ -86,7 +87,8 @@ describe('buildConclusion（M37-fix-4）', () => {
 
 describe('countSnapshotRisks（M37-fix-5）', () => {
   const riskOf = (id: string) => ({ r1: 'high', r2: 'medium', r3: 'low' }[id] ?? '')
-  const f = (rule_id: string, conclusion: string) => ({ rule_id, conclusion }) as never
+  // 单轮时间戳：旧用例隐含「快照只有一轮」，此处显式打上同一时间戳。
+  const f = (rule_id: string, conclusion: string, created_at = '2026-10-20 10:00:00') => ({ rule_id, conclusion, created_at }) as never
   it('只计快照中不通过项，按规则风险分级；非不通过与未知规则归入未分级', () => {
     const c = countSnapshotRisks(
       [f('r1', 'FAIL'), f('r1', 'FAIL'), f('r2', 'FAIL'), f('r3', 'PASS'), f('rX', 'FAIL'), f('r2', 'UNKNOWN')],
@@ -96,5 +98,86 @@ describe('countSnapshotRisks（M37-fix-5）', () => {
   })
   it('空快照全为 0', () => {
     expect(countSnapshotRisks([], riskOf)).toEqual({ high: 0, medium: 0, low: 0, other: 0 })
+  })
+})
+
+describe('countSnapshotRisks 最新一轮（M37-fix2-1）', () => {
+  const riskOf = (id: string) => ({ r1: 'high', r2: 'medium', r3: 'low' }[id] ?? '')
+  const f = (rule_id: string, conclusion: string, created_at: string) => ({ rule_id, conclusion, created_at }) as never
+  it('快照含两轮评估结果时只计最新一轮（旧轮翻倍的回归）', () => {
+    const rows = [
+      f('r1', 'FAIL', '2026-10-20 10:00:00'), f('r1', 'FAIL', '2026-10-20 10:00:01'), f('r2', 'FAIL', '2026-10-20 10:00:02'),
+      f('r1', 'FAIL', '2026-10-20 11:00:00'), f('r3', 'FAIL', '2026-10-20 11:00:03'), f('r2', 'PASS', '2026-10-20 11:00:05'),
+    ]
+    // 旧口径会算成高 3 · 中 1 · 低 1；正确值只计最新一轮：高 1 · 低 1。
+    expect(countSnapshotRisks(rows, riskOf)).toEqual({ high: 1, medium: 0, low: 1, other: 0 })
+  })
+  it('输入顺序打乱时仍只计最新一轮', () => {
+    const rows = [
+      f('r1', 'FAIL', '2026-10-20 11:00:00'),
+      f('r1', 'FAIL', '2026-10-20 10:00:00'), f('r1', 'FAIL', '2026-10-20 10:00:01'),
+    ]
+    expect(countSnapshotRisks(rows, riskOf)).toEqual({ high: 1, medium: 0, low: 0, other: 0 })
+  })
+  it('一轮内多秒写入仍算同一轮', () => {
+    const rows = [
+      f('r1', 'FAIL', '2026-10-20 11:00:00'), f('r2', 'FAIL', '2026-10-20 11:00:30'), f('r3', 'FAIL', '2026-10-20 11:00:59'),
+    ]
+    expect(countSnapshotRisks(rows, riskOf)).toEqual({ high: 1, medium: 1, low: 1, other: 0 })
+  })
+})
+
+describe('loadBundlesByAssets（M37-fix2-2）', () => {
+  const b = (id: string, asset_id: string): BundleSummary => ({
+    id, plan_id: 'p', hospital_id: 'h', asset_id, schema_version: '1',
+    adapter: 'db-mysql', execution: 'COMPLETE', fact_count: 0, receipt_count: 0, imported_at: '2026-10-20 10:00:00',
+  })
+  it('一个对象取包失败时跳过该对象，其他对象仍可复检', async () => {
+    const fetchFn = (assetId: string) => assetId === 'a-bad'
+      ? Promise.reject(new Error('boom'))
+      : Promise.resolve([b(`b-${assetId}`, assetId)])
+    const out = await loadBundlesByAssets(['a1', 'a-bad', 'a2'], fetchFn)
+    expect(out.map(x => x.id)).toEqual(['b-a1', 'b-a2'])
+  })
+  it('全部失败时返回空数组，不抛错', async () => {
+    const out = await loadBundlesByAssets(['a-bad'], () => Promise.reject(new Error('boom')))
+    expect(out).toEqual([])
+  })
+})
+
+describe('filterApiReports（M37-fix2-4）', () => {
+  const r = (target: string): ApiAuditSummary => ({
+    report_id: `r-${target}`, target, execution: 'COMPLETE', total: 1,
+    pass_count: 0, fail_count: 1, unknown_count: 0, not_run_count: 0, imported_at: '2026-10-20 10:00:00',
+  })
+  const byEndpoint = new Map([
+    ['http://demo-api', { hospital_id: 'h-demo' }],
+    ['http://other-api', { hospital_id: 'h-other' }],
+  ])
+  const rows = [r('http://demo-api'), r('http://other-api'), r('http://unmatched')]
+  it('全部医院视图下全部显示', () => {
+    expect(filterApiReports(rows, byEndpoint, '').map(x => x.target)).toEqual(
+      ['http://demo-api', 'http://other-api', 'http://unmatched'])
+  })
+  it('选定医院时只留本院已匹配报告，他院已匹配与未匹配都不显示', () => {
+    expect(filterApiReports(rows, byEndpoint, 'h-demo').map(x => x.target)).toEqual(['http://demo-api'])
+  })
+})
+
+describe('hospitalProgressStatus（M37-fix2-5）', () => {
+  it('全未审计', () => {
+    expect(hospitalProgressStatus(5, 0, 0)).toEqual({ status: 'none', unaudited: 5 })
+  })
+  it('部分未审计且有问题：整改中优先，另有未审计数照常返回', () => {
+    expect(hospitalProgressStatus(5, 3, 10)).toEqual({ status: 'open', unaudited: 2 })
+  })
+  it('部分未审计无问题：才显示部分未审计', () => {
+    expect(hospitalProgressStatus(5, 3, 0)).toEqual({ status: 'partial', unaudited: 2 })
+  })
+  it('全部审计有问题：整改中，无未审计', () => {
+    expect(hospitalProgressStatus(5, 5, 10)).toEqual({ status: 'open', unaudited: 0 })
+  })
+  it('全部审计无问题：已清零', () => {
+    expect(hospitalProgressStatus(5, 5, 0)).toEqual({ status: 'clear', unaudited: 0 })
   })
 })
