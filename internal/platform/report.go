@@ -102,7 +102,9 @@ func GenerateReport(db *sql.DB, hospitalID, planID, bundleID, createdBy string) 
 	if err != nil {
 		return "", err
 	}
-	reportID := fmt.Sprintf("report-%s-%d", bundleID, time.Now().Unix())
+	// M37-fix3-5：ID 后缀用纳秒而非秒——同秒内连生两份报告会撞主键
+	// （staging 实测：第二次返回 500 UNIQUE constraint failed: reports.id）。
+	reportID := fmt.Sprintf("report-%s-%d", bundleID, time.Now().UnixNano())
 	_, err = db.Exec(
 		`INSERT INTO reports (id, hospital_id, plan_id, snapshot, created_by) VALUES (?, ?, ?, ?, ?)`,
 		reportID, hospitalID, planID, string(snapJSON), createdBy)
