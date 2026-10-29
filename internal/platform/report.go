@@ -28,10 +28,22 @@ func GenerateReport(db *sql.DB, hospitalID, planID, bundleID, createdBy string) 
 	}
 	// 统计口径：可判定覆盖 = (PASS+FAIL)/适用检查项；NOT_RUN 与 UNKNOWN 留在分母。
 	// 此处 findings 只存非 PASS/非 NOT_APPLICABLE，PASS 数从评估时另计；报告记录口径说明。
-	// conclusion_summary 只计最新一轮（M37-fix2-9，与合规段 ruleOutcomes 共用
-	// latestRun 的 120 秒间隙聚类口径；此前计全部轮次，多轮包会成倍放大）。
-	// 快照 findings 字段仍存全部轮次（前端 fix2-1 按最新一轮重算、审计追溯用）。
-	latest := latestRun(findings)
+	// conclusion_summary 只计最新一轮（M37-fix3 轮次号口径：eval_runs 最大 ID）。
+	// 空轮次（0 问题）没有问题行，此时汇总为空——这是 FAIL 0 的诚实表达，
+	// 绝不能回退到上一轮的问题行；无轮次记录时（如老库回填前）回退
+	// latestRun 的聚类口径（兜底）。合规段与汇总共用同一 latest 集合。
+	// 快照 findings 字段仍存全部轮次（审计追溯用）；快照另存 latest_eval_run_id，
+	// 供前端报告表按轮次算风险分级（空轮次时分级全 0）。
+	latestRunID, hasRun, err := latestEvalRunID(db, bundleID)
+	if err != nil {
+		return "", err
+	}
+	var latest []FindingRow
+	if hasRun {
+		latest = findingsOfRun(findings, latestRunID)
+	} else {
+		latest = latestRun(findings)
+	}
 	summary := map[string]any{}
 	for _, f := range latest {
 		summary[f.Conclusion] = 0
@@ -61,6 +73,7 @@ func GenerateReport(db *sql.DB, hospitalID, planID, bundleID, createdBy string) 
 		"execution":          execution,
 		"generated_at":       time.Now().UTC().Format(time.RFC3339),
 		"conclusion_summary": summary,
+		"latest_eval_run_id": latestRunID,
 		"coverage":           coverage,
 		"coverage_note":      "覆盖率见 coverage：资产/服务关联/账号/可判定四路；可判定率=(PASS+FAIL)/(结论总数-NOT_APPLICABLE)；技术口径（无基线）重算，findings 为落库口径（含基线时点可能不同）",
 		"findings":           findings,
@@ -76,11 +89,12 @@ func GenerateReport(db *sql.DB, hospitalID, planID, bundleID, createdBy string) 
 	if sec := remediationSection(bundleRaw, findings); sec != nil {
 		snapshot["remediation"] = sec
 	}
-	// 合规逐条判定（启用的框架；无框架时缺省）。
+	// 合规逐条判定（启用的框架；无框架时缺省）。与汇总共用 latest 集合，
+	// 空轮次时合规段也不应看到上一轮的 FAIL。
 	var fb facts.FactBundle
 	if err := json.Unmarshal([]byte(bundleRaw), &fb); err == nil {
 		disabled, _ := DisabledRuleIDs(db)
-		if sec := complianceSection(&fb, findings, disabled); sec != nil {
+		if sec := complianceSection(&fb, latest, disabled); sec != nil {
 			snapshot["compliance"] = sec
 		}
 	}
