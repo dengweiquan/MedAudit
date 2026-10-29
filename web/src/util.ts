@@ -11,13 +11,18 @@ export function loadSite(): Promise<SiteInfo> {
 import { kindCategory, type CategoryKey } from './categories'
 import { reviewerName } from './store'
 
-// latestRunFindings 取一个事实包最新一轮评估落库的问题行。
-// 评估落库是追加式的（同一包可多次评估）；一轮落库内部时间连续
-// （逐条插入，间隔毫秒级），轮次之间通常相隔分钟以上——按 120 秒
-// 间隙聚类取最后一簇。早期用「最大时间戳往前 1.5 秒」切分对大包
-// 失效（一轮落库可达几十秒，只切到尾巴，会把 FAIL 误算为 0）。
-export function latestRunFindings(rows: Finding[]): Finding[] {
+// latestRunFindings 取一个事实包最新一轮评估落库的问题行（M37-fix3 轮次号口径）。
+// M37-fix3 起每次服务端评估有独立的 eval_runs 行、问题行打 eval_run_id，
+// 最新一轮 = 最大轮次号的问题行，不再靠时间戳推断：快速连评不再并成一轮。
+// latestRunId 指定时只取该轮（空轮次返回空数组——报告表传快照的
+// latest_eval_run_id 时，空轮次的风险分级全 0，而不是上一轮的数字）。
+// 无轮次号的行（老快照）回退 120 秒间隙聚类，与 fix2-9 同口径。
+export function latestRunFindings(rows: Finding[], latestRunId?: number): Finding[] {
   if (!rows.length) return rows
+  if (latestRunId !== undefined && latestRunId > 0) return rows.filter(r => r.eval_run_id === latestRunId)
+  let maxRun = 0
+  for (const r of rows) if (r.eval_run_id && r.eval_run_id > maxRun) maxRun = r.eval_run_id
+  if (maxRun > 0) return rows.filter(r => r.eval_run_id === maxRun)
   const ts = (s: string) => Date.parse(s.replace(' ', 'T'))
   const sorted = [...rows].sort((a, b) => ts(a.created_at) - ts(b.created_at))
   let start = sorted.length - 1
@@ -28,18 +33,15 @@ export function latestRunFindings(rows: Finding[]): Finding[] {
   return sorted.slice(start)
 }
 
-// 报告表问题数（M37-fix-5，M37-fix2-1 修正）：只按报告快照的 findings 计算，
-// 不取包的实时问题，否则重新评估或改基线后历史报告行的数字会变。
+// 报告表问题数（M37-fix-5，M37-fix2-1 修正，M37-fix3 传轮次号）：只按报告快照的
+// findings 计算，不取包的实时问题，否则重新评估或改基线后历史报告行的数字会变。
 // 注意快照 findings 来自 ListFindings，含该包所有评估轮次的结果（不是一轮），
-// 故先按 latestRunFindings 取最新一轮（120 秒间隙聚类，与复检/最新问题同口径），
-// 再过滤结论为不通过（FAIL）的项，按规则风险分级。
-// 口径差异说明：服务端 compliance_report.go 的 latestRun 是「同一 created_at
-// 为一轮」；但 DB 时间戳只到秒，一轮落库可达几十秒时它只取最后一秒的行，
-// 会漏算大包（前端早年用最大时间戳往前 1.5 秒切分就踩过这个坑），故此处
-// 不用服务端口径，用前端已有的 latestRunFindings。
-export function countSnapshotRisks(findings: Finding[], riskOf: (ruleId: string) => string): { high: number; medium: number; low: number; other: number } {
+// 故先按 latestRunFindings 取最新一轮，再过滤结论为不通过（FAIL）的项，
+// 按规则风险分级。latestRunId 传快照的 latest_eval_run_id：空轮次时分级全 0；
+// 老快照无该字段时回退轮次号/聚类口径。
+export function countSnapshotRisks(findings: Finding[], riskOf: (ruleId: string) => string, latestRunId?: number): { high: number; medium: number; low: number; other: number } {
   const c = { high: 0, medium: 0, low: 0, other: 0 }
-  for (const f of latestRunFindings(findings)) {
+  for (const f of latestRunFindings(findings, latestRunId)) {
     if (f.conclusion !== 'FAIL') continue
     const r = riskOf(f.rule_id).toLowerCase()
     if (r === 'high') c.high++
@@ -50,8 +52,8 @@ export function countSnapshotRisks(findings: Finding[], riskOf: (ruleId: string)
   return c
 }
 
-export function latestFail(rows: Finding[]): Finding[] {
-  return latestRunFindings(rows).filter(f => f.conclusion === 'FAIL')
+export function latestFail(rows: Finding[], latestRunId?: number): Finding[] {
+  return latestRunFindings(rows, latestRunId).filter(f => f.conclusion === 'FAIL')
 }
 
 // bundleCategory 事实包归类：优先资产登记类型，其次适配器前缀。

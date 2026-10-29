@@ -300,7 +300,7 @@ async function load() {
       const latest = g.reports[0]
       try {
         const d = await api.getReport(latest.id)
-        rm.set(latest.id, countSnapshotRisks((d.findings as Finding[]) || [], id => rulesMap.value.get(id)?.Risk ?? ''))
+        rm.set(latest.id, countSnapshotRisks((d.findings as Finding[]) || [], id => rulesMap.value.get(id)?.Risk ?? '', d.latest_eval_run_id as number | undefined))
         const comp = d.compliance as { counts?: Record<string, number> }[] | undefined
         let fail = 0
         let found = false
@@ -325,7 +325,7 @@ async function expandHistory(g: ReportGroup) {
       try {
         const d = await api.getReport(r.id)
         if (!riskByReport.value.has(r.id)) {
-          riskByReport.value.set(r.id, countSnapshotRisks((d.findings as Finding[]) || [], id => rulesMap.value.get(id)?.Risk ?? ''))
+          riskByReport.value.set(r.id, countSnapshotRisks((d.findings as Finding[]) || [], id => rulesMap.value.get(id)?.Risk ?? '', d.latest_eval_run_id as number | undefined))
         }
         const comp = d.compliance as { counts?: Record<string, number> }[] | undefined
         let fail = 0

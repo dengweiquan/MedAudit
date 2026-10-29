@@ -75,6 +75,8 @@ export interface Finding {
   detail: string
   review_status: string
   created_at: string
+  // 所属评估轮次（M37-fix3；老快照的问题行无此字段）。
+  eval_run_id?: number
 }
 
 export interface Rule {
