@@ -28,11 +28,15 @@ func GenerateReport(db *sql.DB, hospitalID, planID, bundleID, createdBy string) 
 	}
 	// 统计口径：可判定覆盖 = (PASS+FAIL)/适用检查项；NOT_RUN 与 UNKNOWN 留在分母。
 	// 此处 findings 只存非 PASS/非 NOT_APPLICABLE，PASS 数从评估时另计；报告记录口径说明。
+	// conclusion_summary 只计最新一轮（M37-fix2-9，与合规段 ruleOutcomes 共用
+	// latestRun 的 120 秒间隙聚类口径；此前计全部轮次，多轮包会成倍放大）。
+	// 快照 findings 字段仍存全部轮次（前端 fix2-1 按最新一轮重算、审计追溯用）。
+	latest := latestRun(findings)
 	summary := map[string]any{}
-	for _, f := range findings {
+	for _, f := range latest {
 		summary[f.Conclusion] = 0
 	}
-	for _, f := range findings {
+	for _, f := range latest {
 		summary[f.Conclusion] = summary[f.Conclusion].(int) + 1
 	}
 	coverage := computeCoverage(bundleRaw)

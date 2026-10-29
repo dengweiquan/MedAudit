@@ -71,6 +71,24 @@ func TestGenerateReportSnapshotImmutable(t *testing.T) {
 	if got := ruleIDs(repA); len(got) != 2 || got[0] != "r1" || got[1] != "r2" {
 		t.Fatalf("报告 A 快照应只有第一轮 r1、r2，实际 %v", got)
 	}
+	// M37-fix2-9：conclusion_summary 只计最新一轮（生成时点只有一轮，故为 2）。
+	summaryOf := func(reportID string) map[string]int {
+		t.Helper()
+		snap, err := GetReportSnapshot(db, reportID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var parsed struct {
+			Summary map[string]int `json:"conclusion_summary"`
+		}
+		if err := json.Unmarshal([]byte(snap), &parsed); err != nil {
+			t.Fatal(err)
+		}
+		return parsed.Summary
+	}
+	if got := summaryOf(repA)["FAIL"]; got != 2 {
+		t.Fatalf("报告 A 汇总 FAIL 应为 2，实际 %d", got)
+	}
 	// 第二轮：r1、r3 两条不通过（报告 ID 按 bundle + 秒级时间戳生成，隔 1 秒以上避免撞 ID）。
 	insertFinding("r1", "FAIL", "2026-10-20 11:00:00")
 	insertFinding("r3", "FAIL", "2026-10-20 11:00:01")
@@ -82,8 +100,15 @@ func TestGenerateReportSnapshotImmutable(t *testing.T) {
 	if got := ruleIDs(repB); len(got) != 4 {
 		t.Fatalf("报告 B 快照应含两轮共 4 条，实际 %v", got)
 	}
+	// M37-fix2-9：报告 B 的 findings 仍存全部轮次，但汇总只计最新一轮（r1、r3 共 2 条，不是 4 条）。
+	if got := summaryOf(repB)["FAIL"]; got != 2 {
+		t.Fatalf("报告 B 汇总 FAIL 应只计最新一轮为 2，实际 %d", got)
+	}
 	// 旧报告 A 重读：快照不得被第二轮污染。
 	if got := ruleIDs(repA); len(got) != 2 || got[0] != "r1" || got[1] != "r2" {
 		t.Fatalf("重评并生成报告 B 后，报告 A 快照应保持不变，实际 %v", got)
+	}
+	if got := summaryOf(repA)["FAIL"]; got != 2 {
+		t.Fatalf("重读报告 A 汇总 FAIL 应仍为 2，实际 %d", got)
 	}
 }

@@ -93,6 +93,43 @@ func TestComplianceSection(t *testing.T) {
 	}
 }
 
+// M37-fix2-9：latestRun 按 120 秒间隙聚类取最后一簇，与前端同口径。
+// 旧口径（同一 created_at 为一轮）会把跨秒的一轮只取最后一秒，漏算大包。
+func TestLatestRunClusters(t *testing.T) {
+	row := func(id int64, at string) FindingRow {
+		return FindingRow{ID: id, RuleID: "r", Conclusion: "FAIL", CreatedAt: at}
+	}
+	ids := func(rows []FindingRow) []int64 {
+		var out []int64
+		for _, r := range rows {
+			out = append(out, r.ID)
+		}
+		return out
+	}
+	// 跨秒的一轮 + 更早的一轮：只取新一轮（乱序输入也要先排序）。
+	got := latestRun([]FindingRow{
+		row(3, "2026-10-27 02:00:30"), row(1, "2026-10-01 00:00:00"),
+		row(2, "2026-10-27 02:00:00"), row(4, "2026-10-27 02:00:01"),
+		row(0, "2026-10-01 00:00:01"),
+	})
+	if len(got) != 3 || ids(got)[0] != 2 || ids(got)[1] != 4 || ids(got)[2] != 3 {
+		t.Fatalf("跨秒一轮应全取，实际 IDs %v", ids(got))
+	}
+	// 间隙超 120 秒即分轮：只取最后一簇。
+	got = latestRun([]FindingRow{row(1, "2026-10-27 02:00:00"), row(2, "2026-10-27 02:03:00")})
+	if len(got) != 1 || got[0].ID != 2 {
+		t.Fatalf("180 秒间隙应分轮，实际 IDs %v", ids(got))
+	}
+	// 恰好 120 秒仍属同轮（前端 > 120_000 才断簇）。
+	got = latestRun([]FindingRow{row(1, "2026-10-27 02:00:00"), row(2, "2026-10-27 02:02:00")})
+	if len(got) != 2 {
+		t.Fatalf("120 秒间隙应属同轮，实际 IDs %v", ids(got))
+	}
+	if len(latestRun(nil)) != 0 || len(latestRun([]FindingRow{row(9, "2026-10-27 02:00:00")})) != 1 {
+		t.Fatal("空输入与单行应原样返回")
+	}
+}
+
 func TestComplianceFrameworkEnableAndOverride(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("MEDAUDIT_COMPLIANCE_DIR", dir)
