@@ -2,12 +2,19 @@
 #
 # 要点整理自《医疗卫生机构网络安全管理办法》（国卫规划发〔2022〕29号）与
 # GB/T 39725-2020《信息安全技术 健康医疗数据安全指南》中与账号权限、身份鉴别、
-# 传输加密、服务与配置加固相关的要求。各要点对应的具体条款号尚未逐条核对原文，
-# 因此 ref 留空、status 为 draft。
+# 传输加密、服务与配置加固相关的要求。
 #
-# 启用步骤：合规人员对照原文为每条填写 ref（如「《办法》第X条」「GB/T 39725 x.x」），
-# 调整 title/rules，把 status 改为 verified，复制到 /etc/medaudit/compliance/
-# （或 MEDAUDIT_COMPLIANCE_DIR）后重启服务。也可不改状态，用
+# 条款号核对（2026-10-30，对照《办法》公开全文初填）：
+# - ref 直接给出的，是《办法》原文有对应表述的条款；
+# - ref 带“（相关）”的，是《办法》仅在相邻主题有规定、无直接细则的条目；
+# - ref 仍为空的（医疗-02、医疗-08），《办法》无直接条款，其技术细则在
+#   等保 2.0 三级安全计算环境（平台已有 djbh2-l3 框架），待合规人员定夺是否引用；
+# - GB/T 39725 条款号未填：全文为付费标准，公开渠道仅见章名（第 7/8/9/10/11 章），
+#   无可核实的条款号，须持标准文本的合规人员填写。
+# status 保持 draft，须合规人员最终确认后改为 verified。
+#
+# 启用步骤：合规人员确认每条 ref 后，把 status 改为 verified，复制到
+# /etc/medaudit/compliance/（或 MEDAUDIT_COMPLIANCE_DIR）后重启服务。也可不改状态，用
 # MEDAUDIT_COMPLIANCE_ENABLE=medical-draft 临时启用（报告会标「条款号待核实」）。
 id: medical-draft
 name: 医疗卫生行业网络与数据安全要求
@@ -15,7 +22,7 @@ short: 医疗行业
 status: draft
 controls:
   - id: 医疗-01
-    ref: ""
+    ref: "《办法》第十条（相关）"
     group: 账号管理
     title: 账号实名、唯一，不得共用超级账号
     rules:
@@ -29,7 +36,7 @@ controls:
       - db.oracle.default_account_open
       - mw.iis.default_site
   - id: 医疗-03
-    ref: ""
+    ref: "《办法》第二十二条（四）"
     group: 权限管理
     title: 按最小必要原则授权，严格控制数据库与系统特权账号
     rules:
@@ -57,7 +64,7 @@ controls:
       - os.hpux.setuid_unexpected
       - os.linux.high_capabilities
   - id: 医疗-04
-    ref: ""
+    ref: "《办法》第十条、第十六条"
     group: 权限管理
     title: 第三方与运维人员权限按需授予、可审计，不得长期持有无限制特权
     rules:
@@ -65,7 +72,7 @@ controls:
       - os.linux.sudo_all
       - os.linux.sudo_nopasswd_all
   - id: 医疗-05
-    ref: ""
+    ref: "《办法》第十五条（相关）"
     group: 身份鉴别
     title: 口令具备复杂度并定期更换，有登录失败锁定，鉴别信息安全存储
     rules:
@@ -76,7 +83,7 @@ controls:
       - mw.iis.anon_open
       - os.hpux.weak_password_store
   - id: 医疗-06
-    ref: ""
+    ref: "《办法》第二十二条（二）"
     group: 数据安全
     title: 重要数据与个人健康信息传输采用加密措施
     rules:
@@ -88,7 +95,7 @@ controls:
       - mw.tomcat.tls_weak
       - mw.weblogic.plain_listener
   - id: 医疗-07
-    ref: ""
+    ref: "《办法》第二十二条（四）（相关）"
     group: 数据安全
     title: 防止敏感信息（口令、业务数据）以明文留存在日志等非受控位置
     rules:
@@ -109,7 +116,7 @@ controls:
       - mw.weblogic.dev_mode
       - os.hpux.inetd_risky_service
   - id: 医疗-09
-    ref: ""
+    ref: "《办法》第十一条"
     group: 安全加固
     title: 限制数据库与管理端口的访问来源
     rules:
@@ -117,7 +124,7 @@ controls:
       - db.pg.hba_open_network
       - db.pg.listen_all
   - id: 医疗-10
-    ref: ""
+    ref: "《办法》第六条（相关）"
     group: 安全加固
     title: 保护系统程序与配置不被越权篡改，服务以规定身份运行
     rules:
