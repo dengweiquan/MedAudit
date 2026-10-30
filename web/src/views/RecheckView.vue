@@ -51,7 +51,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BundleSummary, type Finding, type Rule } from '../api'
 import { goto, nav, filterByHospital, engineerMode } from '../store'
-import { bundlesOfAsset, comparePair, exportLatestReport, latestFail, fmtLocal, loadBundlesByAssets } from '../util'
+import { bundlesOfAsset, comparePair, exportLatestReport, latestFailOf, fmtLocal, loadBundlesByAssets } from '../util'
 
 const assets = ref<Asset[]>([])
 const bundles = ref<BundleSummary[]>([])
@@ -126,10 +126,10 @@ async function compare() {
   newBundle.value = nb; oldBundle.value = ob
   comparing.value = true
   try {
-    const [of, nf] = await Promise.all([api.findings(ob.id), api.findings(nb.id)])
+    const [of, nf] = await Promise.all([latestFailOf(ob.id), latestFailOf(nb.id)])
     if (seq !== compareSeq) return
-    const oldB = bucket(latestFail(of))
-    const newB = bucket(latestFail(nf))
+    const oldB = bucket(of)
+    const newB = bucket(nf)
     for (const [k, og] of oldB) {
       const ng = newB.get(k)
       const common = Math.min(og.n, ng?.n ?? 0)

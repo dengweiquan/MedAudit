@@ -56,6 +56,25 @@ export function latestFail(rows: Finding[], latestRunId?: number): Finding[] {
   return latestRunFindings(rows, latestRunId).filter(f => f.conclusion === 'FAIL')
 }
 
+// loadFindingsWithRun 取某包问题行与最新轮次号（M37-fix4）：空轮次没有问题行，
+// 只靠行推断轮次号会在干净重评后仍显示上一轮，故轮次号必须由服务端另给。
+// 轮次接口失败（旧服务端）或无轮次时 runId 为空，调用方回退旧口径。
+export async function loadFindingsWithRun(bundleId: string): Promise<{ rows: Finding[]; runId?: number }> {
+  const rows = await api.findings(bundleId)
+  try {
+    const lr = await api.latestRun(bundleId)
+    return { rows, runId: lr.latest_eval_run_id ?? undefined }
+  } catch {
+    return { rows }
+  }
+}
+
+// latestFailOf 取某包最新一轮的 FAIL 行（M37-fix4），空轮次返回空数组。
+export async function latestFailOf(bundleId: string): Promise<Finding[]> {
+  const { rows, runId } = await loadFindingsWithRun(bundleId)
+  return latestFail(rows, runId)
+}
+
 // bundleCategory 事实包归类：优先资产登记类型，其次适配器前缀。
 export function bundleCategory(b: BundleSummary, kindByAsset: Map<string, string>): CategoryKey | 'unknown' {
   const kind = kindByAsset.get(b.asset_id)

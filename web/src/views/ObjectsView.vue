@@ -100,7 +100,7 @@ import { api, parseRemote, type ApiAuditCheck, type ApiAuditSummary, type Asset,
 import RemoteAuditCard from '../components/RemoteAuditCard.vue'
 import { kindCategory, type CategoryKey } from '../categories'
 import { nav, goto, filterByHospital, reviewerName, selectedHospital, engineerMode } from '../store'
-import { exportLatestReport, latestBundleOf, latestFail, fmtLocal } from '../util'
+import { exportLatestReport, latestBundleOf, latestFailOf, fmtLocal } from '../util'
 import { conclLabel, categoryLabel, riskLabel, baselineLabel } from '../labels'
 
 const MW_PRODUCTS = [
@@ -208,7 +208,7 @@ async function load() {
       const lb = latestBundle(a.id)
       if (!lb) continue
       try {
-        const fails = latestFail(await api.findings(lb.id))
+        const fails = await latestFailOf(lb.id)
         const c = { high: 0, medium: 0, low: 0, other: 0 }
         for (const f of fails) {
           const r = riskOf.get(f.rule_id)

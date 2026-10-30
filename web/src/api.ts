@@ -79,6 +79,13 @@ export interface Finding {
   eval_run_id?: number
 }
 
+// 最新评估轮次（M37-fix4）：latest_eval_run_id 为 null 表示该包尚无轮次。
+export interface LatestRunResp {
+  bundle_id: string
+  latest_eval_run_id: number | null
+  findings_count: number
+}
+
 export interface Rule {
   ID: string
   Version: string
@@ -541,6 +548,8 @@ export const api = {
   evidenceUrl: (id: string) => `/api/v1/bundles/${encodeURIComponent(id)}/evidence`,
   findings: (bundleId: string) =>
     req<Finding[]>(`/api/v1/findings?bundle_id=${encodeURIComponent(bundleId)}`),
+  latestRun: (bundleId: string) =>
+    req<LatestRunResp>(`/api/v1/findings/latest-run?bundle_id=${encodeURIComponent(bundleId)}`),
   evaluate: (bundleId: string, baselineId?: string, bare?: boolean) =>
     post<EvalSummary>('/api/v1/evaluations', { bundle_id: bundleId, baseline_id: baselineId || '', bare: !!bare }),
   fixScript: (findingId: number) =>

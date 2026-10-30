@@ -141,7 +141,7 @@ import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BaselineRow, type BundleSummary, type DriftReport, type EffectiveEntry, type Fact } from '../api'
 import { goto, filterByHospital } from '../store'
 import { executionLabel } from '../labels'
-import { latestFail, fmtLocal} from '../util'
+import { latestFailOf, fmtLocal} from '../util'
 
 const bundles = ref<BundleSummary[]>([])
 const assets = ref<Asset[]>([])
@@ -218,7 +218,7 @@ async function load() {
     }
     const m = new Map<string, number>()
     for (const b of bundles.value) {
-      try { m.set(b.id, latestFail(await api.findings(b.id)).length) } catch { /* 未评估包 */ }
+      try { m.set(b.id, (await latestFailOf(b.id)).length) } catch { /* 未评估包 */ }
     }
     failMap.value = m
   }
