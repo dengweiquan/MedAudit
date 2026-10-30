@@ -123,6 +123,8 @@ type EvaluationSummary struct {
 	Findings         int      `json:"findings_stored"`
 	BaselineMode     string   `json:"baseline_mode"`               // auto | baseline | bare
 	BaselinesApplied []string `json:"baselines_applied,omitempty"` // 本次实际套用的基线 ID
+	// EvalRunID 本次评估的轮次号（M37-fix3；0 表示评估未落库，如离线路径）。
+	EvalRunID int64 `json:"eval_run_id,omitempty"`
 }
 
 // EvaluateBundle 对已导入的事实包执行规则评估，非 PASS 结论存入 findings。
@@ -264,6 +266,31 @@ func evaluateCore(db *sql.DB, reg *rules.Registry, bundleID, raw, hospitalID str
 		case facts.ConclusionNotRun:
 			summary.NotRun++
 		}
+	}
+	// M37-fix3：轮次一等记录——先落轮次行（计数已知），问题行打轮次号，
+	// 轮次行与问题行同事务，失败整体回滚（此前逐条 autocommit，失败会留半轮）。
+	// 空轮次（0 问题）也有轮次行，报告汇总才能看到 FAIL 0。
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
+		`INSERT INTO eval_runs (bundle_id, hospital_id, baseline_mode, baselines_applied,
+			total, pass, fail, unknown, not_run, not_applicable, findings_count)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+		bundleID, hospitalID, mode, encodeStringSlice(applied),
+		summary.Total, summary.Pass, summary.Fail, summary.Unknown, summary.NotRun, summary.NotApplicable)
+	if err != nil {
+		return nil, err
+	}
+	runID, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	summary.EvalRunID = runID
+	findingsCount := 0
+	for _, r := range results {
 		if r.Conclusion == facts.ConclusionPass || r.Conclusion == facts.ConclusionNotApplicable {
 			continue
 		}
@@ -271,16 +298,23 @@ func evaluateCore(db *sql.DB, reg *rules.Registry, bundleID, raw, hospitalID str
 			"risk": r.Risk, "detail": r.Detail,
 			"evidence": r.Evidence, "missing": r.Missing,
 		})
-		_, err := db.Exec(
-			`INSERT INTO findings (hospital_id, bundle_id, rule_id, rule_version, subject, conclusion, detail)
-			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		_, err := tx.Exec(
+			`INSERT INTO findings (hospital_id, bundle_id, rule_id, rule_version, subject, conclusion, detail, eval_run_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			hospitalID, bundleID, r.RuleID, r.RuleVersion, r.Subject,
-			string(r.Conclusion), string(detail))
+			string(r.Conclusion), string(detail), runID)
 		if err != nil {
 			return nil, err
 		}
-		summary.Findings++
+		findingsCount++
 	}
+	if _, err := tx.Exec(`UPDATE eval_runs SET findings_count = ? WHERE id = ?`, findingsCount, runID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	summary.Findings = findingsCount
 	return summary, nil
 }
 
@@ -295,13 +329,15 @@ type FindingRow struct {
 	Detail       string `json:"detail"`
 	ReviewStatus string `json:"review_status"`
 	CreatedAt    string `json:"created_at"`
+	// EvalRunID 所属评估轮次（M37-fix3；0 表示老数据未回填前、无轮次号）。
+	EvalRunID int64 `json:"eval_run_id,omitempty"`
 }
 
 // ListFindings 按 bundle 列出问题。
 func ListFindings(db *sql.DB, bundleID string) ([]FindingRow, error) {
 	rows, err := db.Query(
 		`SELECT id, bundle_id, rule_id, rule_version, subject, conclusion, detail, review_status,
-		        strftime('%Y-%m-%d %H:%M:%S', created_at)
+		        strftime('%Y-%m-%d %H:%M:%S', created_at), COALESCE(eval_run_id, 0)
 		 FROM findings WHERE bundle_id = ? ORDER BY id`, bundleID)
 	if err != nil {
 		return nil, err
@@ -312,7 +348,7 @@ func ListFindings(db *sql.DB, bundleID string) ([]FindingRow, error) {
 		var f FindingRow
 		var detail sql.NullString
 		if err := rows.Scan(&f.ID, &f.BundleID, &f.RuleID, &f.RuleVersion,
-			&f.Subject, &f.Conclusion, &detail, &f.ReviewStatus, &f.CreatedAt); err != nil {
+			&f.Subject, &f.Conclusion, &detail, &f.ReviewStatus, &f.CreatedAt, &f.EvalRunID); err != nil {
 			return nil, err
 		}
 		if detail.Valid {

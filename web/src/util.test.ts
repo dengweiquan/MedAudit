@@ -127,6 +127,31 @@ describe('countSnapshotRisks 最新一轮（M37-fix2-1）', () => {
   })
 })
 
+describe('countSnapshotRisks 轮次号（M37-fix3）', () => {
+  const riskOf = (id: string) => ({ r1: 'high', r2: 'medium', r3: 'low' }[id] ?? '')
+  const f = (rule_id: string, conclusion: string, created_at: string, eval_run_id?: number) => ({ rule_id, conclusion, created_at, eval_run_id }) as never
+  it('快速连评（间隔 <120 秒）按轮次号分轮，不并成一轮', () => {
+    const rows = [
+      f('r1', 'FAIL', '2026-10-20 10:00:00', 1), f('r2', 'FAIL', '2026-10-20 10:00:30', 1),
+      f('r1', 'FAIL', '2026-10-20 10:01:00', 2),
+    ]
+    // 聚类口径会把三行并成一轮（高 2 · 中 1）；轮次号口径只计 run 2：高 1。
+    expect(countSnapshotRisks(rows, riskOf)).toEqual({ high: 1, medium: 0, low: 0, other: 0 })
+  })
+  it('指定轮次号为空轮次时分级全 0，不回退上一轮', () => {
+    const rows = [
+      f('r1', 'FAIL', '2026-10-20 10:00:00', 1), f('r2', 'FAIL', '2026-10-20 10:00:30', 1),
+    ]
+    expect(countSnapshotRisks(rows, riskOf, 2)).toEqual({ high: 0, medium: 0, low: 0, other: 0 })
+  })
+  it('老快照无轮次号时回退聚类口径', () => {
+    const rows = [
+      f('r1', 'FAIL', '2026-10-20 10:00:00'), f('r1', 'FAIL', '2026-10-20 11:00:00'),
+    ]
+    expect(countSnapshotRisks(rows, riskOf)).toEqual({ high: 1, medium: 0, low: 0, other: 0 })
+  })
+})
+
 describe('loadBundlesByAssets（M37-fix2-2）', () => {
   const b = (id: string, asset_id: string): BundleSummary => ({
     id, plan_id: 'p', hospital_id: 'h', asset_id, schema_version: '1',
