@@ -100,7 +100,7 @@ import { computed, onMounted, ref } from 'vue'
 import { api, type AlertRow, type AuditDueRow, type Asset, type BundleSummary, type Finding, type Hospital, type Rule, type SiteInfo } from '../api'
 import { kindCategory, type CategoryKey } from '../categories'
 import { goto, gotoObjects, selectedHospital, filterByHospital } from '../store'
-import { latestBundleOf, latestFail, loadSite, fmtLocal, buildConclusion, hospitalProgressStatus } from '../util'
+import { latestBundleOf, latestFailOf, loadSite, fmtLocal, buildConclusion, hospitalProgressStatus } from '../util'
 import { categoryLabel } from '../labels'
 
 const site = ref<SiteInfo | null>(null)
@@ -247,7 +247,7 @@ async function load() {
       const lb = latestOfAsset(a.id)
       if (!lb) { byAsset.set(a.id, 0); continue }
       let fails: Finding[] = []
-      try { fails = latestFail(await api.findings(lb.id)) } catch { fails = [] }
+      try { fails = await latestFailOf(lb.id) } catch { fails = [] }
       byAsset.set(a.id, fails.length)
       failsMap.set(a.id, fails)
     }

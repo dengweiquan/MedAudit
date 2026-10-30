@@ -58,6 +58,7 @@ func newTestServer(t *testing.T, kr *platform.EvidenceKeyring) *testServer {
 	registerScheduleRoutes(mux, db, kr, sched, sessions)
 	registerTemplateRoutes(mux, db, rules.DefaultRegistry(), sessions)
 	registerAssetBundlesRoute(mux, db)
+	registerEvalRoutes(mux, db, rules.DefaultRegistry())
 	srv := httptest.NewServer(opLogMiddleware(authMiddleware(mux, sessions), db, sessions))
 	t.Cleanup(srv.Close)
 	return &testServer{srv: srv, db: db, sessions: sessions, client: &http.Client{}}
@@ -536,5 +537,49 @@ func TestServerAssetBundlesBeyondLimit(t *testing.T) {
 	status, _, _ = s.do(t, http.MethodGet, "/api/v1/asset-bundles", nil, []*http.Cookie{cookie})
 	if status != http.StatusBadRequest {
 		t.Fatalf("缺 asset_id 应 400，实际 %d", status)
+	}
+}
+
+// M37-fix4：最新轮次接口返回最大轮次号与问题数，空轮次也返回；无轮次时 id 为 null；
+// 路由精确匹配，不被 /api/v1/findings/ 前缀分发当成问题 ID（否则 404）。
+func TestServerFindingsLatestRun(t *testing.T) {
+	s := newTestServer(t, nil)
+	cookie := s.login(t, platform.DefaultAdminUser, platform.DefaultAdminPassword)
+	if _, err := s.db.Exec(`INSERT INTO eval_runs (bundle_id, hospital_id, baseline_mode, findings_count) VALUES ('b-lr', 'h', 'auto', 2)`); err != nil {
+		t.Fatal(err)
+	}
+	r2, err := s.db.Exec(`INSERT INTO eval_runs (bundle_id, hospital_id, baseline_mode, findings_count) VALUES ('b-lr', 'h', 'auto', 0)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, _ := r2.LastInsertId()
+	status, data, _ := s.do(t, http.MethodGet, "/api/v1/findings/latest-run?bundle_id=b-lr", nil, []*http.Cookie{cookie})
+	if status != http.StatusOK {
+		t.Fatalf("最新轮次接口应 200，实际 %d：%s", status, data)
+	}
+	var got struct {
+		BundleID        string `json:"bundle_id"`
+		LatestEvalRunID *int64 `json:"latest_eval_run_id"`
+		FindingsCount   int    `json:"findings_count"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+	if got.LatestEvalRunID == nil || *got.LatestEvalRunID != id2 || got.FindingsCount != 0 {
+		t.Fatalf("最新轮次应为空轮次（id %d、count 0），实际 %+v", id2, got)
+	}
+	status, data, _ = s.do(t, http.MethodGet, "/api/v1/findings/latest-run?bundle_id=b-none", nil, []*http.Cookie{cookie})
+	if status != http.StatusOK {
+		t.Fatalf("无轮次的包应 200，实际 %d", status)
+	}
+	var none struct {
+		LatestEvalRunID *int64 `json:"latest_eval_run_id"`
+	}
+	if err := json.Unmarshal(data, &none); err != nil || none.LatestEvalRunID != nil {
+		t.Fatalf("无轮次的包 id 应为 null，实际 %+v err=%v", none, err)
+	}
+	status, _, _ = s.do(t, http.MethodGet, "/api/v1/findings/latest-run", nil, []*http.Cookie{cookie})
+	if status != http.StatusBadRequest {
+		t.Fatalf("缺 bundle_id 应 400，实际 %d", status)
 	}
 }

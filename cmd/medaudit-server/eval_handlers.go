@@ -53,6 +53,32 @@ func registerEvalRoutes(mux *http.ServeMux, db *sql.DB, reg *rules.Registry) {
 		writeJSON(w, rows)
 	})
 
+	// GET /api/v1/findings/latest-run?bundle_id=（M37-fix4）
+	// 返回某包最新评估轮次号与问题数。/api/v1/findings 只返回问题行，
+	// 空轮次没有问题行，调用方无法从行中得知最新轮次号，干净重评后仍显示上一轮。
+	// 本接口只新增，不改变 /api/v1/findings 的返回结构（ma 在用）。
+	mux.HandleFunc("/api/v1/findings/latest-run", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		bundleID := r.URL.Query().Get("bundle_id")
+		if bundleID == "" {
+			http.Error(w, "bundle_id 必填", http.StatusBadRequest)
+			return
+		}
+		runID, count, ok, err := platform.LatestEvalRun(db, bundleID)
+		if err != nil {
+			http.Error(w, "查询失败: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		var id any
+		if ok {
+			id = runID
+		}
+		writeJSON(w, map[string]any{"bundle_id": bundleID, "latest_eval_run_id": id, "findings_count": count})
+	})
+
 	// /api/v1/findings/{id}/review|retest|retests|remediations 分发（M6 扩充复测与整改）
 	mux.HandleFunc("/api/v1/findings/", func(w http.ResponseWriter, r *http.Request) {
 		rest := strings.TrimPrefix(r.URL.Path, "/api/v1/findings/")

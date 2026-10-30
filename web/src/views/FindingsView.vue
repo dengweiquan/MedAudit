@@ -218,7 +218,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type Asset, type BaselineRow, type BundleSummary, type ExemptionPreview, type Finding, type FixScriptResp, type RemediationRow, type RetestRow, type Rule } from '../api'
 import { nav, reviewerName, saveReviewerName, filterByHospital, engineerMode } from '../store'
-import { latestRunFindings, latestBundleOf, fmtLocal, baselineKindLabel } from '../util'
+import { latestRunFindings, loadFindingsWithRun, latestBundleOf, fmtLocal, baselineKindLabel } from '../util'
 import { conclLabel, riskLabel, reviewLabel } from '../labels'
 
 const bundles = ref<BundleSummary[]>([])
@@ -229,6 +229,7 @@ const bundleId = ref('')
 const findings = ref<Finding[]>([])
 const filter = ref('')
 const latestOnly = ref(true)
+const latestRunId = ref<number | undefined>(undefined)
 const error = ref('')
 const openRule = ref('')
 const openSubject = ref('')
@@ -278,7 +279,7 @@ function bundleLabel(b: BundleSummary): string {
 }
 
 const current = computed(() => bundles.value.find(b => b.id === bundleId.value))
-const runRows = computed(() => latestOnly.value ? latestRunFindings(findings.value) : findings.value)
+const runRows = computed(() => latestOnly.value ? latestRunFindings(findings.value, latestRunId.value) : findings.value)
 const conclusions = computed(() => [...new Set(runRows.value.map(f => f.conclusion))])
 const filtered = computed(() => filter.value ? runRows.value.filter(f => f.conclusion === filter.value) : runRows.value)
 
@@ -358,8 +359,8 @@ async function load() {
   error.value = ''; openId.value = 0; openRule.value = ''; openSubject.value = ''
   if (!bundleId.value) return
   const seq = ++loadSeq
-  try { const rows = await api.findings(bundleId.value); if (seq !== loadSeq) return; findings.value = rows }
-  catch (e) { if (seq !== loadSeq) return; error.value = e instanceof Error ? e.message : '加载失败'; findings.value = [] }
+  try { const { rows, runId } = await loadFindingsWithRun(bundleId.value); if (seq !== loadSeq) return; findings.value = rows; latestRunId.value = runId }
+  catch (e) { if (seq !== loadSeq) return; error.value = e instanceof Error ? e.message : '加载失败'; findings.value = []; latestRunId.value = undefined }
 }
 
 async function toggle(f: Finding) {

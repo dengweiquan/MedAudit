@@ -44,6 +44,21 @@ func latestEvalRunID(db *sql.DB, bundleID string) (int64, bool, error) {
 	return id.Int64, true, nil
 }
 
+// LatestEvalRun 取某包最新一轮的 ID 与问题数（M37-fix4；无轮次时 ok=false）。
+// 问题列表视图用它把最新轮次号传给 latestRunFindings：空轮次（0 问题）也有行，
+// 只靠问题行推断最大轮次号会在干净重评后仍显示上一轮。
+func LatestEvalRun(db *sql.DB, bundleID string) (runID int64, findingsCount int, ok bool, err error) {
+	var id, count sql.NullInt64
+	err = db.QueryRow(`SELECT id, COALESCE(findings_count, 0) FROM eval_runs WHERE bundle_id = ? ORDER BY id DESC LIMIT 1`, bundleID).Scan(&id, &count)
+	if err == sql.ErrNoRows {
+		return 0, 0, false, nil
+	}
+	if err != nil {
+		return 0, 0, false, err
+	}
+	return id.Int64, int(count.Int64), true, nil
+}
+
 // clusterByGap 按 120 秒间隙把问题行聚成轮次簇（与 fix2-9 的 latestRun 同口径）。
 // 仅用于回填老数据与无轮次号行的兜底；新评估一律以 eval_run_id 为准，不走此处。
 // 输入按 created_at、id 排序；解析失败的行视作簇边界。

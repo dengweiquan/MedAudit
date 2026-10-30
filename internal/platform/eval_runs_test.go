@@ -166,3 +166,29 @@ func TestGenerateReportEmptyLatestRun(t *testing.T) {
 		t.Fatalf("快照 findings 仍应存全部轮次（2 行），实际 %d", len(parsed.Findings))
 	}
 }
+
+// M37-fix4：最新轮次号取 eval_runs 最大 ID，空轮次（0 问题）也返回；无轮次时 ok=false。
+func TestLatestEvalRun(t *testing.T) {
+	db := openTestDB(t, "latest-run.db")
+	seedBundle(t, db)
+	r1, err := db.Exec(`INSERT INTO eval_runs (bundle_id, hospital_id, baseline_mode, findings_count) VALUES ('bundle-1', 'h-test', 'auto', 3)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id1, _ := r1.LastInsertId()
+	r2, err := db.Exec(`INSERT INTO eval_runs (bundle_id, hospital_id, baseline_mode, findings_count) VALUES ('bundle-1', 'h-test', 'auto', 0)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, _ := r2.LastInsertId()
+	id, count, ok, err := LatestEvalRun(db, "bundle-1")
+	if err != nil || !ok || id != id2 || count != 0 {
+		t.Fatalf("最新轮次应为空轮次（id %d、count 0），实际 id=%d count=%d ok=%v err=%v", id2, id, count, ok, err)
+	}
+	if id1 == id2 {
+		t.Fatalf("两轮 ID 应不同，实际 %d", id1)
+	}
+	if _, _, ok, err := LatestEvalRun(db, "bundle-none"); err != nil || ok {
+		t.Fatalf("无轮次的包应 ok=false，实际 ok=%v err=%v", ok, err)
+	}
+}
