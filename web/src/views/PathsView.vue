@@ -40,8 +40,8 @@
   </div>
 
   <div class="card">
-    <h2>历史关联报告（{{ history.length }}）</h2>
-    <table v-if="history.length">
+    <h2>历史关联报告（<template v-if="loaded">{{ history.length }}</template><template v-else>…</template>）</h2>
+    <table v-if="loaded && history.length">
       <thead><tr><th>报告</th><th>医院</th><th>事实包数</th><th>路径数</th><th>时间</th><th>操作</th></tr></thead>
       <tbody>
         <tr v-for="c in history" :key="c.report_id">
@@ -54,7 +54,8 @@
         </tr>
       </tbody>
     </table>
-    <div v-else class="empty">暂无关联报告。</div>
+    <div v-else-if="loaded" class="empty">暂无关联报告。</div>
+    <div v-else class="empty">加载中…</div>
   </div>
 </template>
 
@@ -70,6 +71,7 @@ const history = ref<CorrelationSummary[]>([])
 const selected = ref<string[]>([])
 const detail = ref<CorrelationDetail | null>(null)
 const error = ref('')
+const loaded = ref(false)
 const runErr = ref('')
 const running = ref(false)
 
@@ -79,10 +81,12 @@ function bundlesByHospital(h: string): BundleSummary[] {
 }
 
 async function load() {
+  loaded.value = false
   try {
     bundles.value = filterByHospital(await api.bundles())
     history.value = filterByHospital(await api.correlations())
   } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
+  finally { loaded.value = true }
 }
 
 async function run() {

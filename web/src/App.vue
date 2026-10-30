@@ -110,7 +110,9 @@ const health = ref<Health | null>(null)
 // selectedHospital 是 reactive，管理页改动后各页重挂载时读到新值；
 // 顶栏本身需在登录后校验一次：单院锁定本站，已删医院的残留选择清回全部。
 const hospitals = ref<Hospital[]>([])
+const hospitalsLoaded = ref(false)
 const hospitalLabel = computed(() => {
+  if (!hospitalsLoaded.value) return ''
   if (!selectedHospital.id) return '全部医院'
   const h = hospitals.value.find(x => x.id === selectedHospital.id)
   if (!h) return engineerMode.on ? selectedHospital.id : '未知医院'
@@ -122,7 +124,7 @@ async function resolveHospital() {
     const site = await loadSite()
     if (site.hospital_id) { setHospital(site.hospital_id); return }
     if (selectedHospital.id && !hospitals.value.some(h => h.id === selectedHospital.id)) setHospital('')
-  } catch { /* 医院列表取不到时保留当前选择，不挡登录 */ }
+  } catch { /* 医院列表取不到时保留当前选择，不挡登录 */ } finally { hospitalsLoaded.value = true }
 }
 
 function onLogin(user: string) {

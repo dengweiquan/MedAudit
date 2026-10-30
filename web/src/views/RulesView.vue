@@ -1,6 +1,6 @@
 <template>
   <div class="card">
-    <h2>规则集（{{ rules.length }} 条，已关闭 {{ disabledCount }} 条）</h2>
+    <h2>规则集（<template v-if="loaded">{{ rules.length }} 条，已关闭 {{ disabledCount }} 条</template><template v-else>加载中…</template>）</h2>
     <p class="todo">
       工程师可关闭本站不适用的检查项（如客户现场 Oracle SYS/SYSTEM 为厂商必需账号，必须保持开启）：
       关闭后该项在评估时整体跳过——不产生问题、报告不体现。关闭必须填写原因，操作留痕。
@@ -10,7 +10,7 @@
       报告中的合规逐条判定：
       <span v-for="(f, i) in frameworks" :key="f.id">{{ i ? '；' : '' }}{{ f.name }}（{{ f.clauses }} 条，{{ f.status === 'verified' ? '已核实' : '草稿' }}，<b>{{ f.enabled ? '已启用' : '未启用' }}</b>）</span>
     </div>
-    <div class="chips">
+    <div class="chips" v-if="loaded">
       <button class="chip" :class="{ active: target === '' }" @click="target = ''">全部</button>
       <button v-for="t in targets" :key="t" class="chip" :class="{ active: target === t }" @click="target = t">{{ t }}</button>
     </div>
@@ -24,6 +24,7 @@
     <div class="msg" v-if="msg">{{ msg }}</div>
     <div class="msg err" v-if="opErr">{{ opErr }}</div>
     <div v-if="error" class="error">{{ error }}</div>
+    <div v-else-if="!loaded" class="empty">加载中…</div>
     <table v-else-if="shown.length">
       <thead><tr><th></th><th>规则 ID</th><th>名称</th><th>目标</th><th>风险</th><th>状态</th><th>说明 / 整改建议</th><th>操作</th></tr></thead>
       <tbody>
@@ -74,6 +75,7 @@ api.complianceFrameworks().then(r => { frameworks.value = r.items }).catch(() =>
 const toggles = ref<Map<string, RuleToggle>>(new Map())
 const target = ref('')
 const error = ref('')
+const loaded = ref(false)
 const msg = ref('')
 const opErr = ref('')
 const selected = reactive(new Set<string>())
@@ -91,9 +93,12 @@ function isOff(id: string): boolean { return toggles.value.get(id)?.enabled === 
 function toggleSel(id: string) { selected.has(id) ? selected.delete(id) : selected.add(id) }
 
 async function load() {
-  rules.value = await api.rules()
-  const list = await api.ruleToggles()
-  toggles.value = new Map(list.map(t => [t.rule_id, t]))
+  loaded.value = false
+  try {
+    rules.value = await api.rules()
+    const list = await api.ruleToggles()
+    toggles.value = new Map(list.map(t => [t.rule_id, t]))
+  } finally { loaded.value = true }
 }
 
 async function setOne(id: string, enabled: boolean, reason?: string) {

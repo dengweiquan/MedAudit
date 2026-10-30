@@ -11,6 +11,7 @@
       <span class="todo" v-if="asset && engineerMode.on">{{ asset.hospital_id }}</span>
     </div>
     <div v-if="error" class="error">{{ error }}</div>
+    <div v-else-if="!loaded" class="empty">加载中…</div>
     <div v-else-if="!candidates.length" class="empty">暂无拥有两个以上事实包的对象。先对同一对象审计两次（整改前后各一次），再来这里看复检结果。</div>
 
     <div v-else-if="comparing" class="empty">对比中…</div>
@@ -57,6 +58,7 @@ const assets = ref<Asset[]>([])
 const bundles = ref<BundleSummary[]>([])
 const assetId = ref('')
 const error = ref('')
+const loaded = ref(false)
 const exporting = ref(false)
 const exportErr = ref('')
 const oldBundle = ref<BundleSummary | null>(null)
@@ -175,6 +177,6 @@ onMounted(async () => {
       assetId.value = (wanted && candidates.value.some(a => a.id === wanted)) ? wanted : (candidates.value[0]?.id ?? '')
       await compare()
     }
-  } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
+  } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' } finally { loaded.value = true }
 })
 </script>

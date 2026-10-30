@@ -13,6 +13,7 @@
   <div class="card">
     <h2>审计记录（按对象）</h2>
     <div v-if="error" class="error">{{ error }}</div>
+    <div v-else-if="!loaded" class="empty">加载中…</div>
     <div v-else-if="!assetGroups.length" class="empty">暂无审计记录。先在类别页对对象开始审计，或在上方上传事实包。</div>
     <template v-for="g in assetGroups" :key="g.assetId">
       <h3 style="margin:14px 0 6px">{{ g.name }} <span class="todo">{{ g.assetId }} · {{ g.hospital }} · 共 {{ g.bundles.length }} 次审计</span></h3>
@@ -148,6 +149,7 @@ const assets = ref<Asset[]>([])
 const failMap = ref<Map<string, number>>(new Map())
 const engId = ref('')
 const error = ref('')
+const loaded = ref(false)
 const file = ref<File | null>(null)
 const uploading = ref(false)
 const uploadMsg = ref('')
@@ -207,6 +209,7 @@ const baselinesMap = ref<Record<string, BaselineRow[]>>({})
 const selectedBaseline = ref<Record<string, string>>({})
 
 async function load() {
+  loaded.value = false
   try {
     bundles.value = filterByHospital(await api.bundles())
     try { assets.value = filterByHospital(await api.assets()) } catch { assets.value = [] }
@@ -222,7 +225,7 @@ async function load() {
     }
     failMap.value = m
   }
-  catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
+  catch (e) { error.value = e instanceof Error ? e.message : '加载失败' } finally { loaded.value = true }
 }
 
 async function upload() {

@@ -15,7 +15,7 @@
       <span class="todo" v-if="current">最近审计 {{ fmtLocal(current.imported_at) }}</span>
       <label class="todo"><input type="checkbox" v-model="latestOnly" /> 只看最新一轮评估</label>
     </div>
-    <div class="chips">
+    <div class="chips" v-if="firstLoaded">
       <button class="chip" :class="{ active: filter === '' }" @click="filter = ''">全部 {{ runRows.length }}</button>
       <button v-for="c in conclusions" :key="c" class="chip" :class="{ active: filter === c }" @click="filter = c">
         {{ conclLabel(c) }} {{ runRows.filter(f => f.conclusion === c).length }}
@@ -209,7 +209,7 @@
         </template>
       </tbody>
     </table>
-    <div v-else-if="rulesReady" class="empty">该审计记录暂无问题（或尚未评估，去「审计记录」页的工程师详情里点评估）。</div>
+    <div v-else-if="rulesReady && firstLoaded" class="empty">该审计记录暂无问题（或尚未评估，去「审计记录」页的工程师详情里点评估）。</div>
     <div v-else class="empty">加载中…</div>
   </div>
 </template>
@@ -246,6 +246,7 @@ const reviewForm = ref({ decision: 'confirmed', comment: '', reviewer: reviewerN
 const remForm = ref({ action: '', status: 'pending', acted_by: reviewerName() })
 const rulesMap = ref<Map<string, Rule>>(new Map())
 const rulesReady = ref(false)
+const firstLoaded = ref(false)
 let loadSeq = 0
 
 function ruleOf(f: Finding | string): Rule | undefined {
@@ -501,6 +502,6 @@ onMounted(async () => {
       }
     }
     await load()
-  } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
+  } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' } finally { firstLoaded.value = true }
 })
 </script>

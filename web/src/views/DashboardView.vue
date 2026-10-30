@@ -1,11 +1,12 @@
 <template>
   <div class="card">
-    <h2 style="font-size:22px; margin:6px 0">{{ conclusion }}</h2>
+    <h2 style="font-size:22px; margin:6px 0">{{ loaded ? conclusion : '加载中…' }}</h2>
   </div>
 
   <div class="card">
     <h2>需要你处理</h2>
-    <div v-if="!todoAlerts.length && !dueRows.length" class="empty">暂无待办</div>
+    <div v-if="!loaded" class="empty">加载中…</div>
+    <div v-else-if="!todoAlerts.length && !dueRows.length" class="empty">暂无待办</div>
     <div v-for="a in todoAlerts" :key="'al' + a.id" class="alert-row">
       <div class="inline-form" style="justify-content:space-between">
         <span>
@@ -60,7 +61,7 @@
 
   <div class="card">
     <h2>各类对象情况</h2>
-    <div class="stat-grid">
+    <div v-if="loaded" class="stat-grid">
       <div v-for="c in catCards" :key="c.key" class="stat clickable" :class="catAccent(c.key)" style="cursor:pointer" @click="gotoObjects(c.key)">
         <div class="num">{{ c.problem }}<span class="todo"> / {{ c.assets }} 个对象</span></div>
         <div class="lbl">
@@ -69,6 +70,7 @@
         </div>
       </div>
     </div>
+    <div v-else class="empty">加载中…</div>
   </div>
 
   <div class="card" v-if="showHospitalProgress">
@@ -115,6 +117,7 @@ const latestByAsset = ref(new Map<string, BundleSummary>())
 const hospitals = ref<Hospital[]>([])
 const rules = ref<Rule[]>([])
 const error = ref('')
+const loaded = ref(false)
 const failByAsset = ref<Map<string, number>>(new Map())
 const failsByAsset = ref<Map<string, Finding[]>>(new Map())
 
@@ -231,6 +234,7 @@ function latestOfAsset(assetId: string): BundleSummary | undefined {
 }
 
 async function load() {
+  loaded.value = false
   try {
     site.value = await loadSite()
     const [bs, as, hs, ru] = await Promise.all([
@@ -255,7 +259,7 @@ async function load() {
     failsByAsset.value = failsMap
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败'
-  }
+  } finally { loaded.value = true }
 }
 
 onMounted(load)
