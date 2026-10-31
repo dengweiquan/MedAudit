@@ -1,8 +1,8 @@
 <template>
   <div class="card">
-    <h2>定期自动复检（已开启 {{ items.length }}）</h2>
+    <h2>定期自动复检（<template v-if="loaded">已开启 {{ items.length }}</template><template v-else>加载中…</template>）</h2>
     <div class="msg err" v-if="!keyReady">服务端未配置证据密钥（MEDAUDIT_EVIDENCE_KEY），口令无法加密保存，暂不能开启。</div>
-    <table v-if="rows.length">
+    <table v-if="loaded && rows.length">
       <thead><tr><th>对象</th><th>状态</th><th>下次执行</th><th>上次结果</th><th>操作</th></tr></thead>
       <tbody>
         <tr v-for="r in rows" :key="r.a.id">
@@ -28,7 +28,8 @@
         </tr>
       </tbody>
     </table>
-    <div v-else class="empty">暂无可自动复检的对象（支持已登记连接参数的数据库、Linux/Windows/HP-UX 主机与中间件）。</div>
+    <div v-else-if="loaded" class="empty">暂无可自动复检的对象（支持已登记连接参数的数据库、Linux/Windows/HP-UX 主机与中间件）。</div>
+    <div v-else class="empty">加载中…</div>
 
     <div class="inline-form" v-if="editing" style="margin-top:10px">
       <span>{{ editing }}：</span>
@@ -65,6 +66,7 @@ const editingExisting = ref(false)
 const form = reactive({ cycle: 30, password: '' })
 const msg = ref('')
 const err = ref('')
+const loaded = ref(false)
 
 const rows = computed(() => {
   const byId = new Map(items.value.map(s => [s.asset_id, s]))
@@ -107,10 +109,13 @@ function turnOff(id: string) {
 }
 
 async function load() {
-  const [as, sc] = await Promise.all([api.assets(), api.schedules()])
-  assets.value = as
-  items.value = sc.items
-  keyReady.value = sc.key_ready
+  loaded.value = false
+  try {
+    const [as, sc] = await Promise.all([api.assets(), api.schedules()])
+    assets.value = as
+    items.value = sc.items
+    keyReady.value = sc.key_ready
+  } finally { loaded.value = true }
 }
 
 onMounted(() => load().catch(e => { err.value = e instanceof Error ? e.message : String(e) }))

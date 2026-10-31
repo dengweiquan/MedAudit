@@ -1,12 +1,13 @@
 <template>
   <div class="card">
     <h2>审计对象</h2>
-    <div class="row-actions" style="margin-bottom:10px">
+    <div v-if="loaded" class="row-actions" style="margin-bottom:10px">
       <button v-for="f in filters" :key="f.key" class="btn small" :class="{ primary: filter === f.key }" @click="filter = f.key">
         {{ f.label }}（{{ f.count }}）
       </button>
     </div>
     <div v-if="error" class="error">{{ error }}</div>
+    <div v-else-if="!loaded" class="empty">加载中…</div>
     <table v-else-if="shown.length">
       <thead><tr><th>对象名称</th><th>类别</th><th>上次审计</th><th>问题</th><th>操作</th></tr></thead>
       <tbody>
@@ -120,12 +121,15 @@ const apiAudits = ref<ApiAuditSummary[]>([])
 const apiByAsset = ref(new Map<string, ApiAuditSummary>())
 const baselinesMap = ref<Record<string, BaselineRow[]>>({})
 const error = ref('')
+const loaded = ref(false)
 const exporting = ref('')
 const exportErr = ref('')
 
 const filter = ref<CategoryKey | 'all'>('all')
 function initFilter() {
-  filter.value = OLD_KEY_FILTER[nav.view] ?? (nav.objectsFilter as CategoryKey | 'all') ?? 'all'
+  // objectsFilter 默认空串时 ?? 不会回落到 'all'（空串不是 null/undefined），
+  // 新会话直接点页签会恒得空筛选。括号 + || 使空串也回全部。
+  filter.value = (OLD_KEY_FILTER[nav.view] ?? (nav.objectsFilter as CategoryKey | 'all')) || 'all'
 }
 watch(() => [nav.view, nav.objectsFilter], initFilter)
 
@@ -197,6 +201,7 @@ function auditDisabledReason(a: Asset): string | null {
 }
 
 async function load() {
+  loaded.value = false
   try {
     assets.value = filterByHospital(await api.assets())
     bundles.value = filterByHospital(await api.bundles())
@@ -240,7 +245,7 @@ async function load() {
         try { baselinesMap.value[h.id] = await api.baselines(h.id) } catch { baselinesMap.value[h.id] = [] }
       }
     }
-  } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
+  } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' } finally { loaded.value = true }
 }
 
 async function doExport(a: Asset) {

@@ -53,7 +53,7 @@
   </div>
 
   <div class="card" v-if="adminTab === 'objects' && unclassified.length">
-    <h2>待分类资产（{{ unclassified.length }}）</h2>
+    <h2>待分类资产（<template v-if="loaded">{{ unclassified.length }}</template><template v-else>…</template>）</h2>
     <div class="todo" style="margin-bottom:8px">以下资产是早期导入自动生成的占位登记（类型 unknown），请选择正确类型保存，以便归入类别页管理。</div>
     <table>
       <thead><tr><th>ID</th><th>名称</th><th>医院</th><th>归类为</th><th></th></tr></thead>
@@ -200,7 +200,7 @@
   </div>
 
   <div class="card" v-if="adminTab === 'objects'">
-    <h2>资产总表（{{ assets.length }}）</h2>
+    <h2>资产总表（<template v-if="loaded">{{ assets.length }}</template><template v-else>…</template>）</h2>
     <div class="todo" v-if="viewHospital">当前只显示 {{ viewHospital }} 的资产；切回「全部医院」可见全部。</div>
     <div class="inline-form" v-if="delSelected.size" style="margin-bottom:8px">
       <span>已选 {{ delSelected.size }} 条</span>
@@ -249,7 +249,7 @@
   </div>
 
   <div class="card" v-if="adminTab === 'users'">
-    <h2>用户管理（{{ users.length }}）</h2>
+    <h2>用户管理（<template v-if="loaded">{{ users.length }}</template><template v-else>…</template>）</h2>
     <table v-if="users.length">
       <thead><tr><th>用户名</th><th>状态</th><th>强制改密</th><th>创建时间</th><th></th></tr></thead>
       <tbody>
@@ -366,6 +366,7 @@ async function batchDelete() {
   await load()
 }
 const error = ref('')
+const loaded = ref(false)
 const msg = ref('')
 const err = ref('')
 const hForm = ref({ id: '', name: '' })
@@ -374,6 +375,7 @@ const fixKind = reactive<Record<string, string>>({})
 const unclassified = computed(() => assets.value.filter(a => kindCategory(a.kind) === 'unknown'))
 
 async function load() {
+  loaded.value = false
   try {
     site.value = await loadSite()
     hospitals.value = await api.hospitals()
@@ -403,7 +405,7 @@ async function load() {
     if (!osForm.value.hospital_id && hospitals.value.length) osForm.value.hospital_id = hospitals.value[0].id
     if (!mwForm.value.hospital_id && hospitals.value.length) mwForm.value.hospital_id = hospitals.value[0].id
     if (!apiForm.value.hospital_id && hospitals.value.length) apiForm.value.hospital_id = hospitals.value[0].id
-  } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
+  } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' } finally { loaded.value = true }
 }
 
 // ---- M20 用户管理 ----

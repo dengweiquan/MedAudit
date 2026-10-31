@@ -11,6 +11,7 @@
       </label>
     </div>
     <div v-if="error" class="error">{{ error }}</div>
+    <div v-else-if="!loaded" class="empty">加载中…</div>
     <table v-else-if="baselines.length">
       <thead><tr><th>ID</th><th>目标</th><th>版本</th><th>允许清单</th><th>操作</th></tr></thead>
       <tbody>
@@ -100,6 +101,7 @@ const hospitals = ref<Hospital[]>([])
 const hospitalId = ref('')
 const baselines = ref<BaselineRow[]>([])
 const error = ref('')
+const loaded = ref(false)
 const msg = ref('')
 const err = ref('')
 const targets = ['db-oracle', 'db-mysql', 'db-sqlserver', 'db-postgres', 'os-linux', 'os-windows', 'os-hpux', 'mw-tomcat', 'mw-nginx', 'mw-weblogic', 'mw-iis']
@@ -189,9 +191,12 @@ function allowsOf(b: BaselineRow): Allow[] {
 
 async function load() {
   error.value = ''
-  if (!hospitalId.value) { baselines.value = []; return }
-  try { baselines.value = await api.baselines(hospitalId.value) }
-  catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
+  loaded.value = false
+  try {
+    if (!hospitalId.value) { baselines.value = []; return }
+    baselines.value = await api.baselines(hospitalId.value)
+  } catch (e) { error.value = e instanceof Error ? e.message : '加载失败' }
+  finally { loaded.value = true }
 }
 
 async function create() {
