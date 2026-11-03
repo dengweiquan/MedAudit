@@ -177,11 +177,12 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.pg.ssl_off", Version: "1",
+			ID: "db.pg.ssl_off", Version: "2",
 			Name:        "PostgreSQL 未启用 SSL",
 			Target:      facts.TargetDBPostgres,
 			Description: "ssl=off 时数据库连接不加密，口令与业务数据在网络上传输可被窃听。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Evidence:    EvidenceSource("pg.settings", "name", []string{"ssl"}, false),
 			Risk:        RiskMedium,
 			Remediation: "启用 ssl 并配置有效证书；客户端以 hostssl 限定加密连接。",
 		},
@@ -208,11 +209,12 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.pg.audit_off", Version: "1",
+			ID: "db.pg.audit_off", Version: "2",
 			Name:        "PostgreSQL 未启用审计日志",
 			Target:      facts.TargetDBPostgres,
 			Description: "logging_collector、log_connections 与 log_statement 均未表明审计开启时，数据库无审计轨迹，无法追溯登录与数据操作。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Evidence:    EvidenceSource("pg.settings", "name", []string{"logging_collector", "log_connections", "log_statement"}, false),
 			Risk:        RiskMedium,
 			Remediation: "启用 logging_collector 并打开 log_connections（至少记录连接审计），按需将 log_statement 设为 ddl 或 mod。",
 		},
@@ -228,9 +230,6 @@ var serverConfigRules = []struct {
 					vals[f.Attributes["name"]] = strings.ToLower(f.Attributes["setting"])
 					ev = append(ev, f.FactID)
 				}
-			}
-			if len(vals) == 0 {
-				return nil
 			}
 			if vals["logging_collector"] == "on" || vals["log_connections"] == "on" {
 				return nil
@@ -299,11 +298,35 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.mssql.password_policy", Version: "1",
+			ID: "db.mssql.password_policy", Version: "2",
 			Name:        "SQL Server 登录口令策略未启用",
 			Target:      facts.TargetDBSQLSrv,
 			Description: "SQL 登录的 CHECK_POLICY 或 CHECK_EXPIRATION 为 OFF 时，口令不受 Windows 口令策略约束或永不过期。",
 			Requires:    []facts.FactKind{facts.FactIdentity},
+			// 证据门控：旧包的主体事实无 is_policy_checked 属性时为 UNKNOWN；
+			// 实例确实无 SQL 登录时为空集，check 判 PASS（空集语义）。
+			Evidence: func(c *EvalContext) (EvidenceStatus, string) {
+				if st, reason := receiptVerdict(c, "mssql.server_principals"); st != EvidenceReady {
+					return st, reason
+				}
+				var sawLogin, sawAttr bool
+				for _, f := range c.Bundle.Facts {
+					if f.Source != "mssql.server_principals" || f.Status != facts.StatusObserved {
+						continue
+					}
+					if f.Attributes["principal_type"] != "SQL_LOGIN" {
+						continue
+					}
+					sawLogin = true
+					if _, ok := f.Attributes["is_policy_checked"]; ok {
+						sawAttr = true
+					}
+				}
+				if sawLogin && !sawAttr {
+					return EvidenceMissing, "mssql.server_principals 查询成功但 SQL_LOGIN 事实无 is_policy_checked 属性（旧包），无法判定"
+				}
+				return EvidenceReady, ""
+			},
 			Risk:        RiskMedium,
 			Remediation: "对 SQL 登录启用 CHECK_POLICY 与 CHECK_EXPIRATION；服务账号确需豁免的记入基线。",
 		},
@@ -340,11 +363,14 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.mssql.audit_off", Version: "1",
+			ID: "db.mssql.audit_off", Version: "2",
 			Name:        "SQL Server 未启用服务器审计",
 			Target:      facts.TargetDBSQLSrv,
 			Description: "sys.server_audits 中无启用状态的服务器审计时，数据库操作无审计轨迹。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			// 证据门控：收据成功且零行时 Ready，由 check 判“未配置任何审计”（FAIL）；
+			// 被拒绝 / 失败 / 无收据时 UNKNOWN（区分无配置、无权限、未采集）。
+			Evidence:    EvidenceSource("mssql.server_audits", "", nil, true),
 			Risk:        RiskMedium,
 			Remediation: "创建并启用服务器审计（及数据库审计规范），审计目标指向受保护的存储。",
 		},
@@ -360,15 +386,20 @@ var serverConfigRules = []struct {
 					enabled = true
 				}
 			}
-			if enabled || len(ev) == 0 {
+			if enabled {
 				return nil
 			}
 			if c.Baseline.Allowed("server", "audit", "server_audits", "") {
 				return nil
 			}
+			detail := "未启用服务器审计（sys.server_audits 中无启用项）"
+			if len(ev) == 0 {
+				// 证据门控已保证收据成功：零行即“未配置任何审计”，不是“未采集”。
+				detail = "未启用服务器审计（sys.server_audits 查询成功但无任何审计配置）"
+			}
 			return []CheckHit{{
 				Subject:  "server",
-				Detail:   "未启用服务器审计（sys.server_audits 中无启用项）",
+				Detail:   detail,
 				Evidence: ev,
 			}}
 		},
@@ -412,11 +443,12 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.mysql.password_policy", Version: "1",
+			ID: "db.mysql.password_policy", Version: "2",
 			Name:        "MySQL 口令策略弱",
 			Target:      facts.TargetDBMySQL,
-			Description: "validate_password 策略为 LOW 或长度要求低于 8 位时，弱口令可直接通过；未采集到该变量时本规则不判（以采集模板覆盖为准）。",
+			Description: "validate_password 策略为 LOW 或长度要求低于 8 位时，弱口令可直接通过；未采集到该变量时结论为证据不足（UNKNOWN），不判通过。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Evidence:    EvidenceSource("mysql.server_config", "name", []string{"validate_password.policy", "validate_password.length"}, false),
 			Risk:        RiskMedium,
 			Remediation: "安装并启用 validate_password 组件，策略设为 MEDIUM 及以上、长度至少 8 位。",
 		},
@@ -506,11 +538,12 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.oracle.audit_trail_off", Version: "1",
+			ID: "db.oracle.audit_trail_off", Version: "2",
 			Name:        "Oracle 未启用审计",
 			Target:      facts.TargetDBOracle,
 			Description: "AUDIT_TRAIL=NONE 时数据库审计完全关闭，无法追溯用户行为。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Evidence:    EvidenceSource("ora.parameters", "name", []string{"AUDIT_TRAIL"}, false),
 			Risk:        RiskMedium,
 			Remediation: "将 AUDIT_TRAIL 设为 DB（或 DB_EXTENDED）并重启生效；审计记录定期归档。",
 		},

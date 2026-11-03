@@ -7,6 +7,35 @@ import (
 	"medaudit/internal/facts"
 )
 
+// sshdEvidence 是两条 sshd 规则共用的证据门控：
+//   - 读到 present=true 的 Observed 事实 → Ready；
+//   - present=false（sshd_config 不存在）→ NotApplicable（未安装/未配置 sshd）；
+//   - 读事实被拒绝 → Missing（权限不足）；
+//   - 其余（无事实）按收据区分：无收据/失败 → Missing，成功但无事实 → Missing（包不一致，不判通过）。
+func sshdEvidence(c *EvalContext) (EvidenceStatus, string) {
+	for _, f := range c.Bundle.Facts {
+		if f.Source != "linux.sshd" {
+			continue
+		}
+		switch f.Status {
+		case facts.StatusObserved:
+			if f.Attributes["present"] == "true" {
+				return EvidenceReady, ""
+			}
+		case facts.StatusUnsupported:
+			if f.Attributes["present"] == "false" {
+				return EvidenceNotApplicable, "未安装/未配置 sshd（sshd_config 不存在），本规则不适用"
+			}
+		case facts.StatusPermissionDenied:
+			return EvidenceMissing, "sshd_config 不可读（权限不足），无法判定"
+		}
+	}
+	if st, reason := receiptVerdict(c, "linux.sshd"); st != EvidenceReady {
+		return st, reason
+	}
+	return EvidenceMissing, "linux.sshd 查询成功但无 sshd 配置事实，无法判定"
+}
+
 // linuxExtraRules Linux 补盲规则（M4-4b，sudoers 维度）。
 var linuxExtraRules = []struct {
 	spec  RuleSpec
@@ -74,11 +103,12 @@ var linuxExtraRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.linux.ssh_password_auth", Version: "1",
+			ID: "os.linux.ssh_password_auth", Version: "2",
 			Name:        "sshd 允许口令鉴别",
 			Target:      facts.TargetOSLinux,
 			Description: "sshd 允许口令鉴别时，远程管理依赖口令（可爆破、可窃听重放），应改用密钥鉴别。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Evidence:    sshdEvidence,
 			Risk:        RiskMedium,
 			Remediation: "将 PasswordAuthentication 设为 no，仅允许密钥登录；确需口令通道的记入基线。",
 		},
@@ -114,11 +144,12 @@ var linuxExtraRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.linux.ssh_root_login", Version: "1",
+			ID: "os.linux.ssh_root_login", Version: "2",
 			Name:        "sshd 允许 root 口令登录",
 			Target:      facts.TargetOSLinux,
 			Description: "PermitRootLogin=yes 时 root 可直接口令登录，远程爆破一旦成功即获最高权限。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Evidence:    sshdEvidence,
 			Risk:        RiskHigh,
 			Remediation: "将 PermitRootLogin 设为 no 或 prohibit-password，root 仅经普通账号 sudo 提权。",
 		},

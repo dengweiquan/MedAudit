@@ -92,6 +92,7 @@
           "truncated": {"type": "boolean"},
           "status": {"type": "string", "enum": ["ok", "partial", "failed", "denied"]},
           "error_stage": {"type": "string"},
+          "error": {"type": "string"},
           "visibility": {"type": "string"},
           "evidence_ref": {"type": "string"}
         }

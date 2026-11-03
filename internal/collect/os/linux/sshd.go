@@ -112,6 +112,7 @@ func collectSshd(b *facts.FactBundle, dir string, addReceipt func(facts.Receipt)
 		})
 		receipt.Status = "failed"
 		receipt.ErrorStage = "read"
+		receipt.Error = err.Error()
 		finish()
 		return
 	}

@@ -140,8 +140,10 @@ type Receipt struct {
 	Truncated       bool      `json:"truncated"`
 	Status          string    `json:"status"`
 	ErrorStage      string    `json:"error_stage,omitempty"`
-	Visibility      string    `json:"visibility,omitempty"`
-	EvidenceRef     string    `json:"evidence_ref,omitempty"`
+	// Error 失败原因原文（采集失败/被拒绝时；旧包无此字段）。
+	Error       string `json:"error,omitempty"`
+	Visibility  string `json:"visibility,omitempty"`
+	EvidenceRef string `json:"evidence_ref,omitempty"`
 }
 
 // FactBundle v1 事实包。

@@ -27,6 +27,10 @@ type RuleSpec struct {
 	Description string
 	// Requires 评估所需的最少事实 kinds；缺失时结论为 UNKNOWN。
 	Requires []facts.FactKind
+	// Evidence 可选证据门控：非 nil 时评估先于 check 执行；
+	// Missing → UNKNOWN，Partial → 有命中 FAIL、无命中 UNKNOWN，
+	// NotApplicable → NOT_APPLICABLE。nil 的旧规则保持原有语义。
+	Evidence EvidenceCheck
 	Risk     Risk
 	// Remediation 整改建议。
 	Remediation string
@@ -176,7 +180,40 @@ func (r *Registry) Evaluate(b *facts.FactBundle, baseline *Baseline) []Technical
 			})
 			continue
 		}
-		hits := e.check(ctx)
+		// 可选证据门控（兼容旧规则：未声明时跳过，保持原有语义）。
+		var hits []CheckHit
+		if e.spec.Evidence != nil {
+			switch st, reason := e.spec.Evidence(ctx); st {
+			case EvidenceMissing:
+				results = append(results, TechnicalResult{
+					RuleID: spec.ID, RuleVersion: spec.Version, RuleName: spec.Name,
+					Target: spec.Target, Conclusion: facts.ConclusionUnknown,
+					Risk: spec.Risk, Missing: reason, Detail: "证据不足，无法判定",
+				})
+				continue
+			case EvidenceNotApplicable:
+				results = append(results, TechnicalResult{
+					RuleID: spec.ID, RuleVersion: spec.Version, RuleName: spec.Name,
+					Target: spec.Target, Conclusion: facts.ConclusionNotApplicable,
+					Risk: spec.Risk, Detail: reason,
+				})
+				continue
+			case EvidencePartial:
+				hits = e.check(ctx)
+				if len(hits) == 0 {
+					results = append(results, TechnicalResult{
+						RuleID: spec.ID, RuleVersion: spec.Version, RuleName: spec.Name,
+						Target: spec.Target, Conclusion: facts.ConclusionUnknown,
+						Risk: spec.Risk, Missing: reason, Detail: "证据不完整，无法确认通过",
+					})
+					continue
+				}
+			default: // EvidenceReady
+				hits = e.check(ctx)
+			}
+		} else {
+			hits = e.check(ctx)
+		}
 		if len(hits) == 0 {
 			results = append(results, TechnicalResult{
 				RuleID: spec.ID, RuleVersion: spec.Version, RuleName: spec.Name,

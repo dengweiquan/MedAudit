@@ -44,7 +44,7 @@ db.mysql.global_admin	FAIL	high	root@localhost
 db.mysql.grant_option	PASS	medium	
 db.mysql.local_infile	FAIL	medium	global
 db.mysql.name_resolve_on	PASS	low	
-db.mysql.password_policy	PASS	medium	
+db.mysql.password_policy	UNKNOWN	medium	
 db.mysql.remote_no_tls	FAIL	medium	app_any@%
 db.mysql.remote_no_tls	FAIL	medium	app_readonly@%
 db.mysql.remote_no_tls	FAIL	medium	app_ro@%
