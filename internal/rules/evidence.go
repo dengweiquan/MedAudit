@@ -143,20 +143,39 @@ func EvidenceSourceValue(source, keyAttr string, keys []string, valueAttr string
 	}
 }
 
-// pgBoolValue PG 布尔型设置的可接受值（pg_settings 的布尔量纲）。
-func pgBoolValue(v string) bool {
+// pgParseBool PG 布尔量纲的统一解析（门控与规则共用）：去空白、大小写不敏感；
+// on/true/yes/1 → true，off/false/no/0 → false；其余不可解析。
+// 门控只认“可解析”，规则按解析后的布尔值判定——二者不得各自定义量纲，
+// 否则门控放行的值（如 false/no/0、带空格的 off）会被规则漏判为通过。
+func pgParseBool(v string) (bool, bool) {
 	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "on", "off", "true", "false", "yes", "no", "1", "0":
-		return true
+	case "on", "true", "yes", "1":
+		return true, true
+	case "off", "false", "no", "0":
+		return false, true
 	}
-	return false
+	return false, false
 }
 
-// auditTrailValue Oracle AUDIT_TRAIL 的可接受值（传统审计参数量纲）。
-func auditTrailValue(v string) bool {
-	switch strings.ToUpper(strings.TrimSpace(v)) {
+// pgBoolValue PG 布尔型设置的可接受值（门控用 pgParseBool 的可解析性）。
+func pgBoolValue(v string) bool {
+	_, ok := pgParseBool(v)
+	return ok
+}
+
+// auditTrailNorm Oracle AUDIT_TRAIL 的统一规范化（门控与规则共用）：
+// 去空白转大写，返回规范值与是否在量纲内。
+func auditTrailNorm(v string) (string, bool) {
+	n := strings.ToUpper(strings.TrimSpace(v))
+	switch n {
 	case "NONE", "OS", "DB", "XML", "DB,EXTENDED", "XML,EXTENDED":
-		return true
+		return n, true
 	}
-	return false
+	return "", false
+}
+
+// auditTrailValue Oracle AUDIT_TRAIL 的可接受值（门控用 auditTrailNorm 的量纲内判定）。
+func auditTrailValue(v string) bool {
+	_, ok := auditTrailNorm(v)
+	return ok
 }

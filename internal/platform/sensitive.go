@@ -316,6 +316,19 @@ func sensitiveSourceComplete(b *facts.FactBundle, source string) (bool, string) 
 	return true, "ok"
 }
 
+// sensitiveSourceCredible 某授权来源的事实是否可信：收据存在且状态为 ok 或
+// partial（采集实际读到了数据，观察到的授权事实可信）。收据被拒/失败/缺失时，
+// 该来源的 observed 事实不能作为确定暴露证据（可能是残留或不可信快照）：
+// partial 加可信命中可以报告，没有可信来源则未确认。
+func sensitiveSourceCredible(b *facts.FactBundle, source string) bool {
+	for _, rc := range b.Receipts {
+		if rc.TemplateID == source && (rc.Status == "ok" || rc.Status == "partial") {
+			return true
+		}
+	}
+	return false
+}
+
 // sensitiveSourcesComplete 该资产类型相关授权来源是否全部完整。
 // Oracle：tab_privs + sys_privs 必备；cdb_sys_privs 仅当包内有该来源的
 // 事实或收据时才要求（非 CDB 无此来源，不强求）。
@@ -388,13 +401,18 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 		sec.Notes = append(sec.Notes, "采集不完整（PARTIAL），暴露面可能低估。")
 	}
 	// MySQL 库名大小写：按包内 lower_case_table_names 事实（0 → 区分，
-	// 1/2 → 不区分）；未采集或非法时保守按区分处理，避免在
-	// lower_case_table_names=0 的实例上跨库误报。
+	// 1/2 → 不区分）；事实本身须有可信收据（mysql.server_config ok/partial）
+	// 背书，否则模式仍未知。模式未知时：库名精确相等仍可匹配；仅大小写不同
+	// 的授权无法确认是否匹配（不计命中，也不判不匹配，见标签不定注记）。
 	mysqlCaseSensitive, mysqlCaseKnown := true, false
 	if adapter == facts.TargetDBMySQL {
+		configCredible := sensitiveSourceCredible(b, "mysql.server_config")
 		for _, f := range b.Facts {
 			if f.Source != "mysql.server_config" || f.Attributes["name"] != "lower_case_table_names" {
 				continue
+			}
+			if !configCredible {
+				break
 			}
 			switch strings.TrimSpace(f.Attributes["value"]) {
 			case "1", "2":
@@ -405,7 +423,7 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 			break
 		}
 		if !mysqlCaseKnown {
-			sec.Notes = append(sec.Notes, "MySQL 实例 lower_case_table_names 未采集，库名按区分大小写匹配（保守处理；新版采集模板已含该变量，重采后按实例配置匹配）。")
+			sec.Notes = append(sec.Notes, "MySQL 实例 lower_case_table_names 未采集或无可信收据，库名大小写模式未知：库名精确相等仍可匹配，仅大小写不同的授权无法确认是否匹配（见标签注记）。")
 		}
 	}
 	matchMySQLDB := func(a, b string) bool {
@@ -458,7 +476,8 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				"列级标记：现有事实为表级粒度，列级授权未采集；表级 broad 授权可达该列时仍计暴露，列级专属授权无法确认。")
 		}
 		var labelExposures []SensitiveExposure
-		add := func(kind, subject, priv string, evidence []string, scope string, viaRole string) {
+		var labelCredible []bool // 与 labelExposures 对齐：该暴露的事实来源是否可信
+		add := func(kind, subject, priv string, evidence []string, scope string, viaRole string, src string) {
 			ex := SensitiveExposure{
 				LabelID: l.ID, Object: display, Kind: kind, Subject: subject,
 				Privilege: priv, Evidence: evidence, Risk: "high",
@@ -473,12 +492,18 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				ex.Note = "已基线放行（合法豁免），不计入违规暴露。"
 			}
 			labelExposures = append(labelExposures, ex)
+			labelCredible = append(labelCredible, sensitiveSourceCredible(b, src))
 		}
+		// mysqlCaseIndeterminate 本标签是否存在模式未知且仅大小写不同的库级授权
+		// （无法确认是否匹配，不计命中、不判不匹配）。
+		mysqlCaseIndeterminate := false
 		switch adapter {
 		case facts.TargetDBOracle:
-			// 容器归属：标签库名（PDB）须与本包容器（Scope.Container，采集连接的
-			// 服务名）对应；容器身份缺失或不符时不作跨容器匹配，整标签未确认
-			// （同名表在不同 PDB 是不同对象；Scope.Instance 为写死占位值，不可信）。
+			// 容器归属：标签库名（PDB）须与本包容器（Scope.Container，采集器以
+			// 服务端 SYS_CONTEXT CON_NAME 确认的实际容器名，非连接服务名）对应；
+			// 容器身份缺失或不符时不作跨容器匹配，整标签未确认
+			// （同名表在不同 PDB 是不同对象；Scope.Instance 为写死占位值，不可信；
+			// 服务名与 PDB 名可能不同，服务名不得充当容器身份）。
 			containerMismatch := false
 			if l.Database != "" {
 				switch {
@@ -503,7 +528,7 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				if !ok || !matchName(adapter, owner, l.Schema) || !matchName(adapter, tbl, l.Table) {
 					continue
 				}
-				add("public", "PUBLIC", f.Attributes["privilege"], []string{f.FactID}, f.Scope, "")
+				add("public", "PUBLIC", f.Attributes["privilege"], []string{f.FactID}, f.Scope, "", "ora.tab_privs")
 			}
 			// ANY 表权限：SYS 模式排除（字典保护）；DBA 角色按 M35 豁免
 			// （固有管理权限，不报警）；角色传递只计默认激活角色。
@@ -522,7 +547,7 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 						if isRole {
 							via = f.Subject
 						}
-						add("any", u, priv, []string{f.FactID}, f.Scope, via)
+						add("any", u, priv, []string{f.FactID}, f.Scope, via, f.Source)
 						if common {
 							labelExposures[len(labelExposures)-1].Note = "CONTAINER=ALL：该权限可达全部 PDB，本节只计本包。"
 						}
@@ -541,7 +566,7 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					!matchName(adapter, f.Attributes["object"], l.Table) {
 					continue
 				}
-				add("public", "PUBLIC", f.Attributes["privilege"], []string{f.FactID}, f.Scope, "")
+				add("public", "PUBLIC", f.Attributes["privilege"], []string{f.FactID}, f.Scope, "", "pg.object_privileges")
 			}
 			snap.Notes = append(snap.Notes,
 				"PG 超级用户不受 ACL 限制，其可达性不在授权事实中体现，需另行核查超级用户清单。")
@@ -561,9 +586,18 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				switch {
 				case f.Scope == "*.*":
 					kind = "global"
-				case strings.HasSuffix(f.Scope, ".*") &&
-					matchMySQLDB(strings.TrimSuffix(f.Scope, ".*"), effDB):
-					kind = "database-wide"
+				case strings.HasSuffix(f.Scope, ".*"):
+					dbName := strings.TrimSuffix(f.Scope, ".*")
+					if matchMySQLDB(dbName, effDB) {
+						kind = "database-wide"
+					} else if !mysqlCaseKnown && strings.EqualFold(dbName, effDB) {
+						// 模式未知且仅大小写不同：无法确认是否匹配，
+						// 不计命中，也不判不匹配（标签置未确认）。
+						mysqlCaseIndeterminate = true
+						continue
+					} else {
+						continue
+					}
 				default:
 					continue
 				}
@@ -573,7 +607,7 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					if isRole {
 						via = f.Subject
 					}
-					add(kind, u, priv, []string{f.FactID}, f.Scope, via)
+					add(kind, u, priv, []string{f.FactID}, f.Scope, via, f.Source)
 				}
 			}
 		case facts.TargetDBSQLSrv:
@@ -602,8 +636,19 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 			snap.Status = "unconfirmed"
 			snap.Notes = append(snap.Notes, "该资产类型暂无 broad 授权匹配口径，无法判定。")
 		}
+		// 确定暴露只计来源可信的命中：partial 加可信命中可以报告；
+		// 来源被拒/失败/缺收据的事实不作确定证据（不计暴露，标签未确认）。
+		var definiteExposures []SensitiveExposure
+		droppedViolations := 0
+		for i, e := range labelExposures {
+			if labelCredible[i] {
+				definiteExposures = append(definiteExposures, e)
+			} else if !e.Exempt {
+				droppedViolations++
+			}
+		}
 		violations := 0
-		for _, e := range labelExposures {
+		for _, e := range definiteExposures {
 			if !e.Exempt {
 				violations++
 			}
@@ -612,20 +657,29 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 			// 已有可靠暴露证据：即使其他来源不完整，风险仍可报告。
 			snap.Status = "exposed"
 		} else if snap.Status != "unconfirmed" {
-			// 无违规暴露时，只有相关来源全部完整检查且无命中，才可称“未发现”；
-			// 来源缺失、失败或截断 → 未确认（Web 不显绿色），缺事实不等于安全。
-			if ok, incomplete := sensitiveSourcesComplete(b, adapter); !ok {
+			if droppedViolations > 0 {
+				// 有疑似命中但无可信来源：不能把不可信事实当确定证据。
+				snap.Status = "unconfirmed"
+				snap.Notes = append(snap.Notes, fmt.Sprintf("有 %d 条疑似 broad 授权事实，但其来源收据不可信（被拒/失败/缺失），不能作为确定暴露证据；请重采后复评。", droppedViolations))
+			} else if mysqlCaseIndeterminate {
+				// MySQL 模式未知且仅大小写不同的库级授权：无法确认是否匹配，
+				// 不判“未发现”。
+				snap.Status = "unconfirmed"
+				snap.Notes = append(snap.Notes, "库名大小写模式未知（lower_case_table_names 未采集或无可信收据），且存在仅大小写不同的库级授权，无法确认是否覆盖该库；不判“未发现”。")
+			} else if ok, incomplete := sensitiveSourcesComplete(b, adapter); !ok {
+				// 无违规暴露时，只有相关来源全部完整检查且无命中，才可称“未发现”；
+				// 来源缺失、失败或截断 → 未确认（Web 不显绿色），缺事实不等于安全。
 				snap.Status = "unconfirmed"
 				snap.Notes = append(snap.Notes, "相关授权来源采集不完整（"+strings.Join(incomplete, "、")+"），无法确认无 broad 授权；缺授权事实不等于安全。")
 			} else {
 				snap.Status = "no-broad-grant"
-				if len(labelExposures) > 0 {
+				if len(definiteExposures) > 0 {
 					snap.Notes = append(snap.Notes, "匹配到的 broad 授权均已基线放行，不计入违规暴露。")
 				}
 			}
 		}
 		sec.Labels = append(sec.Labels, snap)
-		sec.Exposures = append(sec.Exposures, labelExposures...)
+		sec.Exposures = append(sec.Exposures, definiteExposures...)
 	}
 	if len(labels) == 0 {
 		sec.Notes = append(sec.Notes, "本对象未标记敏感对象；未标记不等于不敏感。")

@@ -21,11 +21,13 @@
 - 结果语义：
   - `SQLNET.ENCRYPTION_SERVER=required` → 要求原生加密；
   - `requested/accepted/rejected` → 未要求；
-  - 入口文件本身缺失 → 取 Oracle 缺省 `accepted`（事实标注 `file_missing=true`，明细中明示）；
+  - 入口文件本身确实不存在（ENOENT）→ 取 Oracle 缺省 `accepted`（事实标注 `file_missing=true`，明细中明示）；
   - 入口文件存在但其 IFILE 链内文件缺失/不可读 → 链内解析失败，不猜默认值：
     出 Unsupported 事实并记 partial 收据，规则 UNKNOWN（入口缺失与链内失败严格区分，
     后者不得误入“入口缺失”分支）；
-  - 入口文件不可读（权限拒绝等）→ PermissionDenied 事实，规则 UNKNOWN；
+  - 入口文件权限拒绝（EACCES）→ PermissionDenied 事实，规则 UNKNOWN；
+    入口 I/O 错误（EIO 等）→ Unsupported 事实并记 partial 收据，规则 UNKNOWN；
+    入口错误按类型区分，只有确实不存在才按入口缺失处理；
   - 实例无法确定（无 oratab / 无 Home）→ 盘点事实 `oracle_homes=0`，规则 NA（宿主无 Oracle）。
   - 证据门控收据先行：收据缺失/失败/截断时，安全的 Observed 事实也不判 Ready；
     失败的枚举不得被「无 Oracle Home」盘点事实掩盖为不适用。

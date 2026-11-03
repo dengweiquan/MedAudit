@@ -16,10 +16,11 @@ import (
 //     readonly-policy）、expectation（public | authenticated | admin_only |
 //     owner_or_admin）、identity、outcome（PASS | FAIL | UNKNOWN | NOT_RUN）、
 //     status（HTTP 状态码，0 = 传输错误）、detail（引擎原文，经脱敏）。
-//   - 管理员端点直接探针另带 anonymous 属性：true（匿名身份）、false（已认证身份）、
+//   - 直接探针另带 anonymous 属性：true（匿名身份）、false（已认证身份）、
 //     缺失（老报告无匿名身份清单，无法区分）。合规规则据此分流：
-//     anonymous=true 的 FAIL 归未认证规则；false 或缺失的 FAIL 归垂直越权规则
-//     （匿名本就是非管理员的子集，归垂直不算误报；缺失时未认证规则不认领）。
+//     anonymous=true 的探针为匿名证据（未认证规则的负向覆盖与 FAIL 归属只认此类）；
+//     false 的探针不是匿名证据（管理员端点的 false FAIL 归垂直越权规则）；
+//     缺失的探针无法归属（未认证规则不认领，覆盖缺口按 UNKNOWN 处理）。
 //   - 正向对照事实（control 属性）由同报告的差分 2xx 派生，不新增探针：
 //     public_reachable（公开端点匿名 2xx）、authed_reachable（需认证端点已认证 2xx）、
 //     admin_reachable（管理员端点管理员 2xx）、self_reachable（属主自访问 2xx）、
@@ -65,8 +66,12 @@ func ToFacts(rep *Report) []facts.Fact {
 			"status":      fmt.Sprintf("%d", c.Status),
 			"detail":      facts.RedactSecrets(c.Detail),
 		}
-		// 管理员端点直接探针的匿名标记（仅新报告可区分）。
-		if c.Probe == "direct" && c.Expectation == AccessAdminOnly && knownAnon {
+		// 直接探针的身份类型标记（仅新报告可区分）：anonymous=true 为匿名
+		// 身份的探测，false 为已认证身份的探测，缺失为老报告（无匿名身份清单）。
+		// 未认证规则只认 anonymous=true 的探针为匿名证据——普通用户的拒答
+		// 不得充当匿名探针（无匿名身份时匿名从未被测，须 UNKNOWN）；管理员端点
+		// 的 FAIL 分流与垂直规则沿用此标记（缺失时只归垂直，不认领为未认证）。
+		if c.Probe == "direct" && knownAnon {
 			if anon[c.Identity] {
 				attrs["anonymous"] = "true"
 			} else {

@@ -1,6 +1,6 @@
 # MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
 id: db.oracle.audit_trail_off
-version: "4"
+version: "5"
 name: Oracle 传统审计未启用
 target: db-oracle
 risk: medium

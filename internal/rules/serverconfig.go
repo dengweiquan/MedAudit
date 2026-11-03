@@ -333,7 +333,7 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.pg.ssl_off", Version: "3",
+			ID: "db.pg.ssl_off", Version: "4",
 			Name:        "PostgreSQL 未启用 SSL",
 			Target:      facts.TargetDBPostgres,
 			Description: "ssl=off 时数据库连接不加密，口令与业务数据在网络上传输可被窃听。",
@@ -348,7 +348,9 @@ var serverConfigRules = []struct {
 				if f.Source != "pg.settings" || f.Attributes["name"] != "ssl" {
 					continue
 				}
-				if !strings.EqualFold(f.Attributes["setting"], "off") {
+				// 与门控共用 pgParseBool：解析为 false 即 ssl 未启用（off/false/no/0
+				// 及其大小写/空白变体均命中）；不可解析时门控已判 UNKNOWN，不到此处。
+				if on, ok := pgParseBool(f.Attributes["setting"]); !ok || on {
 					continue
 				}
 				if c.Baseline.Allowed("server", "settings", "ssl_off", "") {
@@ -694,7 +696,7 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.oracle.audit_trail_off", Version: "4",
+			ID: "db.oracle.audit_trail_off", Version: "5",
 			Name:        "Oracle 传统审计未启用",
 			Target:      facts.TargetDBOracle,
 			Description: "AUDIT_TRAIL=NONE 时传统审计关闭，传统审计轨迹缺失。本规则只评价传统审计，不评价统一审计（Unified Auditing）：12c+ 环境即使 AUDIT_TRAIL=NONE 也可能已启用统一审计，需另查统一审计模式与策略；统一审计不在本规则评价范围，本规则结论不等于“数据库完全无审计”。",
@@ -709,7 +711,9 @@ var serverConfigRules = []struct {
 				if f.Source != "ora.parameters" || f.Attributes["name"] != "AUDIT_TRAIL" {
 					continue
 				}
-				if !strings.EqualFold(f.Attributes["value"], "NONE") {
+				// 与门控共用 auditTrailNorm：规范值 NONE 即传统审计关闭
+				// （带空格/小写变体同样命中）；量纲外的值门控已判 UNKNOWN。
+				if norm, ok := auditTrailNorm(f.Attributes["value"]); !ok || norm != "NONE" {
 					continue
 				}
 				if c.Baseline.Allowed("server", "parameter", "audit_trail", "") {

@@ -152,13 +152,36 @@ func winEvidence(source string, match func(facts.Fact) bool) EvidenceCheck {
 	}
 }
 
+// winParseInt / winParseUint32 Windows 数值策略的统一解析（门控与规则共用）：
+// 去空白后解析；min_length/lockout 为 64 位整数量纲，max_age 为 32 位无符号
+// 量纲（TIMEQ_FOREVER = 0xFFFFFFFF）。门控只认“可解析”，规则按解析后的值判定——
+// 二者不得各自定义解析，否则门控放行的值（如带空格的永不过期值、超 uint32
+// 的越界值、带空格的 0）会被规则的解析失败跳过而误判 PASS。
+func winParseInt(s string) (int, bool) {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	return n, err == nil
+}
+
+func winParseUint32(s string) (uint32, bool) {
+	v, err := strconv.ParseUint(strings.TrimSpace(s), 10, 32)
+	return uint32(v), err == nil
+}
+
 // winAttrInt 事实含某可解析为整数的属性。数值策略的原始值须可解析，
 // 否则 check 的解析失败会被跳过（无命中）而误判 PASS——存在键名不等于
 // 值可用，门控须验证值而非只核对键名。
 func winAttrInt(attr string) func(facts.Fact) bool {
 	return func(f facts.Fact) bool {
-		_, err := strconv.Atoi(strings.TrimSpace(f.Attributes[attr]))
-		return err == nil
+		_, ok := winParseInt(f.Attributes[attr])
+		return ok
+	}
+}
+
+// winAttrUint32 事实含某可解析为 32 位无符号整数的属性（max_age 专用）。
+func winAttrUint32(attr string) func(facts.Fact) bool {
+	return func(f facts.Fact) bool {
+		_, ok := winParseUint32(f.Attributes[attr])
+		return ok
 	}
 }
 
@@ -191,7 +214,7 @@ var windowsPasswordRules = []struct {
 }{
 	{
 		spec: RuleSpec{
-			ID: "os.windows.password_min_length", Version: "2",
+			ID: "os.windows.password_min_length", Version: "3",
 			Name:        "Windows 口令最小长度不足",
 			Target:      facts.TargetOSWindows,
 			Description: "本地 SAM 或域默认策略的口令最小长度低于项目基线 8 位时，短口令易被爆破。阈值 8 位为项目基线选择（与 MySQL 口令长度口径一致），非未核实标准的规定值；覆盖范围见事实 scope 与 machine_role：未加入、工作组与域成员为本地 SAM 策略（域成员本机查询不等于域账号默认策略），域控为域默认策略；细粒度用户策略（FGPP/PSO）未覆盖。",
@@ -206,8 +229,8 @@ var windowsPasswordRules = []struct {
 				if f.Source != "win.password_policy" || f.Status != facts.StatusObserved {
 					continue
 				}
-				n, err := strconv.Atoi(f.Attributes["min_password_length"])
-				if err != nil || n >= 8 {
+				n, ok := winParseInt(f.Attributes["min_password_length"])
+				if !ok || n >= 8 {
 					continue
 				}
 				if c.Baseline.Allowed("password-policy", "policy", "min_length", f.Attributes["scope"]) {
@@ -228,12 +251,12 @@ var windowsPasswordRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.windows.password_max_age_never", Version: "2",
+			ID: "os.windows.password_max_age_never", Version: "3",
 			Name:        "Windows 口令永不过期",
 			Target:      facts.TargetOSWindows,
 			Description: "MaximumPasswordAge 为 TIMEQ_FOREVER（永不过期）时，口令泄漏后长期有效。本规则只判永不过期，属于基础子集：有限但过长的周期尚未判定（实际值保留在事实 max_password_age_sec 中），阈值遵循组织基线，不随意补天数。覆盖范围见事实 scope 与 machine_role（未加入/工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
-			Evidence:    winEvidence("win.password_policy", winAttrInt("max_password_age_sec")),
+			Evidence:    winEvidence("win.password_policy", winAttrUint32("max_password_age_sec")),
 			Risk:        RiskMedium,
 			Remediation: "为口令设置有限的最长使用期；确需永不过期的服务账号记入基线。",
 		},
@@ -243,8 +266,8 @@ var windowsPasswordRules = []struct {
 				if f.Source != "win.password_policy" || f.Status != facts.StatusObserved {
 					continue
 				}
-				v, err := strconv.ParseUint(f.Attributes["max_password_age_sec"], 10, 32)
-				if err != nil || v != 0xFFFFFFFF {
+				v, ok := winParseUint32(f.Attributes["max_password_age_sec"])
+				if !ok || v != 0xFFFFFFFF {
 					continue
 				}
 				if c.Baseline.Allowed("password-policy", "policy", "max_age_never", f.Attributes["scope"]) {
@@ -261,7 +284,7 @@ var windowsPasswordRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.windows.password_lockout_disabled", Version: "2",
+			ID: "os.windows.password_lockout_disabled", Version: "3",
 			Name:        "Windows 未启用登录失败锁定",
 			Target:      facts.TargetOSWindows,
 			Description: "LockoutThreshold=0（锁定阈值关闭）时，口令可被无限次尝试爆破。覆盖范围见事实 scope 与 machine_role（未加入/工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
@@ -276,7 +299,7 @@ var windowsPasswordRules = []struct {
 				if f.Source != "win.password_policy" || f.Status != facts.StatusObserved {
 					continue
 				}
-				if f.Attributes["lockout_threshold"] != "0" {
+				if n, ok := winParseInt(f.Attributes["lockout_threshold"]); !ok || n != 0 {
 					continue
 				}
 				if c.Baseline.Allowed("password-policy", "policy", "lockout", f.Attributes["scope"]) {

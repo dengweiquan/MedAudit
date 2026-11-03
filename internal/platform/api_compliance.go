@@ -94,7 +94,7 @@ func APICompliance(reportJSON []byte, assetVerified, uploadTrusted bool) (*APICo
 	case rep.SchemaVersion != apiaudit.SchemaVersion:
 		return unknownClause("报告为老格式（无 schema 版本），无法可靠绑定目标，不纳入合规通过；请用新版采集器重跑"), nil
 	case !uploadTrusted:
-		return unknownClause("该报告为未认证上传的历史报告，不能证明上传者有权代表该资产，不作为可信合规依据；请以认证方式（超级令牌登录后上传）重新上传后复评"), nil
+		return unknownClause("该报告为未认证上传的历史报告，不能证明上传者有权代表该资产，不作为可信合规依据；同 report_id 认证重传只会返回 duplicate，不升级信任——请重新运行审计生成新 report_id 后以认证方式（超级令牌登录后上传）上传，再复评"), nil
 	case rep.HospitalID == "" || rep.AssetID == "":
 		return unknownClause("报告未绑定医院/资产，无法归属到具体对象，不纳入合规通过；请在 apicheck 配置中填写 hospital_id/asset_id 后重跑"), nil
 	case rep.Target == "" || rep.ReportID == "":

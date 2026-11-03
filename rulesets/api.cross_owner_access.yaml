@@ -1,6 +1,6 @@
 # MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
 id: api.cross_owner_access
-version: "2"
+version: "3"
 name: 跨所有者访问
 target: api
 risk: high

@@ -24,10 +24,13 @@ import (
 //     不算缺口。全部未运行 → UNKNOWN；无此类探针（且无对照探针）→ NOT_APPLICABLE
 //     （该接口无此期望的端点，或未配置此类检查）；有对照探针但无负向探针 →
 //     UNKNOWN（端点存在但该身份从未被测，如仅有属主自访问而无跨主体探针）。
-//   - 未认证与垂直越权的分流：管理员端点直接探针按 anonymous 属性分流
-//     （true → 未认证规则；false 或缺失 → 垂直规则；匿名本就是非管理员子集，
-//     老报告缺失时归垂直不算误报）。老报告的管理员端点 FAIL 若无法确认是否匿名，
-//     未认证规则返回 Partial：有可归属 FAIL 时仍 FAIL，否则 UNKNOWN（不误判 PASS）。
+//   - 未认证与垂直越权的分流：直接探针按 anonymous 属性分流
+//     （true → 未认证规则的匿名证据；false → 已认证身份证据，不属未认证规则，
+//     管理员端点的 false FAIL 归垂直规则；缺失 → 老报告无法归属，未认证规则不认领）。
+//     无匿名身份或老报告缺标记时，未认证规则的匿名覆盖为零 → UNKNOWN（不误判 PASS）。
+//   - 覆盖按端点核对：每个适用端点须至少一条已确认负向探针；A 端点完成不能掩盖
+//     B 端点的缺口（B 只有正向响应、或只有非本规则身份的探测时，B 未覆盖 → UNKNOWN）。
+//     仅当某端点的探针全部为合法省略（公开端点重放跳过）时，该端点不算缺口。
 
 // apiProbeFacts 本规则的探针事实（Source=api.audit 且 match）。
 func apiProbeFacts(ctx *EvalContext, match func(facts.Fact) bool) []facts.Fact {
@@ -74,56 +77,90 @@ func apiIsLegitReplaySkip(f facts.Fact) bool {
 		f.Attributes["expectation"] == "public"
 }
 
-// apiRuleEvidence 通用门控：match 选探针事实，controls 为负向通过所需的对照种类。
-// unattributableFail 为真表示存在无法归属本规则的 FAIL 事实（仅未认证规则用）：
-// 此时不直接 Ready，若 check 无可归属命中则落 UNKNOWN。
-func apiRuleEvidence(match func(facts.Fact) bool, controls []string, unattributableFail func(facts.Fact) bool) EvidenceCheck {
+// apiProbeClass 负向探针的归属分类（门控用）：已确认负向、无法归属、
+// 已确认不属于本规则。无法归属（如老报告缺身份标记）不计入覆盖，
+// 但其存在使结论无法确认；已确认不属于本规则的不计入覆盖，
+// 所在端点仍按端点覆盖核对（见下）。
+type apiProbeClass int
+
+const (
+	// apiProbeNegative 已确认的负向探针（计入覆盖与 FAIL 归属）。
+	apiProbeNegative apiProbeClass = iota
+	// apiProbeUnattributable 无法归属的探针：不计入覆盖，但结论无法确认。
+	apiProbeUnattributable
+	// apiProbeExcluded 已确认不属于本规则的探针：不计入覆盖。
+	apiProbeExcluded
+)
+
+// apiRuleEvidence 通用门控：match 选探针事实（规则适用范围），controls 为负向通过
+// 所需的对照种类，classify 为空时全部非对照探针均为已确认负向探针。
+// 覆盖按端点核对：每个适用端点须至少一条已确认负向探针，否则为覆盖缺口——
+// A 端点完成不能掩盖 B 端点的缺口（B 只有正向响应时 B 未覆盖）。
+// 仅当全部探针均为合法省略（公开端点重放跳过）时，该端点不算缺口。
+func apiRuleEvidence(match func(facts.Fact) bool, controls []string, classify func(facts.Fact) apiProbeClass) EvidenceCheck {
 	return func(ctx *EvalContext) (EvidenceStatus, string) {
 		probes := apiProbeFacts(ctx, match)
 		if len(probes) == 0 {
 			return EvidenceNotApplicable, "本报告无此类探针（该接口无此期望的端点或未配置此类检查）"
 		}
 		// 负向探针 = 除正向对照外的全部探针；对照探针只证明端点存在。
-		var negative []facts.Fact
+		var executed, fails, unknowns, unattributed, gaps []facts.Fact
+		endpointNegative := map[string]bool{}
+		endpointHasEffectiveProbe := map[string]bool{}
 		for _, f := range probes {
+			ep := f.Subject
 			if apiIsControlProbe(f) {
+				// 正向对照探针只证明端点存在：端点有实际探测但无负向覆盖时仍算缺口。
+				endpointHasEffectiveProbe[ep] = true
 				continue
 			}
-			negative = append(negative, f)
-		}
-		if len(negative) == 0 {
-			return EvidenceMissing, "本规则适用端点存在（有正向对照），但无负向探针（未配置该身份或未探测），无法判定"
-		}
-		var executed, fails, unknowns, unattributed, gaps []facts.Fact
-		for _, f := range negative {
-			switch f.Attributes["outcome"] {
-			case "NOT_RUN":
-				if apiIsLegitReplaySkip(f) {
+			class := apiProbeNegative
+			if classify != nil {
+				class = classify(f)
+			}
+			switch class {
+			case apiProbeExcluded:
+				endpointHasEffectiveProbe[ep] = true
+			case apiProbeUnattributable:
+				endpointHasEffectiveProbe[ep] = true
+				unattributed = append(unattributed, f)
+			case apiProbeNegative:
+				if f.Attributes["outcome"] == "NOT_RUN" && apiIsLegitReplaySkip(f) {
+					// 合法省略：既不计覆盖，也不算缺口（公开端点无需重放探测）。
 					continue
 				}
-				gaps = append(gaps, f)
-			case "FAIL":
-				fails = append(fails, f)
-				if unattributableFail != nil && unattributableFail(f) {
-					unattributed = append(unattributed, f)
+				endpointHasEffectiveProbe[ep] = true
+				endpointNegative[ep] = true
+				switch f.Attributes["outcome"] {
+				case "NOT_RUN":
+					gaps = append(gaps, f)
+				case "FAIL":
+					fails = append(fails, f)
+				case "PASS":
+					executed = append(executed, f)
+				default: // UNKNOWN 与一切未识别结论都不当作通过
+					unknowns = append(unknowns, f)
 				}
-			case "PASS":
-				executed = append(executed, f)
-			default: // UNKNOWN 与一切未识别结论都不当作通过
-				unknowns = append(unknowns, f)
+			}
+		}
+		var uncovered []string
+		for ep := range endpointHasEffectiveProbe {
+			if !endpointNegative[ep] {
+				uncovered = append(uncovered, ep)
 			}
 		}
 		// 可归属 FAIL 存在 → 直接 Ready（check 命中即 FAIL）。
-		if len(fails) > len(unattributed) {
+		if len(fails) > 0 {
 			return EvidenceReady, ""
 		}
-		if len(fails) == 0 && len(unknowns) == 0 && len(executed) == 0 && len(gaps) == 0 {
+		if len(fails) == 0 && len(unknowns) == 0 && len(executed) == 0 && len(gaps) == 0 &&
+			len(unattributed) == 0 && len(uncovered) == 0 {
 			return EvidenceMissing, "此类探针全部未运行（写方法只读策略下跳过，或未配置）"
 		}
-		// 仅有无法归属的 FAIL、或有 UNKNOWN、或有未运行缺口、或负向通过缺对照 → Partial：
+		// 无法归属、结论不明、未运行缺口、端点未覆盖、负向通过缺对照 → Partial：
 		// check 有命中则 FAIL，无命中则 UNKNOWN，绝不误判 PASS。
 		if len(unattributed) > 0 {
-			return EvidencePartial, "存在无法确认是否匿名的管理员端点 FAIL，本规则无法单独确认"
+			return EvidencePartial, "存在无法归属本规则的探针（老报告缺身份标记或未配置匿名身份），无法单独确认"
 		}
 		if len(unknowns) > 0 {
 			return EvidencePartial, "部分探针结论不明，无法确认通过"
@@ -131,12 +168,29 @@ func apiRuleEvidence(match func(facts.Fact) bool, controls []string, unattributa
 		if len(gaps) > 0 {
 			return EvidencePartial, "部分适用端点未运行（只读策略跳过写方法或重放目标未探测），无法确认通过"
 		}
+		if len(uncovered) > 0 {
+			return EvidencePartial, fmt.Sprintf("部分适用端点无负向探针（仅有正向响应或非本规则身份探测），无法确认通过：%s", strings.Join(uncovered, "、"))
+		}
 		for _, f := range executed {
 			if !apiHasControl(ctx, f.Subject, controls...) {
 				return EvidencePartial, fmt.Sprintf("端点 %s 的通过缺少同端点正向对照（拒答可能是端点不存在）", f.Subject)
 			}
 		}
 		return EvidenceReady, ""
+	}
+}
+
+// apiAnonClassify 未认证规则的探针归属：只认 anonymous=true 为匿名证据；
+// anonymous=false 是已认证身份的探测（归垂直规则，不属未认证规则）；
+// 缺失是老报告（无匿名身份清单），无法归属，不得认领为匿名证据。
+func apiAnonClassify(f facts.Fact) apiProbeClass {
+	switch f.Attributes["anonymous"] {
+	case "true":
+		return apiProbeNegative
+	case "false":
+		return apiProbeExcluded
+	default:
+		return apiProbeUnattributable
 	}
 }
 
@@ -158,32 +212,28 @@ func apiFailHits(ctx *EvalContext, match func(facts.Fact) bool) []CheckHit {
 
 // 写方法只读策略的 NOT_RUN 事实（probe=readonly-policy）按期望归属各规则：
 // 端点存在但未被探测，结论应为 UNKNOWN（未运行），而非 NOT_APPLICABLE。
+// 未认证规则的适用范围是全部受保护端点（需认证 + 管理员）：管理员端点即使
+// 只有已认证身份的探针也进入范围——匿名从未被测时结论为 UNKNOWN（端点未覆盖），
+// 而非 NOT_APPLICABLE；归属由 apiAnonClassify 再分流（true 为匿名证据，
+// false 已确认不属本规则，缺失无法归属）。
 func apiAnonMatch(f facts.Fact) bool {
 	probe := f.Attributes["probe"]
 	if probe != "direct" && probe != "readonly-policy" {
 		return false
 	}
 	switch f.Attributes["expectation"] {
-	case "authenticated":
+	case "authenticated", "admin_only":
 		return true
-	case "admin_only":
-		return f.Attributes["anonymous"] != "false"
 	}
 	return false
 }
 
+// apiAnonHit 未认证规则的 FAIL 归属：只认 anonymous=true 的探针 2xx。
+// 已认证身份的 2xx 不是匿名越权（需认证端点的已认证成功本就是合法访问；
+// 管理员端点的已认证成功归垂直规则）；缺失标记的老报告 FAIL 无法归属，
+// 不认领（门控 Partial → UNKNOWN）。
 func apiAnonHit(f facts.Fact) bool {
-	if f.Attributes["outcome"] != "FAIL" {
-		return false
-	}
-	if f.Attributes["expectation"] == "authenticated" {
-		return true
-	}
-	return f.Attributes["expectation"] == "admin_only" && f.Attributes["anonymous"] == "true"
-}
-
-func apiAnonUnattributed(f facts.Fact) bool {
-	return f.Attributes["expectation"] == "admin_only" && f.Attributes["anonymous"] == ""
+	return f.Attributes["outcome"] == "FAIL" && f.Attributes["anonymous"] == "true"
 }
 
 func apiVerticalMatch(f facts.Fact) bool {
@@ -208,16 +258,17 @@ func apiReplayMatch(f facts.Fact) bool {
 var apiBuiltinRules = []builtinRule{
 	{
 		spec: RuleSpec{
-			ID: "api.anon_protected_access", Version: "2",
+			ID: "api.anon_protected_access", Version: "3",
 			Name:   "未认证访问受保护接口",
 			Target: facts.TargetAPI,
-			Description: "匿名身份可达需认证或管理员端点（直接探针 2xx）。需认证端点的匿名 2xx " +
-				"本身即属匿名；管理员端点的匿名 2xx 按报告的匿名身份清单分流（清单缺失的老报告不认领，" +
-				"只归垂直越权规则）。通过要求每个负向通过探针（匿名拒答）都有同端点正向对照" +
-				"（已认证或管理员 2xx），否则拒答可能是端点不存在，不判通过；只配置已认证身份" +
-				"而无匿名探针时，匿名从未被测，不判通过。",
+			Description: "匿名身份可达需认证或管理员端点（直接探针 2xx）。匿名证据只认报告中" +
+				"明确标记 anonymous=true 的探针：普通用户的拒答不得充当匿名探针，缺匿名探针" +
+				"或老报告缺身份标记时匿名从未被证实，不判通过；管理员端点的已认证身份 2xx " +
+				"归垂直越权规则。覆盖按端点核对：每个适用端点须有匿名负向探针，仅有正向响应" +
+				"的端点是缺口。通过要求每个负向通过探针（匿名拒答）都有同端点正向对照" +
+				"（已认证或管理员 2xx），否则拒答可能是端点不存在，不判通过。",
 			Requires:    []facts.FactKind{facts.FactAPICheck},
-			Evidence:    apiRuleEvidence(apiAnonMatch, []string{"authed_reachable", "admin_reachable"}, apiAnonUnattributed),
+			Evidence:    apiRuleEvidence(apiAnonMatch, []string{"authed_reachable", "admin_reachable"}, apiAnonClassify),
 			Risk:        RiskHigh,
 			Remediation: "给受保护接口补鉴权：未携带有效会话一律拒绝，并复测匿名探针。",
 		},
@@ -227,7 +278,7 @@ var apiBuiltinRules = []builtinRule{
 	},
 	{
 		spec: RuleSpec{
-			ID: "api.user_admin_access", Version: "2",
+			ID: "api.user_admin_access", Version: "3",
 			Name:   "普通身份访问管理员接口",
 			Target: facts.TargetAPI,
 			Description: "非管理员身份（含匿名，老报告无法区分时亦归此）可达管理员端点（直接探针 2xx，" +
@@ -245,7 +296,7 @@ var apiBuiltinRules = []builtinRule{
 	},
 	{
 		spec: RuleSpec{
-			ID: "api.cross_owner_access", Version: "2",
+			ID: "api.cross_owner_access", Version: "3",
 			Name:   "跨所有者访问",
 			Target: facts.TargetAPI,
 			Description: "非管理员身份跨主体读到他人的私有数据（跨主体探针 2xx 且命中属主 canary，" +
@@ -263,7 +314,7 @@ var apiBuiltinRules = []builtinRule{
 	},
 	{
 		spec: RuleSpec{
-			ID: "api.invalidated_session_replay", Version: "2",
+			ID: "api.invalidated_session_replay", Version: "3",
 			Name:   "凭据失效后重放",
 			Target: facts.TargetAPI,
 			Description: "已失效会话（登出、过期、改密、吊销后捕获的凭证）重放仍被接受（重放探针 2xx）。" +
