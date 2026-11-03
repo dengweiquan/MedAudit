@@ -272,6 +272,7 @@ func main() {
 		registerAuditRoutes(mux, db, rules.DefaultRegistry(), keyring, collectorBin)
 		registerHospitalRoutes(mux, db)
 		registerAssetRoutes(mux, db)
+		registerSensitiveRoutes(mux, db)
 		registerCorrelationRoutes(mux, db)
 		registerSummaryRoutes(mux, db)
 		registerSiteRoutes(mux, db)

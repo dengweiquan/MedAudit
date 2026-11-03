@@ -34,6 +34,38 @@ export interface Asset {
   labels?: string | null
 }
 
+export interface SensitiveLabel {
+  id: string
+  hospital_id: string
+  asset_id: string
+  database: string
+  schema: string
+  table: string
+  column: string
+  category: string
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SensitiveExposure {
+  label_id: string
+  object: string
+  kind: string
+  subject: string
+  privilege: string
+  evidence: string[]
+  risk: string
+  exempt: boolean
+  note?: string
+}
+
+export interface SensitiveSection {
+  labels: { id: string; database: string; schema: string; table: string; column: string; category: string; version: number; status: string; notes?: string[] }[]
+  exposures: SensitiveExposure[]
+  notes: string[]
+}
+
 export interface ConnConfig {
   engine: string
   host: string
@@ -541,6 +573,19 @@ export const api = {
     }),
   deleteAsset: (id: string) =>
     req(`/api/v1/assets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // 敏感对象标记（M5-5）：只存对象标识与类别，不存真实患者数据。
+  sensitiveLabels: (hospitalId: string, assetId: string) =>
+    req<SensitiveLabel[]>(`/api/v1/sensitive-labels?hospital_id=${encodeURIComponent(hospitalId)}&asset_id=${encodeURIComponent(assetId)}`),
+  createSensitiveLabel: (body: { hospital_id: string; asset_id: string; database?: string; schema: string; table: string; column?: string; category: string }) =>
+    post('/api/v1/sensitive-labels', body),
+  updateSensitiveLabel: (id: string, category: string) =>
+    req(`/api/v1/sensitive-labels/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category }),
+    }),
+  deleteSensitiveLabel: (id: string) =>
+    req(`/api/v1/sensitive-labels/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   ruleToggles: () => req<RuleToggle[]>('/api/v1/rule-toggles'),
   setRuleToggle: (body: { rule_id: string; enabled: boolean; reason?: string; updated_by?: string }) =>
     req('/api/v1/rule-toggles', {

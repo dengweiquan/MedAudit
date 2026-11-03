@@ -97,6 +97,11 @@ func GenerateReport(db *sql.DB, hospitalID, planID, bundleID, createdBy string) 
 		if sec := complianceSection(&fb, latest, disabled); sec != nil {
 			snapshot["compliance"] = sec
 		}
+		// M5-5 敏感对象节：取生成时点标签快照（含 version），匹配包事实；
+		// 非数据库资产不建节；标签变化只影响以后生成的报告。
+		if sec := BuildSensitiveSection(db, hospitalID, assetID, &fb); sec != nil {
+			snapshot["sensitive"] = sec
+		}
 	}
 	snapJSON, err := json.Marshal(snapshot)
 	if err != nil {

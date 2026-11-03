@@ -154,6 +154,36 @@
         </tbody>
       </table>
     </template>
+    <template v-if="sensitiveSection">
+      <h3>敏感对象暴露</h3>
+      <p class="todo">本节只覆盖已标记对象，未标记不等于不敏感；缺授权事实不等于安全。暴露指 broad 授权（PUBLIC/ANY/全局/库级）可达该对象，风险按策略升级为高；已基线放行的不计入违规暴露。</p>
+      <p v-for="n in sensitiveSection.notes" :key="n" class="todo">{{ n }}</p>
+      <table v-if="sensitiveSection.labels.length" style="margin-top:6px">
+        <thead><tr><th>对象</th><th>类别</th><th>版本</th><th>状态</th><th>备注</th></tr></thead>
+        <tbody>
+          <tr v-for="l in sensitiveSection.labels" :key="l.id">
+            <td>{{ (l.database ? l.database + '.' : '') + l.schema + '.' + l.table + (l.column ? '(' + l.column + ')' : '') }}</td>
+            <td>{{ l.category }}</td>
+            <td>v{{ l.version }}</td>
+            <td><span class="concl" :class="l.status === 'exposed' ? 'c-FAIL' : l.status === 'unconfirmed' ? 'c-UNKNOWN' : 'c-PASS'">{{ sensitiveStatusLabel(l.status) }}</span></td>
+            <td style="font-size:13px">{{ (l.notes || []).join('；') }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-else class="empty">本对象未标记敏感对象。</div>
+      <table v-if="sensitiveSection.exposures.length" style="margin-top:6px">
+        <thead><tr><th>对象</th><th>类型</th><th>被授者</th><th>权限</th><th>豁免</th></tr></thead>
+        <tbody>
+          <tr v-for="(e, i) in sensitiveSection.exposures" :key="i">
+            <td>{{ e.object }}</td>
+            <td>{{ e.kind }}</td>
+            <td>{{ e.subject }}</td>
+            <td>{{ e.privilege }}</td>
+            <td>{{ e.exempt ? '已放行' : '' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </template>
     <template v-if="remediationSection">
       <h3>修复与回滚脚本</h3>
       <p class="todo">
@@ -191,7 +221,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { api, type ApiAuditCompliance, type ApiAuditSummary, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule } from '../api'
+import { api, type ApiAuditCompliance, type ApiAuditSummary, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule, type SensitiveSection } from '../api'
 import { fmtLocal, latestBundleOf, countSnapshotRisks, filterApiReports } from '../util'
 import { conclLabel, riskLabel, reviewLabel } from '../labels'
 import { reviewerName, filterByHospital, engineerMode, selectedHospital } from '../store'
@@ -297,6 +327,11 @@ const detail = ref<Record<string, unknown> | null>(null)
 const snapshotFindings = computed(() => (detail.value?.findings as Finding[]) || [])
 const pathsSection = computed(() => (detail.value?.privilege_paths as ReportPathsSection | undefined) ?? null)
 const driftSection = computed(() => (detail.value?.drift as ReportDriftSection | undefined) ?? null)
+const sensitiveSection = computed(() => (detail.value?.sensitive as SensitiveSection | undefined) ?? null)
+
+function sensitiveStatusLabel(s: string) {
+  return s === 'exposed' ? '有暴露' : s === 'unconfirmed' ? '无法确认' : '未发现 broad 授权'
+}
 const remediationSection = computed(() => (detail.value?.remediation as ReportRemediationSection | undefined) ?? null)
 const scriptShow = ref(20)
 const copyMsg = ref('')

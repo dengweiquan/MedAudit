@@ -25,6 +25,7 @@
                 <button class="btn small primary" :disabled="auditDisabled(a)" :title="auditDisabledReason(a) ?? undefined" @click="openAudit(a)">开始审计</button>
                 <button class="btn small" :disabled="!hasQuestions(a)" @click="openQuestions(a)">看问题</button>
                 <button class="btn small" :disabled="!canExport(a) || exporting === a.id" @click="doExport(a)">导出报告</button>
+                <button class="btn small" v-if="kindCategory(a.kind) === 'db'" @click="openLabels(a)">敏感对象</button>
               </div>
               <div v-if="auditDisabled(a) && kindCategory(a.kind) === 'db'" class="todo">未配置连接，请工程师在管理页补全</div>
             </td>
@@ -92,12 +93,52 @@
     </div>
   </div>
 
+  <div class="card" v-if="labelAsset">
+    <h2>敏感对象标记：{{ labelAsset.name }}</h2>
+    <p class="todo">只存对象标识与敏感类别，不存真实患者数据。标记后下次生成的报告含敏感对象节（标签版本与原始授权证据）；未标记不等于不敏感。</p>
+    <div v-if="labelLoading" class="todo">加载中…</div>
+    <table v-else-if="labels.length" style="margin-top:6px">
+      <thead><tr><th>对象</th><th>类别</th><th>版本</th><th>操作</th></tr></thead>
+      <tbody>
+        <tr v-for="l in labels" :key="l.id">
+          <td>{{ labelObject(l) }}</td>
+          <td>
+            <select v-model="labelEdit[l.id]">
+              <option v-for="c in labelCategories" :key="c" :value="c">{{ c }}</option>
+            </select>
+          </td>
+          <td>v{{ l.version }}</td>
+          <td>
+            <div class="row-actions">
+              <button class="btn small" :disabled="labelEdit[l.id] === l.category" @click="saveLabelCategory(l)">保存类别</button>
+              <button class="btn small" @click="removeLabel(l)">删除</button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div v-else class="empty">尚未标记敏感对象。</div>
+    <h3 style="margin-top:12px">新增标记</h3>
+    <div class="inline-form">
+      <input v-model="labelForm.database" placeholder="库名（可空；MySQL 即库名）" />
+      <input v-model="labelForm.schema" placeholder="模式名" />
+      <input v-model="labelForm.table" placeholder="表名" />
+      <input v-model="labelForm.column" placeholder="列名（可空，列级）" />
+      <select v-model="labelForm.category">
+        <option v-for="c in labelCategories" :key="c" :value="c">{{ c }}</option>
+      </select>
+      <button class="btn primary" :disabled="!labelForm.schema.trim() && !labelForm.database.trim() || !labelForm.table.trim()" @click="addLabel">新增标记</button>
+      <button class="btn" @click="labelAsset = null">关闭</button>
+    </div>
+    <div class="msg err" v-if="labelErr">{{ labelErr }}</div>
+  </div>
+
   <RemoteAuditCard :asset="remoteAsset" @close="remoteAsset = null" @done="load" />
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { api, parseRemote, type ApiAuditCheck, type ApiAuditSummary, type Asset, type AuditRunResult, type BaselineRow, type BundleSummary, type ConnConfig } from '../api'
+import { api, parseRemote, type ApiAuditCheck, type ApiAuditSummary, type Asset, type AuditRunResult, type BaselineRow, type BundleSummary, type ConnConfig, type SensitiveLabel } from '../api'
 import RemoteAuditCard from '../components/RemoteAuditCard.vue'
 import { kindCategory, type CategoryKey } from '../categories'
 import { nav, goto, filterByHospital, reviewerName, selectedHospital, engineerMode } from '../store'
@@ -271,6 +312,70 @@ async function doExport(a: Asset) {
 const auditAsset = ref<Asset | null>(null)
 const guideAsset = ref<Asset | null>(null)
 const remoteAsset = ref<Asset | null>(null)
+
+// 敏感对象标记（M5-5）
+const labelAsset = ref<Asset | null>(null)
+const labels = ref<SensitiveLabel[]>([])
+const labelLoading = ref(false)
+const labelErr = ref('')
+const labelEdit = ref<Record<string, string>>({})
+const labelForm = ref({ database: '', schema: '', table: '', column: '', category: '患者身份' })
+const labelCategories = ['患者身份', '诊疗信息', '费用信息', '检查检验', '药品信息', '其他']
+
+function labelObject(l: SensitiveLabel) {
+  let s = l.schema + '.' + l.table
+  if (l.database) s = l.database + '.' + s
+  if (l.column) s += '(' + l.column + ')'
+  return s
+}
+
+async function openLabels(a: Asset) {
+  labelAsset.value = a; labelErr.value = ''; labelLoading.value = true
+  try {
+    labels.value = await api.sensitiveLabels(a.hospital_id, a.id)
+    labelEdit.value = Object.fromEntries(labels.value.map(l => [l.id, l.category]))
+  } catch (e) { labelErr.value = e instanceof Error ? e.message : '加载标记失败' }
+  finally { labelLoading.value = false }
+}
+
+async function addLabel() {
+  if (!labelAsset.value) return
+  labelErr.value = ''
+  try {
+    const l = await api.createSensitiveLabel({
+      hospital_id: labelAsset.value.hospital_id,
+      asset_id: labelAsset.value.id,
+      database: labelForm.value.database.trim() || undefined,
+      schema: labelForm.value.schema.trim(),
+      table: labelForm.value.table.trim(),
+      column: labelForm.value.column.trim() || undefined,
+      category: labelForm.value.category,
+    }) as SensitiveLabel
+    labels.value = await api.sensitiveLabels(labelAsset.value.hospital_id, labelAsset.value.id)
+    labelEdit.value = Object.fromEntries(labels.value.map(x => [x.id, x.category]))
+    labelForm.value = { database: '', schema: '', table: '', column: '', category: '患者身份' }
+    void l
+  } catch (e) { labelErr.value = e instanceof Error ? e.message : '新增标记失败' }
+}
+
+async function saveLabelCategory(l: SensitiveLabel) {
+  if (!labelAsset.value) return
+  labelErr.value = ''
+  try {
+    await api.updateSensitiveLabel(l.id, labelEdit.value[l.id])
+    labels.value = await api.sensitiveLabels(labelAsset.value.hospital_id, labelAsset.value.id)
+    labelEdit.value = Object.fromEntries(labels.value.map(x => [x.id, x.category]))
+  } catch (e) { labelErr.value = e instanceof Error ? e.message : '保存类别失败' }
+}
+
+async function removeLabel(l: SensitiveLabel) {
+  if (!labelAsset.value) return
+  labelErr.value = ''
+  try {
+    await api.deleteSensitiveLabel(l.id)
+    labels.value = labels.value.filter(x => x.id !== l.id)
+  } catch (e) { labelErr.value = e instanceof Error ? e.message : '删除标记失败' }
+}
 const apiDetailAsset = ref<Asset | null>(null)
 const apiDetail = ref<{ checks: ApiAuditCheck[] } | null>(null)
 const apiDetailLoading = ref(false)
