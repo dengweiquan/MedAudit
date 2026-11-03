@@ -24,6 +24,42 @@ type RDPSettings struct {
 
 // RDPAttributes 把有效配置映射为事实属性：缺失项不写属性，规则门控据此判 UNKNOWN。
 // enabled/nla 的布尔值写 "true"/"false"；来源写 enabled_source / nla_source。
+// RegRead 一次注册表读取的结果：Value（Present=false 表示键/值不存在，即未配置）
+// 或读取错误（拒绝访问等）。Present=false 与 Err!=nil 是两种不同状态，不得混淆。
+type RegRead struct {
+	Value RDPValue
+	Err   error
+}
+
+// ResolveRDPSettingsRaw 由原始读取结果解析 RDP 有效配置（纯函数，可单测）：
+// 组策略读取出错时直接返回错误，绝不无声回退到本地配置；只有组策略明确未配置
+// （无错误且 Present=false）时才用本地值。本地读取出错同样返回错误（不猜测）。
+func ResolveRDPSettingsRaw(polDeny, locDeny, polNLA, locNLA RegRead) (RDPSettings, error) {
+	for _, r := range []RegRead{polDeny, locDeny, polNLA, locNLA} {
+		if r.Err != nil {
+			return RDPSettings{}, r.Err
+		}
+	}
+	var s RDPSettings
+	if deny := ResolveRDPValue(polDeny.Value, locDeny.Value); deny.Present {
+		s.Enabled = RDPValue{Value: !deny.Value, Present: true}
+		if polDeny.Value.Present {
+			s.EnabledSource = "group-policy"
+		} else {
+			s.EnabledSource = "local"
+		}
+	}
+	s.NLA = ResolveRDPValue(polNLA.Value, locNLA.Value)
+	if s.NLA.Present {
+		if polNLA.Value.Present {
+			s.NLASource = "group-policy"
+		} else {
+			s.NLASource = "local"
+		}
+	}
+	return s, nil
+}
+
 func RDPAttributes(s RDPSettings) map[string]string {
 	attrs := map[string]string{}
 	if s.Enabled.Present {

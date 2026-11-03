@@ -11,6 +11,119 @@ import (
 // serverConfigRules 数据库服务端配置审计（M8-3）。
 // 配置事实来自各适配器的服务端模板（pg.hba/pg.settings/mssql.server_config/
 // mysql.server_config/ora.profiles），与中间件配置审计同一模式。
+
+// pgAuditEvidence pg.settings 审计规则的证据门控：
+//   - 收据被拒/失败/无收据 → Missing；
+//   - 收据截断：仅当已见审计事件开关（log_connections=on 或 log_statement 非 none）时 Ready（PASS 可靠）；
+//     否则 Missing——“无审计事件”是完整清单判断，不能在截断结果上推断；
+//   - 收据成功：见任一审计相关事实 → Ready（模板固定查三开关，收据成功即查询完整）。
+func pgAuditEvidence(c *EvalContext) (EvidenceStatus, string) {
+	var saw, partial bool
+	for _, rc := range c.Bundle.Receipts {
+		if rc.TemplateID != "pg.settings" {
+			continue
+		}
+		saw = true
+		switch rc.Status {
+		case "denied", "failed":
+			reason := rc.ErrorStage
+			if reason == "" {
+				reason = rc.Status
+			}
+			return EvidenceMissing, fmt.Sprintf("pg.settings 采集失败：%s，无法判定", reason)
+		case "partial":
+			partial = true
+		}
+		if rc.Truncated {
+			partial = true
+		}
+	}
+	if !saw {
+		return EvidenceMissing, "未采集到 pg.settings 证据（旧包或未执行），无法判定"
+	}
+	vals := map[string]string{}
+	for _, f := range c.Bundle.Facts {
+		if f.Source != "pg.settings" || f.Status != facts.StatusObserved {
+			continue
+		}
+		switch f.Attributes["name"] {
+		case "logging_collector", "log_connections", "log_statement":
+			vals[f.Attributes["name"]] = strings.ToLower(f.Attributes["setting"])
+		}
+	}
+	event := vals["log_connections"] == "on" ||
+		(vals["log_statement"] != "" && vals["log_statement"] != "none")
+	if partial {
+		if event {
+			return EvidenceReady, ""
+		}
+		return EvidenceMissing, "pg.settings 证据被截断，无法确认审计事件开关"
+	}
+	if len(vals) > 0 {
+		return EvidenceReady, ""
+	}
+	return EvidenceMissing, "pg.settings 查询成功但无审计相关事实，无法判定"
+}
+
+// mssqlAuditEvidence sys.server_audits 规则的证据门控（不沿用通用 Partial 语义：
+// 通用 Partial 会跑 check，而零行 FAIL 是完整清单判断，不能在截断结果上推断）。
+//   - 收据被拒/失败/无收据 → Missing（UNKNOWN）；冲突收据（ok 与 denied/failed 并存）同样 Missing；
+//   - 任一收据截断（partial）：仅当已见启用审计时 Ready（PASS 可靠）；否则 Missing；
+//   - 收据全成功：见启用审计 → Ready；见审计但均未启用 → Ready（完整清单，FAIL 可靠）；
+//     零行 → 仅当同包可见性自查为 sufficient 时 Ready（否则 Missing：目录视图按可见性过滤，
+//     零行不能认定未配置审计；旧包无自查事实时同样 Missing）。
+func mssqlAuditEvidence(c *EvalContext) (EvidenceStatus, string) {
+	var saw, partial bool
+	for _, rc := range c.Bundle.Receipts {
+		if rc.TemplateID != "mssql.server_audits" {
+			continue
+		}
+		saw = true
+		switch rc.Status {
+		case "denied", "failed":
+			reason := rc.ErrorStage
+			if reason == "" {
+				reason = rc.Status
+			}
+			return EvidenceMissing, fmt.Sprintf("mssql.server_audits 采集失败：%s，无法判定", reason)
+		case "partial":
+			partial = true
+		}
+		if rc.Truncated {
+			partial = true
+		}
+	}
+	if !saw {
+		return EvidenceMissing, "未采集到 mssql.server_audits 证据（旧包或未执行），无法判定"
+	}
+	var anyFact, anyEnabled bool
+	for _, f := range c.Bundle.Facts {
+		if f.Source != "mssql.server_audits" || f.Status != facts.StatusObserved {
+			continue
+		}
+		anyFact = true
+		if v := strings.ToLower(f.Attributes["is_state_enabled"]); v == "1" || v == "true" {
+			anyEnabled = true
+		}
+	}
+	if partial {
+		if anyEnabled {
+			return EvidenceReady, ""
+		}
+		return EvidenceMissing, "mssql.server_audits 证据被截断，无法确认是否存在启用审计"
+	}
+	if anyEnabled || anyFact {
+		return EvidenceReady, ""
+	}
+	for _, f := range c.Bundle.Facts {
+		if f.Source == "mssql.audit_visibility" && f.Status == facts.StatusObserved &&
+			f.Attributes["visibility"] == "sufficient" {
+			return EvidenceReady, ""
+		}
+	}
+	return EvidenceMissing, "sys.server_audits 查询成功但零行，且采集账号元数据可见性不足（非 sysadmin/CONTROL SERVER），无法认定未配置审计"
+}
+
 var serverConfigRules = []struct {
 	spec  RuleSpec
 	check CheckFunc
@@ -209,14 +322,14 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.pg.audit_off", Version: "2",
+			ID: "db.pg.audit_off", Version: "3",
 			Name:        "PostgreSQL 未启用审计日志",
 			Target:      facts.TargetDBPostgres,
-			Description: "logging_collector、log_connections 与 log_statement 均未表明审计开启时，数据库无审计轨迹，无法追溯登录与数据操作。",
+			Description: "log_connections 与 log_statement 均未表明审计事件开启时，数据库无审计轨迹。注意：logging_collector=on 仅启用收集进程，不产生审计事件，不能单独作为审计已开启的证据；事件经 stderr/syslog 等其他输出路径时仍算审计，只评价实采的三个开关；pgaudit 等扩展审计不在本规则评价范围。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
-			Evidence:    EvidenceSource("pg.settings", "name", []string{"logging_collector", "log_connections", "log_statement"}, false),
+			Evidence:    pgAuditEvidence,
 			Risk:        RiskMedium,
-			Remediation: "启用 logging_collector 并打开 log_connections（至少记录连接审计），按需将 log_statement 设为 ddl 或 mod。",
+			Remediation: "打开 log_connections（至少记录连接审计），或将 log_statement 设为 ddl 或 mod；logging_collector 仅决定日志收集方式，不产生审计事件。",
 		},
 		check: func(c *EvalContext) []CheckHit {
 			vals := map[string]string{}
@@ -231,7 +344,9 @@ var serverConfigRules = []struct {
 					ev = append(ev, f.FactID)
 				}
 			}
-			if vals["logging_collector"] == "on" || vals["log_connections"] == "on" {
+			// 只有事件开关（log_connections / log_statement）能证明审计事件开启；
+			// logging_collector 单独为 on 不算（它只启用收集进程）。
+			if vals["log_connections"] == "on" {
 				return nil
 			}
 			if s := vals["log_statement"]; s != "" && s != "none" {
@@ -242,7 +357,7 @@ var serverConfigRules = []struct {
 			}
 			return []CheckHit{{
 				Subject:  "server",
-				Detail:   "未启用审计日志（logging_collector、log_connections 均为 off，log_statement 为 none 或缺失）",
+				Detail:   fmt.Sprintf("未启用审计事件（log_connections=%s，log_statement=%s；logging_collector=%s 仅启用收集器，不产生审计事件）", vals["log_connections"], vals["log_statement"], vals["logging_collector"]),
 				Evidence: ev,
 			}}
 		},
@@ -363,14 +478,12 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.mssql.audit_off", Version: "2",
+			ID: "db.mssql.audit_off", Version: "3",
 			Name:        "SQL Server 未启用服务器审计",
 			Target:      facts.TargetDBSQLSrv,
-			Description: "sys.server_audits 中无启用状态的服务器审计时，数据库操作无审计轨迹。",
+			Description: "sys.server_audits 中无启用状态的服务器审计时，数据库操作无审计轨迹。零行只有在采集账号可见性充分（sysadmin 或 CONTROL SERVER，同包 mssql.audit_visibility 自查）时才认定未配置审计；可见性不足、截断或旧包无自查时零行判 UNKNOWN，不自动提权。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
-			// 证据门控：收据成功且零行时 Ready，由 check 判“未配置任何审计”（FAIL）；
-			// 被拒绝 / 失败 / 无收据时 UNKNOWN（区分无配置、无权限、未采集）。
-			Evidence:    EvidenceSource("mssql.server_audits", "", nil, true),
+			Evidence:    mssqlAuditEvidence,
 			Risk:        RiskMedium,
 			Remediation: "创建并启用服务器审计（及数据库审计规范），审计目标指向受保护的存储。",
 		},
@@ -394,8 +507,8 @@ var serverConfigRules = []struct {
 			}
 			detail := "未启用服务器审计（sys.server_audits 中无启用项）"
 			if len(ev) == 0 {
-				// 证据门控已保证收据成功：零行即“未配置任何审计”，不是“未采集”。
-				detail = "未启用服务器审计（sys.server_audits 查询成功但无任何审计配置）"
+				// 证据门控已保证可见性充分：零行即“未配置任何审计”，不是“未采集”或“不可见”。
+				detail = "未启用服务器审计（sys.server_audits 查询成功且零行，采集账号可见性充分，认定未配置任何审计）"
 			}
 			return []CheckHit{{
 				Subject:  "server",
@@ -422,7 +535,7 @@ var serverConfigRules = []struct {
 			ID: "db.mysql.general_log_on", Version: "1",
 			Name:        "MySQL 通用查询日志开启",
 			Target:      facts.TargetDBMySQL,
-			Description: "general_log 记录全部语句（含可能出现的明文口令与业务数据），且持续写盘影响性能与磁盘。",
+			Description: "general_log 记录全部语句，语句文本可能含明文口令与业务数据，存在敏感信息明文落盘风险（是否实际含患者明文须结合日志内容判定，本规则不断言）；且持续写盘影响性能与磁盘。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
 			Risk:        RiskLow,
 			Remediation: "生产环境关闭 general_log，排障窗口后及时关停。",
@@ -538,14 +651,14 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.oracle.audit_trail_off", Version: "2",
-			Name:        "Oracle 未启用审计",
+			ID: "db.oracle.audit_trail_off", Version: "3",
+			Name:        "Oracle 传统审计未启用",
 			Target:      facts.TargetDBOracle,
-			Description: "AUDIT_TRAIL=NONE 时数据库审计完全关闭，无法追溯用户行为。",
+			Description: "AUDIT_TRAIL=NONE 时传统审计关闭，传统审计轨迹缺失。本规则只评价传统审计，不评价统一审计（Unified Auditing）：12c+ 环境即使 AUDIT_TRAIL=NONE 也可能已启用统一审计，需另查统一审计模式与策略；统一审计不在本规则评价范围，本规则结论不等于“数据库完全无审计”。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
 			Evidence:    EvidenceSource("ora.parameters", "name", []string{"AUDIT_TRAIL"}, false),
 			Risk:        RiskMedium,
-			Remediation: "将 AUDIT_TRAIL 设为 DB（或 DB_EXTENDED）并重启生效；审计记录定期归档。",
+			Remediation: "将 AUDIT_TRAIL 设为 DB（或 DB_EXTENDED）并重启生效；或确认统一审计已启用并覆盖所需策略，审计记录定期归档。",
 		},
 		check: func(c *EvalContext) []CheckHit {
 			var hits []CheckHit
@@ -561,7 +674,7 @@ var serverConfigRules = []struct {
 				}
 				hits = append(hits, CheckHit{
 					Subject:  "server",
-					Detail:   "AUDIT_TRAIL=NONE（数据库审计未启用）",
+					Detail:   "AUDIT_TRAIL=NONE（传统审计未启用；统一审计不在本规则评价范围）",
 					Evidence: []string{f.FactID},
 				})
 			}

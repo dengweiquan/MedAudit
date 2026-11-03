@@ -10,6 +10,7 @@ import (
 var (
 	procNetUserModalsGet = netapi32.NewProc("NetUserModalsGet")
 	procNetServerGetInfo = netapi32.NewProc("NetServerGetInfo")
+	procNetGetJoinInfo   = netapi32.NewProc("NetGetJoinInformation")
 )
 
 // USER_MODALS_INFO_0/3 按 MSDN 字段顺序；全部为 DWORD，时间单位为秒。
@@ -68,23 +69,51 @@ func queryPasswordPolicy() (PasswordPolicy, error) {
 		p.LockoutWindowSec = info.LockoutObservationWindow
 		p.LockoutThreshold = info.LockoutThreshold
 	}
-	p.Scope = machinePasswordScope()
+	role := machineRole()
+	p.Role = role
+	p.Scope = passwordScopeForRole(role)
 	return p, nil
 }
 
-// machinePasswordScope 探测本机是否为域控：是则 NetUserModalsGet 返回域默认策略，
-// 否则为本地 SAM 策略；探测失败时标注 unknown（值仍可用，不猜测覆盖范围）。
-// 注意：本机策略不代表全部域用户；细粒度用户策略（FGPP/PSO）不在本 API 覆盖内。
-func machinePasswordScope() string {
+// machineRole 探测本机角色（工作组 / 域成员 / 域控），三态分别验证实际查询对象：
+//   - NetGetJoinInformation 得加入状态（Workgroup/Domain）；
+//   - 域加入状态下再以 NetServerGetInfo 的 SV_TYPE_DOMAIN_CTRL 区分域控与普通域成员；
+//   - 域控的 NetUserModalsGet 返回域默认策略；工作组与域成员均返回本地 SAM 策略——
+//     域成员本机的查询不等于域账号默认策略，域账号默认策略不在本 API 覆盖内；
+//   - 探测失败时返回 unknown（值仍可用，不猜测覆盖范围）。
+//
+// 细粒度用户策略（FGPP/PSO）不在本 API 覆盖内。
+func machineRole() string {
+	var nameBuf *uint16
+	var joinStatus uint32
+	r1, _, _ := procNetGetJoinInfo.Call(0, uintptr(unsafe.Pointer(&nameBuf)), uintptr(unsafe.Pointer(&joinStatus)))
+	if nameBuf != nil {
+		defer procNetApiBufferFree.Call(uintptr(unsafe.Pointer(nameBuf)))
+	}
+	// NetSetupJoinStatus：0 未知，1 工作组，2 域。
+	isDC := false
 	var bufptr *byte
-	r1, _, _ := procNetServerGetInfo.Call(0, 101, uintptr(unsafe.Pointer(&bufptr)))
-	if r1 != 0 || bufptr == nil {
+	if r1, _, _ := procNetServerGetInfo.Call(0, 101, uintptr(unsafe.Pointer(&bufptr))); r1 == 0 && bufptr != nil {
+		defer procNetApiBufferFree.Call(uintptr(unsafe.Pointer(bufptr)))
+		isDC = (*serverInfo101)(unsafe.Pointer(bufptr)).Type&svTypeDomainCtrl != 0
+	}
+	if isDC {
+		return "domain-controller"
+	}
+	if r1 != 0 {
 		return "unknown"
 	}
-	defer procNetApiBufferFree.Call(uintptr(unsafe.Pointer(bufptr)))
-	info := (*serverInfo101)(unsafe.Pointer(bufptr))
-	if info.Type&svTypeDomainCtrl != 0 {
-		return "domain-default"
+	switch joinStatus {
+	case 1:
+		return "workgroup"
+	case 2:
+		return "domain-member"
+	default:
+		return "unknown"
 	}
-	return "local-sam"
+}
+
+// machinePasswordScope 由机器角色定覆盖范围（见 passwordScopeForRole）。
+func machinePasswordScope() string {
+	return passwordScopeForRole(machineRole())
 }

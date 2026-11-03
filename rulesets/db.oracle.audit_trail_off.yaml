@@ -1,13 +1,13 @@
 # MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
 id: db.oracle.audit_trail_off
-version: "2"
-name: Oracle 未启用审计
+version: "3"
+name: Oracle 传统审计未启用
 target: db-oracle
 risk: medium
 description: |
-  AUDIT_TRAIL=NONE 时数据库审计完全关闭，无法追溯用户行为。
+  AUDIT_TRAIL=NONE 时传统审计关闭，传统审计轨迹缺失。本规则只评价传统审计，不评价统一审计（Unified Auditing）：12c+ 环境即使 AUDIT_TRAIL=NONE 也可能已启用统一审计，需另查统一审计模式与策略；统一审计不在本规则评价范围，本规则结论不等于“数据库完全无审计”。
 requires: [account_config]
 remediation: |
-  将 AUDIT_TRAIL 设为 DB（或 DB_EXTENDED）并重启生效；审计记录定期归档。
+  将 AUDIT_TRAIL 设为 DB（或 DB_EXTENDED）并重启生效；或确认统一审计已启用并覆盖所需策略，审计记录定期归档。
 compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
   - "8.1.4.3 a) 安全审计：启用安全审计功能，覆盖每个用户，对重要用户行为和安全事件进行审计"

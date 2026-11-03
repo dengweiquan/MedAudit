@@ -5,7 +5,7 @@ name: MySQL 通用查询日志开启
 target: db-mysql
 risk: low
 description: |
-  general_log 记录全部语句（含可能出现的明文口令与业务数据），且持续写盘影响性能与磁盘。
+  general_log 记录全部语句，语句文本可能含明文口令与业务数据，存在敏感信息明文落盘风险（是否实际含患者明文须结合日志内容判定，本规则不断言）；且持续写盘影响性能与磁盘。
 requires: [account_config]
 remediation: |
   生产环境关闭 general_log，排障窗口后及时关停。

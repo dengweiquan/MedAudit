@@ -84,7 +84,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		errStage := ""
 		if err != nil {
 			status = "denied"
-			errStage = err.Error()
+			errStage = facts.RedactSecrets(err.Error())
 		}
 		b.Receipts = append(b.Receipts, facts.Receipt{
 			TemplateID: id, TemplateVersion: ver,
@@ -287,7 +287,9 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 			return 0, err
 		}
 		sec := ParseSeceditInf(raw)
-		attrs := map[string]string{"scope": machinePasswordScope()}
+		// secedit 与数值策略的适用范围必须一致：同一 machineRole 派生 scope，不各自探测。
+		role := machineRole()
+		attrs := map[string]string{"scope": passwordScopeForRole(role), "machine_role": role}
 		if v, ok := sec["passwordcomplexity"]; ok {
 			attrs["password_complexity"] = v
 		}
@@ -345,7 +347,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 					Subject: inst.Name, Status: st, Source: "win.mssql_force_encryption",
 					Attributes: map[string]string{
 						"instance_id": inst.ID, "registry_path": MSSQLSuperSocketPath(inst.ID),
-						"error": rerr.Error(),
+						"error": facts.RedactSecrets(rerr.Error()),
 					},
 				})
 				continue

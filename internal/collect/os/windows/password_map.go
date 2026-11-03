@@ -14,6 +14,21 @@ type PasswordPolicy struct {
 	LockoutWindowSec   uint32
 	LockoutThreshold   uint32
 	Scope              string // "local-sam" | "domain-default" | "unknown"
+	Role               string // "workgroup" | "domain-member" | "domain-controller" | "unknown"
+}
+
+// passwordScopeForRole 由机器角色定覆盖范围（纯函数，可单测）：
+// 域控返回域默认策略；工作组与域成员均返回本地 SAM 策略——域成员本机的查询不等于域账号默认策略，
+// 域账号的默认策略不在本 API 覆盖内；角色未知时不猜测，返回 unknown。
+func passwordScopeForRole(role string) string {
+	switch role {
+	case "domain-controller":
+		return "domain-default"
+	case "workgroup", "domain-member":
+		return "local-sam"
+	default:
+		return "unknown"
+	}
 }
 
 // TimeqForever NetUserModalsGet 的永不过期特殊值（DWORD 全 1）。
@@ -23,6 +38,7 @@ const TimeqForever = 0xFFFFFFFF
 func PasswordPolicyAttributes(p PasswordPolicy) map[string]string {
 	return map[string]string{
 		"scope":                p.Scope,
+		"machine_role":         p.Role,
 		"min_password_length":  strconv.FormatUint(uint64(p.MinLength), 10),
 		"max_password_age_sec": strconv.FormatUint(uint64(p.MaxAgeSec), 10),
 		"min_password_age_sec": strconv.FormatUint(uint64(p.MinAgeSec), 10),

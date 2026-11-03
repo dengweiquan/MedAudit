@@ -163,6 +163,8 @@ controls:
       - mw.weblogic.console_deployed
       - os.linux.ssh_password_auth
       - os.linux.ssh_root_login
+      # 辅助证据：os.windows.rdp_nla_disabled 只证明 RDP 的 NLA 认证要求，不证明来源地址限制，
+      # 不代表本控制满足；来源限制由 db.pg.hba_open_network、db.pg.listen_all 等规则评价。
       - os.windows.rdp_nla_disabled
   - id: "8.1.4.4 d)"
     group: 入侵防范

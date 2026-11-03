@@ -1,11 +1,11 @@
 # MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
 id: os.linux.ssh_root_login
-version: "2"
+version: "3"
 name: sshd 允许 root 口令登录
 target: os-linux
 risk: high
 description: |
-  PermitRootLogin=yes 时 root 可直接口令登录，远程爆破一旦成功即获最高权限。
+  PermitRootLogin=yes 且口令鉴别未关闭时，root 可直接口令登录，远程爆破一旦成功即获最高权限。只看 PermitRootLogin 会误判：PasswordAuthentication=no 时 root 只能密钥登录，不判口令登录。本规则只评价全局配置；Match 条件块不在评价范围；键盘交互（PAM）等其他口令通道不在本规则评价范围。
 requires: [account_config]
 remediation: |
   将 PermitRootLogin 设为 no 或 prohibit-password，root 仅经普通账号 sudo 提权。

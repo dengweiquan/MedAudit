@@ -1,6 +1,7 @@
 package linux
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,9 +59,15 @@ func parseSshdFile(path string, visited map[string]bool, out map[string]string) 
 				if !filepath.IsAbs(pat) {
 					pat = filepath.Join(dir, pat)
 				}
-				matches, _ := filepath.Glob(pat)
+				matches, gerr := filepath.Glob(pat)
+				if gerr != nil {
+					return fmt.Errorf("include %s: %w", pat, gerr)
+				}
 				for _, m := range matches {
-					_ = parseSshdFile(m, visited, out)
+					// 被包含文件读失败不得忽略：值可能不完整，宁可整段失败（UNKNOWN）也不误判。
+					if err := parseSshdFile(m, visited, out); err != nil {
+						return err
+					}
 				}
 			}
 			continue
@@ -108,11 +115,11 @@ func collectSshd(b *facts.FactBundle, dir string, addReceipt func(facts.Receipt)
 		b.Facts = append(b.Facts, facts.Fact{
 			FactID: "fact-sshd-denied", Kind: facts.FactAccountConfig,
 			Subject: "sshd_config", Status: facts.StatusPermissionDenied, Source: "linux.sshd",
-			Attributes: map[string]string{"error": err.Error(), "file": mainPath},
+			Attributes: map[string]string{"error": facts.RedactSecrets(err.Error()), "file": mainPath},
 		})
 		receipt.Status = "failed"
 		receipt.ErrorStage = "read"
-		receipt.Error = err.Error()
+		receipt.Error = facts.RedactSecrets(err.Error())
 		finish()
 		return
 	}
@@ -120,7 +127,8 @@ func collectSshd(b *facts.FactBundle, dir string, addReceipt func(facts.Receipt)
 		FactID: "fact-sshd-1", Kind: facts.FactAccountConfig,
 		Subject: "sshd_config", Status: facts.StatusObserved, Source: "linux.sshd",
 		Attributes: map[string]string{
-			"present": "true", "file": mainPath,
+			// scope=global：本节只评价全局配置；Match 条件块不在评价范围（见规则描述）。
+			"present": "true", "file": mainPath, "scope": "global",
 			"password_authentication": vals["passwordauthentication"],
 			"permit_root_login":       vals["permitrootlogin"],
 		},

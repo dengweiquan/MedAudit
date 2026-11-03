@@ -257,7 +257,8 @@ func TestPGSSLAndAudit(t *testing.T) {
 	if got := failsFor(t, b, "db.pg.audit_off"); len(got) != 1 {
 		t.Fatalf("audit_off fails = %d, want 1", len(got))
 	}
-	// ssl=on 且 logging_collector=on → 两规则均不 FAIL
+	// ssl=on 且仅 logging_collector=on（事件开关全关）→ ssl_off 不 FAIL，但 audit_off 必须 FAIL：
+	// 收集器开启不等于审计事件开启。
 	b2 := testBundle(facts.TargetDBPostgres, []facts.Fact{
 		pg("ssl", "on"), pg("logging_collector", "on"),
 		pg("log_connections", "off"), pg("log_statement", "none"),
@@ -266,8 +267,17 @@ func TestPGSSLAndAudit(t *testing.T) {
 	if got := failsFor(t, b2, "db.pg.ssl_off"); len(got) != 0 {
 		t.Fatalf("ssl=on 时 ssl_off 不应 FAIL，got %d", len(got))
 	}
-	if got := failsFor(t, b2, "db.pg.audit_off"); len(got) != 0 {
-		t.Fatalf("logging_collector=on 时 audit_off 不应 FAIL，got %d", len(got))
+	if got := failsFor(t, b2, "db.pg.audit_off"); len(got) != 1 {
+		t.Fatalf("仅 logging_collector=on 时 audit_off 应 FAIL，got %d", len(got))
+	}
+	// 收集器 off 但 log_connections=on（事件走其他输出路径）→ audit_off 不 FAIL。
+	b2b := testBundle(facts.TargetDBPostgres, []facts.Fact{
+		pg("ssl", "on"), pg("logging_collector", "off"),
+		pg("log_connections", "on"), pg("log_statement", "none"),
+	})
+	b2b.Receipts = []facts.Receipt{{TemplateID: "pg.settings", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b2b, "db.pg.audit_off"); len(got) != 0 {
+		t.Fatalf("log_connections=on 时 audit_off 不应 FAIL，got %d", len(got))
 	}
 	// 仅 log_statement=ddl 也算审计开启
 	b3 := testBundle(facts.TargetDBPostgres, []facts.Fact{

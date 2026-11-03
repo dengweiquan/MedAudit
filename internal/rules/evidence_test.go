@@ -107,16 +107,26 @@ func TestEvidenceFailed(t *testing.T) {
 	}
 }
 
-// 零行：MSSQL 审计收据成功且零行 → “未配置任何审计” FAIL（不是未采集、不是 PASS）。
+// 零行：MSSQL 审计收据成功且零行时，只有可见性充分才认定“未配置任何审计” FAIL；
+// 无自查事实（旧包）时零行 → UNKNOWN（目录视图按可见性过滤，不能自动提权）。
 func TestEvidenceZeroRowAudit(t *testing.T) {
 	b := testBundleR(facts.TargetDBSQLSrv, []facts.Fact{
 		{FactID: "f1", Kind: facts.FactAccountConfig, Subject: "x", Status: facts.StatusObserved,
 			Source: "mssql.server_config", Attributes: map[string]string{"name": "x"}},
 	}, []facts.Receipt{receipt("mssql.server_audits", "ok")})
 	r := singleResult(t, b, &Baseline{}, "db.mssql.audit_off")
+	expectConclusion(t, r, facts.ConclusionUnknown)
+
+	b2 := testBundleR(facts.TargetDBSQLSrv, []facts.Fact{
+		{FactID: "f1", Kind: facts.FactAccountConfig, Subject: "x", Status: facts.StatusObserved,
+			Source: "mssql.server_config", Attributes: map[string]string{"name": "x"}},
+		{FactID: "f-vis", Kind: facts.FactAccountConfig, Subject: "audit-visibility", Status: facts.StatusObserved,
+			Source: "mssql.audit_visibility", Attributes: map[string]string{"visibility": "sufficient"}},
+	}, []facts.Receipt{receipt("mssql.server_audits", "ok"), receipt("mssql.audit_visibility", "ok")})
+	r = singleResult(t, b2, &Baseline{}, "db.mssql.audit_off")
 	expectConclusion(t, r, facts.ConclusionFail)
-	if !strings.Contains(r.Detail, "无任何审计配置") {
-		t.Errorf("零行 FAIL 明细应说明无任何审计配置，实际 detail=%s", r.Detail)
+	if !strings.Contains(r.Detail, "认定未配置任何审计") {
+		t.Errorf("零行 FAIL 明细应说明可见性充分下的认定，实际 detail=%s", r.Detail)
 	}
 }
 
@@ -283,7 +293,8 @@ func TestEvidenceMySQLPassword(t *testing.T) {
 	expectConclusion(t, r, facts.ConclusionPass)
 }
 
-// PG 审计：三项均关 → FAIL；collector 开 → PASS；仅有无关设置 → UNKNOWN。
+// PG 审计：三项均关 → FAIL；仅 collector 开（事件开关缺失）→ FAIL（收集器不等于审计事件）；
+// log_connections 开 → PASS；仅有无关设置 → UNKNOWN。
 func TestEvidencePGAAudit(t *testing.T) {
 	off := testBundleR(facts.TargetDBPostgres, []facts.Fact{
 		{FactID: "f1", Kind: facts.FactAccountConfig, Subject: "server", Status: facts.StatusObserved,
@@ -301,6 +312,13 @@ func TestEvidencePGAAudit(t *testing.T) {
 			Source: "pg.settings", Attributes: map[string]string{"name": "logging_collector", "setting": "on"}},
 	}, []facts.Receipt{receipt("pg.settings", "ok")})
 	r = singleResult(t, on, &Baseline{}, "db.pg.audit_off")
+	expectConclusion(t, r, facts.ConclusionFail)
+
+	connOn := testBundleR(facts.TargetDBPostgres, []facts.Fact{
+		{FactID: "f1", Kind: facts.FactAccountConfig, Subject: "server", Status: facts.StatusObserved,
+			Source: "pg.settings", Attributes: map[string]string{"name": "log_connections", "setting": "on"}},
+	}, []facts.Receipt{receipt("pg.settings", "ok")})
+	r = singleResult(t, connOn, &Baseline{}, "db.pg.audit_off")
 	expectConclusion(t, r, facts.ConclusionPass)
 
 	missing := testBundleR(facts.TargetDBPostgres, []facts.Fact{

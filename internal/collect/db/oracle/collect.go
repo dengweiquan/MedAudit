@@ -93,7 +93,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		case qerr != nil && dbutil.IsPermissionDenied(qerr):
 			rc.Status = "denied"
 			rc.ErrorStage = "query"
-			rc.Error = qerr.Error()
+			rc.Error = facts.RedactSecrets(qerr.Error())
 			b.Receipts = append(b.Receipts, rc)
 			b.Facts = append(b.Facts, facts.Fact{
 				FactID: nextID(), Kind: facts.FactAccountConfig, Subject: t.ID,
@@ -103,7 +103,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		case qerr != nil:
 			rc.Status = "failed"
 			rc.ErrorStage = "query"
-			rc.Error = qerr.Error()
+			rc.Error = facts.RedactSecrets(qerr.Error())
 			failed = true
 			b.Receipts = append(b.Receipts, rc)
 			return fmt.Errorf("template %s: %w", t.ID, qerr)
@@ -152,7 +152,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		if perr != nil {
 			rc.Status = "failed"
 			rc.ErrorStage = "query"
-			rc.Error = perr.Error()
+			rc.Error = facts.RedactSecrets(perr.Error())
 			failed = true
 		}
 		rc.Finished = time.Now().UTC().Truncate(time.Second)

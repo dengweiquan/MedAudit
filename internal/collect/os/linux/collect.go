@@ -257,7 +257,7 @@ func collectFilePerms(b *facts.FactBundle, factID, path, source string) {
 				FactID: fmt.Sprintf("%s-d%d", factID, depth),
 				Kind:   facts.FactFilePerm, Subject: cur,
 				Status: facts.StatusPermissionDenied, Source: source,
-				Attributes: map[string]string{"error": err.Error()},
+				Attributes: map[string]string{"error": facts.RedactSecrets(err.Error())},
 			})
 			receipt.Status = "partial"
 			break

@@ -45,11 +45,11 @@ func collectOracleSqlnet(b *facts.FactBundle, dir string, addReceipt func(facts.
 		}
 		receipt.Status = "failed"
 		receipt.ErrorStage = "read"
-		receipt.Error = err.Error()
+		receipt.Error = facts.RedactSecrets(err.Error())
 		b.Facts = append(b.Facts, facts.Fact{
 			FactID: "fact-sqlnet-oratab-denied", Kind: facts.FactAccountConfig,
 			Subject: "oratab", Status: facts.StatusPermissionDenied, Source: "linux.oracle_sqlnet",
-			Attributes: map[string]string{"error": err.Error(), "file": oratabPath},
+			Attributes: map[string]string{"error": facts.RedactSecrets(err.Error()), "file": oratabPath},
 		})
 		*execStatus = facts.ExecutionPartial
 		finish()
@@ -94,7 +94,7 @@ func collectOracleSqlnet(b *facts.FactBundle, dir string, addReceipt func(facts.
 				Subject: h.Home, Status: facts.StatusPermissionDenied, Source: "linux.oracle_sqlnet",
 				Attributes: map[string]string{
 					"oracle_home": h.Home, "sid": h.SID, "sqlnet_file": sqlnetPath,
-					"error": rerr.Error(),
+					"error": facts.RedactSecrets(rerr.Error()),
 				},
 			})
 			partial = true
@@ -108,7 +108,7 @@ func collectOracleSqlnet(b *facts.FactBundle, dir string, addReceipt func(facts.
 				Subject: h.Home, Status: facts.StatusUnsupported, Source: "linux.oracle_sqlnet",
 				Attributes: map[string]string{
 					"oracle_home": h.Home, "sid": h.SID, "sqlnet_file": sqlnetPath,
-					"error": rerr.Error(),
+					"error": facts.RedactSecrets(rerr.Error()),
 				},
 			})
 			partial = true
@@ -138,7 +138,7 @@ func collectOracleSqlnet(b *facts.FactBundle, dir string, addReceipt func(facts.
 	if partial {
 		receipt.Status = "partial"
 		receipt.ErrorStage = "read"
-		receipt.Error = firstErr
+		receipt.Error = facts.RedactSecrets(firstErr)
 		*execStatus = facts.ExecutionPartial
 	}
 	finish()

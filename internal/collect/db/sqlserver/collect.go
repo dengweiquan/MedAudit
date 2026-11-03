@@ -82,7 +82,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		case qerr != nil && dbutil.IsPermissionDenied(qerr):
 			rc.Status = "denied"
 			rc.ErrorStage = "query"
-			rc.Error = qerr.Error()
+			rc.Error = facts.RedactSecrets(qerr.Error())
 			b.Receipts = append(b.Receipts, rc)
 			b.Facts = append(b.Facts, facts.Fact{
 				FactID: nextID(), Kind: facts.FactIdentity, Subject: t.ID,
@@ -92,7 +92,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		case qerr != nil:
 			rc.Status = "failed"
 			rc.ErrorStage = "query"
-			rc.Error = qerr.Error()
+			rc.Error = facts.RedactSecrets(qerr.Error())
 			failed = true
 			b.Receipts = append(b.Receipts, rc)
 			return fmt.Errorf("template %s: %w", t.ID, qerr)
@@ -122,6 +122,46 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		mapFn := mapServerTemplate(tid, b, nextID, rowMap)
 		if err := run(t, t.SQL, "", mapFn); err != nil {
 			return finish(b, failed, err)
+		}
+	}
+
+	// 审计可见性自查（尽力而为，不拖垮整包）：sys.server_audits 受元数据可见性过滤，
+	// 零行只有在采集账号可见性充分（sysadmin 或 CONTROL SERVER）时才能认定“未配置审计”。
+	// 探针失败（无事实）时零行一律判 UNKNOWN，不自动提权。
+	if t, ok := byID["mssql.audit_visibility"]; ok {
+		start := time.Now()
+		r, qerr := dbutil.QueryRows(ctx, db, t.SQL, 0, 0, 0)
+		rc := facts.Receipt{
+			TemplateID: t.ID, TemplateVersion: t.Version,
+			Started: start.UTC().Truncate(time.Second), Finished: time.Now().UTC().Truncate(time.Second),
+			Status: "ok", Visibility: "full",
+		}
+		switch {
+		case qerr != nil && dbutil.IsPermissionDenied(qerr):
+			rc.Status = "denied"
+			rc.ErrorStage = "query"
+			rc.Error = facts.RedactSecrets(qerr.Error())
+			b.Receipts = append(b.Receipts, rc)
+		case qerr != nil:
+			rc.Status = "failed"
+			rc.ErrorStage = "query"
+			rc.Error = facts.RedactSecrets(qerr.Error())
+			b.Receipts = append(b.Receipts, rc)
+		default:
+			rc.RowCount = len(r.Data)
+			b.Receipts = append(b.Receipts, rc)
+			if len(r.Data) > 0 {
+				m := rowMap(r, 0)
+				vis := "uncertain"
+				if m["is_sysadmin"] == "1" || m["has_control"] == "1" {
+					vis = "sufficient"
+				}
+				b.Facts = append(b.Facts, facts.Fact{
+					FactID: nextID(), Kind: facts.FactAccountConfig,
+					Subject: "audit-visibility", Status: facts.StatusObserved, Source: "mssql.audit_visibility",
+					Attributes: map[string]string{"visibility": vis},
+				})
+			}
 		}
 	}
 

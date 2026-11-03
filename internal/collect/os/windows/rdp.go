@@ -35,41 +35,18 @@ func readRegDWORD(path, name string) (RDPValue, error) {
 	return RDPValue{Value: v != 0, Present: true}, nil
 }
 
-// readRDPSettings 读 RDP 有效配置：组策略优先于本地。
+// readRDPSettings 读 RDP 有效配置：组策略优先于本地；回退语义见 ResolveRDPSettingsRaw
+// （组策略被拒时返回错误，不回退本地）。
 // fDenyTSConnections=0 表示允许连接（值取反后为 enabled）；UserAuthentication=1 表示要求 NLA。
 func readRDPSettings() (RDPSettings, error) {
-	var s RDPSettings
-	polDeny, err := readRegDWORD(rdpPolicyPath, "fDenyTSConnections")
-	if err != nil {
-		return s, err
+	read := func(path, name string) RegRead {
+		v, err := readRegDWORD(path, name)
+		return RegRead{Value: v, Err: err}
 	}
-	locDeny, err := readRegDWORD(rdpLocalPath, "fDenyTSConnections")
-	if err != nil {
-		return s, err
-	}
-	if deny := ResolveRDPValue(polDeny, locDeny); deny.Present {
-		s.Enabled = RDPValue{Value: !deny.Value, Present: true}
-		if polDeny.Present {
-			s.EnabledSource = "group-policy"
-		} else {
-			s.EnabledSource = "local"
-		}
-	}
-	polNLA, err := readRegDWORD(rdpPolicyPath, "UserAuthentication")
-	if err != nil {
-		return s, err
-	}
-	locNLA, err := readRegDWORD(rdpTcpPath, "UserAuthentication")
-	if err != nil {
-		return s, err
-	}
-	s.NLA = ResolveRDPValue(polNLA, locNLA)
-	if s.NLA.Present {
-		if polNLA.Present {
-			s.NLASource = "group-policy"
-		} else {
-			s.NLASource = "local"
-		}
-	}
-	return s, nil
+	return ResolveRDPSettingsRaw(
+		read(rdpPolicyPath, "fDenyTSConnections"),
+		read(rdpLocalPath, "fDenyTSConnections"),
+		read(rdpPolicyPath, "UserAuthentication"),
+		read(rdpTcpPath, "UserAuthentication"),
+	)
 }

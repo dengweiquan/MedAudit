@@ -129,7 +129,7 @@ var linuxExtraRules = []struct {
 			ID: "os.linux.ssh_password_auth", Version: "2",
 			Name:        "sshd 允许口令鉴别",
 			Target:      facts.TargetOSLinux,
-			Description: "sshd 允许口令鉴别时，远程管理依赖口令（可爆破、可窃听重放），应改用密钥鉴别。",
+			Description: "sshd 允许口令鉴别时，远程管理依赖口令（可爆破、可窃听重放），应改用密钥鉴别。本规则只评价全局配置；Match 条件块（如针对特定用户/地址的例外）不在评价范围。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
 			Evidence:    sshdEvidence,
 			Risk:        RiskMedium,
@@ -167,10 +167,10 @@ var linuxExtraRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.linux.ssh_root_login", Version: "2",
+			ID: "os.linux.ssh_root_login", Version: "3",
 			Name:        "sshd 允许 root 口令登录",
 			Target:      facts.TargetOSLinux,
-			Description: "PermitRootLogin=yes 时 root 可直接口令登录，远程爆破一旦成功即获最高权限。",
+			Description: "PermitRootLogin=yes 且口令鉴别未关闭时，root 可直接口令登录，远程爆破一旦成功即获最高权限。只看 PermitRootLogin 会误判：PasswordAuthentication=no 时 root 只能密钥登录，不判口令登录。本规则只评价全局配置；Match 条件块不在评价范围；键盘交互（PAM）等其他口令通道不在本规则评价范围。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
 			Evidence:    sshdEvidence,
 			Risk:        RiskHigh,
@@ -185,12 +185,21 @@ var linuxExtraRules = []struct {
 				if !strings.EqualFold(f.Attributes["permit_root_login"], "yes") {
 					continue
 				}
+				// root 口令登录还需口令鉴别开启：PasswordAuthentication=no 时 root 只能密钥登录。
+				pa := f.Attributes["password_authentication"]
+				if pa != "" && strings.EqualFold(pa, "no") {
+					continue
+				}
 				if c.Baseline.Allowed("sshd_config", "sshd", "permit_root_login", "") {
 					continue
 				}
+				detail := "sshd 允许 root 口令登录（PermitRootLogin=yes，PasswordAuthentication=yes）"
+				if pa == "" {
+					detail = "sshd 允许 root 口令登录（PermitRootLogin=yes，PasswordAuthentication 缺省即 yes）"
+				}
 				hits = append(hits, CheckHit{
 					Subject:  "sshd_config",
-					Detail:   "sshd 允许 root 口令登录（PermitRootLogin=yes）",
+					Detail:   detail,
 					Evidence: []string{f.FactID},
 				})
 			}

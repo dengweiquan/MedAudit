@@ -189,7 +189,7 @@ var windowsPasswordRules = []struct {
 			ID: "os.windows.password_min_length", Version: "1",
 			Name:        "Windows 口令最小长度不足",
 			Target:      facts.TargetOSWindows,
-			Description: "本地 SAM 或域默认策略的口令最小长度低于项目基线 8 位时，短口令易被爆破。阈值 8 位为项目基线选择（与 MySQL 口令长度口径一致），非未核实标准的规定值；覆盖范围见事实 scope（local-sam/domain-default），细粒度用户策略（FGPP/PSO）未覆盖，本机策略不代表全部域用户。",
+			Description: "本地 SAM 或域默认策略的口令最小长度低于项目基线 8 位时，短口令易被爆破。阈值 8 位为项目基线选择（与 MySQL 口令长度口径一致），非未核实标准的规定值；覆盖范围见事实 scope 与 machine_role：工作组与域成员为本地 SAM 策略（域成员本机查询不等于域账号默认策略），域控为域默认策略；细粒度用户策略（FGPP/PSO）未覆盖。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
 			Evidence:    winEvidence("win.password_policy", winAttrPresent("min_password_length")),
 			Risk:        RiskMedium,
@@ -208,9 +208,13 @@ var windowsPasswordRules = []struct {
 				if c.Baseline.Allowed("password-policy", "policy", "min_length", f.Attributes["scope"]) {
 					continue
 				}
+				coverage := f.Attributes["scope"]
+				if r := f.Attributes["machine_role"]; r != "" {
+					coverage += "/" + r
+				}
 				hits = append(hits, CheckHit{
 					Subject:  "password-policy",
-					Detail:   fmt.Sprintf("口令最小长度为 %d 位，低于项目基线 8 位（覆盖范围：%s）", n, f.Attributes["scope"]),
+					Detail:   fmt.Sprintf("口令最小长度为 %d 位，低于项目基线 8 位（覆盖范围：%s）", n, coverage),
 					Evidence: []string{f.FactID},
 				})
 			}
@@ -222,7 +226,7 @@ var windowsPasswordRules = []struct {
 			ID: "os.windows.password_max_age_never", Version: "1",
 			Name:        "Windows 口令永不过期",
 			Target:      facts.TargetOSWindows,
-			Description: "MaximumPasswordAge 为 TIMEQ_FOREVER（永不过期）时，口令泄漏后长期有效。本规则只判永不过期，不对“过长但有限”的期限设阈值（无核实标准值可引）。",
+			Description: "MaximumPasswordAge 为 TIMEQ_FOREVER（永不过期）时，口令泄漏后长期有效。本规则只判永不过期，属于基础子集：有限但过长的周期尚未判定（实际值保留在事实 max_password_age_sec 中），阈值遵循组织基线，不随意补天数。覆盖范围见事实 scope 与 machine_role（工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
 			Evidence:    winEvidence("win.password_policy", winAttrPresent("max_password_age_sec")),
 			Risk:        RiskMedium,
@@ -255,7 +259,7 @@ var windowsPasswordRules = []struct {
 			ID: "os.windows.password_lockout_disabled", Version: "1",
 			Name:        "Windows 未启用登录失败锁定",
 			Target:      facts.TargetOSWindows,
-			Description: "LockoutThreshold=0（锁定阈值关闭）时，口令可被无限次尝试爆破。",
+			Description: "LockoutThreshold=0（锁定阈值关闭）时，口令可被无限次尝试爆破。覆盖范围见事实 scope 与 machine_role（工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
 			Evidence:    winEvidence("win.password_policy", winAttrPresent("lockout_threshold")),
 			Risk:        RiskMedium,
@@ -287,7 +291,7 @@ var windowsPasswordRules = []struct {
 			ID: "os.windows.password_complexity_off", Version: "1",
 			Name:        "Windows 未要求口令复杂度",
 			Target:      facts.TargetOSWindows,
-			Description: "secedit 导出的 PasswordComplexity=0 时，口令无复杂度要求。复杂度不能从 NetUserModalsGet 推断，本规则仅以 secedit 只读导出为准；导出渠道不可用时结论为 UNKNOWN，不解析本地化 net accounts 文案。",
+			Description: "secedit 导出的 PasswordComplexity=0 时，口令无复杂度要求。复杂度不能从 NetUserModalsGet 推断，本规则仅以 secedit 只读导出为准；导出渠道不可用时结论为 UNKNOWN，不解析本地化 net accounts 文案。secedit 与数值策略的适用范围一致（同一机器角色派生：工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
 			Evidence: winEvidence("win.secedit", func(f facts.Fact) bool {
 				v := f.Attributes["password_complexity"]
