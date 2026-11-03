@@ -345,3 +345,24 @@ func TestAPIRulesPerEndpointGapWithFail(t *testing.T) {
 		"api.invalidated_session_replay": facts.ConclusionNotApplicable,
 	})
 }
+
+// 静态复核回归三轮：纯公开端点、重放全部合法跳过时重放规则判 NA
+// （不适用，不是通过，也不是未确认）；非公开端点未运行仍为 UNKNOWN。
+func TestAPIRulesReplayAllPublicSkipNA(t *testing.T) {
+	allPublic := apiBundle(
+		apiProbe("r1", "GET /api/open", "replay:logged_out", "public", "anon", "NOT_RUN", "0"),
+		apiProbe("r2", "GET /api/status", "replay:logged_out", "public", "anon", "NOT_RUN", "0"),
+	)
+	got := apiConclusions(t, allPublic)
+	if got["api.invalidated_session_replay"] != facts.ConclusionNotApplicable {
+		t.Errorf("重放全部公开跳过：want NOT_APPLICABLE, got %s", got["api.invalidated_session_replay"])
+	}
+	mixed := apiBundle(
+		apiProbe("r1", "GET /api/open", "replay:logged_out", "public", "anon", "NOT_RUN", "0"),
+		apiProbe("r2", "GET /api/me", "replay:logged_out", "authenticated", "alice-logged-out", "NOT_RUN", "0"),
+	)
+	got = apiConclusions(t, mixed)
+	if got["api.invalidated_session_replay"] != facts.ConclusionUnknown {
+		t.Errorf("重放含非公开未运行：want UNKNOWN, got %s", got["api.invalidated_session_replay"])
+	}
+}

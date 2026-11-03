@@ -22,6 +22,7 @@ func sensBundle(adapter facts.TargetType, fs ...facts.Fact) *facts.FactBundle {
 		{TemplateID: "mysql.global_grants", Status: "ok"},
 		{TemplateID: "mysql.db_privs", Status: "ok"},
 		{TemplateID: "mssql.db_permissions", Status: "ok"},
+		{TemplateID: "ora.role_privs", Status: "ok"},
 	}, fs...)
 }
 
@@ -41,7 +42,14 @@ func privFact(id, source, subject, scope string, attrs map[string]string) facts.
 
 func roleEdgeFact(role, user string, activation facts.Activation) facts.Fact {
 	return facts.Fact{Kind: facts.FactRoleEdge, Subject: user, Status: facts.StatusObserved,
+		Source:         "ora.role_privs",
 		PermissionPath: []string{role, user}, Activation: activation}
+}
+
+func containerFact(conName string) facts.Fact {
+	return facts.Fact{FactID: "c0", Kind: facts.FactAccountConfig, Subject: "container",
+		Status: facts.StatusObserved, Source: "ora.container",
+		Attributes: map[string]string{"con_name": conName, "con_id": "3"}}
 }
 
 func readReportSnapshot(t *testing.T, db *sql.DB, id string) map[string]any {
@@ -477,29 +485,46 @@ func TestSensitiveMSSQLNoPublicUnconfirmed(t *testing.T) {
 }
 
 // Oracle 容器归属：标签库名须与包容器对应，否则未确认（同名表在不同 PDB 是不同对象）。
+// 静态复核回归三轮：容器身份只认可信的 ora.container 事实 + 收据，
+// Scope.Container（旧包中的服务名）不再作为依据。
 func TestSensitiveOracleContainer(t *testing.T) {
 	fact := privFact("f1", "ora.tab_privs", "PUBLIC", "HIS.PATIENTS", map[string]string{"privilege": "SELECT"})
-	mk := func(container string) *facts.FactBundle {
-		b := sensBundle("db-oracle", fact)
-		b.Scope.Container = container
-		return b
+	lbl := func(db string) []SensitiveLabel {
+		return []SensitiveLabel{{ID: "l1", Database: db, Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
 	}
-	for _, tc := range []struct {
-		name      string
-		container string
-		db        string
-		want      string
-	}{
-		{"容器一致", "zemr", "zemr", "exposed"},
-		{"容器不符", "zemr", "pdb1", "unconfirmed"},
-		{"容器缺失", "", "pdb1", "unconfirmed"},
-		{"标签无库名", "zemr", "", "exposed"},
-	} {
-		s := findSnap(t, MatchSensitive(mk(tc.container),
-			[]SensitiveLabel{{ID: "l1", Database: tc.db, Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}, nil), "l1")
-		if s.Status != tc.want {
-			t.Errorf("%s: want %s, got %s", tc.name, tc.want, s.Status)
-		}
+	// 新包：Scope 是服务名、事实是 PDB 名，事实胜出 → 暴露。
+	b := sensBundleReceipts("db-oracle",
+		[]facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, {TemplateID: "ora.sys_privs", Status: "ok"}, {TemplateID: "ora.container", Status: "ok"}},
+		fact, containerFact("pdb1"))
+	b.Scope.Container = "orclservice"
+	if s := findSnap(t, MatchSensitive(b, lbl("pdb1"), nil), "l1"); s.Status != "exposed" {
+		t.Errorf("service≠PDB 但事实一致：want exposed, got %s", s.Status)
+	}
+	// 旧包：Scope 非空且恰好等于标签库名，但无容器事实 → 未确认（服务名不作数）。
+	b = sensBundle("db-oracle", fact)
+	b.Scope.Container = "pdb1"
+	if s := findSnap(t, MatchSensitive(b, lbl("pdb1"), nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("旧包非空 Scope：want unconfirmed, got %s", s.Status)
+	}
+	// 容器收据失败：事实存在也不可信 → 未确认。
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, {TemplateID: "ora.sys_privs", Status: "ok"}, {TemplateID: "ora.container", Status: "failed"}},
+		fact, containerFact("pdb1"))
+	if s := findSnap(t, MatchSensitive(b, lbl("pdb1"), nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("容器收据失败：want unconfirmed, got %s", s.Status)
+	}
+	// 容器事实与标签不符 → 未确认。
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, {TemplateID: "ora.sys_privs", Status: "ok"}, {TemplateID: "ora.container", Status: "ok"}},
+		fact, containerFact("pdb2"))
+	if s := findSnap(t, MatchSensitive(b, lbl("pdb1"), nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("容器事实不符：want unconfirmed, got %s", s.Status)
+	}
+	// 标签无库名：无需容器身份 → 暴露（Scope 仍可为服务名）。
+	b = sensBundle("db-oracle", fact)
+	b.Scope.Container = "orclservice"
+	if s := findSnap(t, MatchSensitive(b, lbl(""), nil), "l1"); s.Status != "exposed" {
+		t.Errorf("标签无库名：want exposed, got %s", s.Status)
 	}
 }
 
@@ -609,5 +634,95 @@ func TestSensitiveMySQLCaseUnknownIndeterminate(t *testing.T) {
 	s = findSnap(t, MatchSensitive(sensBundleReceipts("db-mysql", rcs2, priv("HisDB"), lct2), lbl, nil), "l1")
 	if s.Status != "exposed" {
 		t.Errorf("模式 2 + 仅大小写不同：want exposed, got %s", s.Status)
+	}
+}
+
+// 静态复核回归三轮：同来源冲突收据（ok 与 denied/failed 并存）不采信命中，
+// 与收据排列顺序无关；ok+partial 仍可信。
+func TestSensitiveConflictingReceipts(t *testing.T) {
+	hit := privFact("f1", "ora.tab_privs", "PUBLIC", "HIS.PATIENTS", map[string]string{"privilege": "SELECT"})
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	sysOK := facts.Receipt{TemplateID: "ora.sys_privs", Status: "ok"}
+	for _, tc := range []struct {
+		name string
+		rcs  []facts.Receipt
+		want string
+	}{
+		{"ok 后 denied", []facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, {TemplateID: "ora.tab_privs", Status: "denied"}, sysOK}, "unconfirmed"},
+		{"denied 后 ok", []facts.Receipt{{TemplateID: "ora.tab_privs", Status: "denied"}, {TemplateID: "ora.tab_privs", Status: "ok"}, sysOK}, "unconfirmed"},
+		{"ok 后 failed", []facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, {TemplateID: "ora.tab_privs", Status: "failed"}, sysOK}, "unconfirmed"},
+		{"ok 加 partial 仍可信", []facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, {TemplateID: "ora.tab_privs", Status: "partial"}, sysOK}, "exposed"},
+	} {
+		s := findSnap(t, MatchSensitive(sensBundleReceipts("db-oracle", tc.rcs, hit), lbl, nil), "l1")
+		if s.Status != tc.want {
+			t.Errorf("%s: want %s, got %s", tc.name, tc.want, s.Status)
+		}
+	}
+}
+
+// 静态复核回归三轮：角色边逐条验收据——边来源不可信时角色授权可显示，
+// 但实际用户可达性不计确定暴露（标签未确认）；边可信时正常暴露。
+func TestSensitiveRoleEdgeUncredible(t *testing.T) {
+	grant := privFact("a1", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	edge := roleEdgeFact("RPT_ROLE", "BOB", facts.ActivationDefault)
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	sysOK := facts.Receipt{TemplateID: "ora.sys_privs", Status: "ok"}
+	tabOK := facts.Receipt{TemplateID: "ora.tab_privs", Status: "ok"}
+	// 边收据被拒 → 未确认，且注记提及角色名与可达性。
+	b := sensBundleReceipts("db-oracle",
+		[]facts.Receipt{tabOK, sysOK, {TemplateID: "ora.role_privs", Status: "denied"}}, grant, edge)
+	s := findSnap(t, MatchSensitive(b, lbl, nil), "l1")
+	if s.Status != "unconfirmed" {
+		t.Errorf("边收据被拒：want unconfirmed, got %s", s.Status)
+	}
+	found := false
+	for _, n := range s.Notes {
+		if strings.Contains(n, "RPT_ROLE") && strings.Contains(n, "可达性") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("边不可信时注记应提及角色与可达性，得到 %v", s.Notes)
+	}
+	if n := countExposures(MatchSensitive(b, lbl, nil), "l1", false); n != 0 {
+		t.Errorf("边不可信时不应有确定暴露，得到 %d", n)
+	}
+	// 边无收据 → 未确认。
+	b = sensBundleReceipts("db-oracle", []facts.Receipt{tabOK, sysOK}, grant, edge)
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("边缺收据：want unconfirmed, got %s", s.Status)
+	}
+	// 边可信 → 暴露（经角色）。
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{tabOK, sysOK, {TemplateID: "ora.role_privs", Status: "ok"}}, grant, edge)
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "exposed" {
+		t.Errorf("边可信：want exposed, got %s", s.Status)
+	}
+}
+
+// 静态复核回归三轮：MySQL 模式事实须为已观察的配置事实；Kind 或 Status
+// 不符时模式仍未知，仅大小写不同的授权判未确认。
+func TestSensitiveMySQLCaseFactValidation(t *testing.T) {
+	priv := privFact("f1", "mysql.db_privs", "app", "HisDB.*", map[string]string{"privilege": "SELECT"})
+	lbl := []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"}}
+	coreOK := []facts.Receipt{
+		{TemplateID: "mysql.user_privs", Status: "ok"},
+		{TemplateID: "mysql.global_grants", Status: "ok"},
+		{TemplateID: "mysql.db_privs", Status: "ok"},
+		{TemplateID: "mysql.server_config", Status: "ok"},
+	}
+	mk := func(f facts.Fact) *facts.FactBundle {
+		return sensBundleReceipts("db-mysql", coreOK, priv, f)
+	}
+	base := map[string]string{"name": "lower_case_table_names", "value": "1"}
+	badKind := facts.Fact{FactID: "c1", Kind: facts.FactPrivilege, Subject: "global",
+		Status: facts.StatusObserved, Source: "mysql.server_config", Attributes: base}
+	if s := findSnap(t, MatchSensitive(mk(badKind), lbl, nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("模式事实 Kind 不符：want unconfirmed, got %s", s.Status)
+	}
+	badStatus := facts.Fact{FactID: "c1", Kind: facts.FactAccountConfig, Subject: "global",
+		Status: facts.StatusPermissionDenied, Source: "mysql.server_config", Attributes: base}
+	if s := findSnap(t, MatchSensitive(mk(badStatus), lbl, nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("模式事实 Status 不符：want unconfirmed, got %s", s.Status)
 	}
 }

@@ -124,6 +124,10 @@ func TestReviewMySQLPasswordBothRequired(t *testing.T) {
 		{"长度不足", []facts.Fact{policy("MEDIUM"), length("4")}, facts.ConclusionFail},
 		{"策略弱无长度（确定违规）", []facts.Fact{policy("LOW")}, facts.ConclusionFail},
 		{"无策略长度不足（确定违规）", []facts.Fact{length("4")}, facts.ConclusionFail},
+		// 静态复核回归三轮：门控与检查共用规范化——带空格的 LOW 不得 Ready 后无命中而 PASS。
+		{"策略带空格弱无长度", []facts.Fact{policy(" LOW ")}, facts.ConclusionFail},
+		{"策略带空格弱有长度", []facts.Fact{policy(" LOW "), length("12")}, facts.ConclusionFail},
+		{"策略带空格合法", []facts.Fact{policy(" MEDIUM "), length("8")}, facts.ConclusionPass},
 	} {
 		r := singleResult(t, mk(tc.fs), &Baseline{}, "db.mysql.password_policy")
 		if r.Conclusion != tc.want {
@@ -218,6 +222,13 @@ func TestReviewWinPasswordSharedParsing(t *testing.T) {
 		{"os.windows.password_lockout_disabled", "lockout_threshold", "0", facts.ConclusionFail},
 		{"os.windows.password_lockout_disabled", "lockout_threshold", " 0 ", facts.ConclusionFail},
 		{"os.windows.password_lockout_disabled", "lockout_threshold", "5", facts.ConclusionPass},
+		// 静态复核回归三轮：长度与锁定阈值改用 uint32 解析——负值与超 uint32
+		// 的非法事实门控不放行 → UNKNOWN，不得因 check 跳过而 PASS。
+		{"os.windows.password_min_length", "min_password_length", "-1", facts.ConclusionUnknown},
+		{"os.windows.password_min_length", "min_password_length", "4294967296", facts.ConclusionUnknown},
+		{"os.windows.password_min_length", "min_password_length", " 7 ", facts.ConclusionFail},
+		{"os.windows.password_lockout_disabled", "lockout_threshold", "-1", facts.ConclusionUnknown},
+		{"os.windows.password_lockout_disabled", "lockout_threshold", "4294967296", facts.ConclusionUnknown},
 	} {
 		r := singleResult(t, mk(map[string]string{tc.attr: tc.v}), &Baseline{}, tc.rule)
 		expectConclusion(t, r, tc.want)
