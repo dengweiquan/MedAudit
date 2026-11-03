@@ -16,6 +16,21 @@
 # 启用步骤：合规人员确认每条 ref 后，把 status 改为 verified，复制到
 # /etc/medaudit/compliance/（或 MEDAUDIT_COMPLIANCE_DIR）后重启服务。也可不改状态，用
 # MEDAUDIT_COMPLIANCE_ENABLE=medical-draft 临时启用（报告会标「条款号待核实」）。
+#
+# P0 调整（2026-11-03，医疗范围）：
+# - 医疗-02 摘除 mw.iis.default_site（默认站点属示例应用，移入医疗-08）；医疗-02 现仅覆盖默认账号，
+#   示例账号、无用账号的其余情形目前为弱覆盖；
+# - 医疗-09 摘除 db.mysql.name_resolve_on（主机名解析方式，与“限制访问来源”仅弱相关；该规则仍由等保框架覆盖）；
+# - 医疗-04 标题去掉“可审计”（第三方访问的可审计性目前无规则覆盖，属未检查，见下）；
+# - 本框架未覆盖、报告中应标「本平台未检查」的范围：安全审计（审计启用、记录保护、留存期限）、
+#   API 越权检查（apiaudit 引擎存在但未挂入本框架）、数据分级分类与去标识化（GB/T 39725 相关要求超出权限审计范围）。
+#
+# 补全（2026-11-03，等保三级 GB/T 22239-2019 第三级为基线）：
+# - 新增医疗-11 安全审计（Oracle/MSSQL/PG 审计启用规则）；审计记录保护、留存期限仍无规则，属未检查；
+# - 新增医疗-12 API 安全（控制项占位，rules 为空；apiaudit 引擎存在但未挂入本框架，映射待做）；
+# - 医疗-05 补 MySQL/MSSQL 口令策略规则，医疗-06 补 PG 传输加密规则；
+# - 仍未覆盖：Windows 口令策略与 RDP、Oracle/MSSQL 传输加密（采集面不可达：sqlnet.ora 与 ForceEncryption 不在 DB 连接可查范围）、
+#   数据分级分类与去标识化（需敏感对象标记产品能力）、GB/T 39725 条款号（全空，待合规人员持标准文本填写）。
 id: medical-draft
 name: 医疗卫生行业网络与数据安全要求
 short: 医疗行业
@@ -34,7 +49,6 @@ controls:
     title: 及时锁定或删除默认账号、示例账号与无用账号
     rules:
       - db.oracle.default_account_open
-      - mw.iis.default_site
   - id: 医疗-03
     ref: "《办法》第二十二条（四）"
     group: 权限管理
@@ -66,7 +80,7 @@ controls:
   - id: 医疗-04
     ref: "《办法》第十条、第十六条"
     group: 权限管理
-    title: 第三方与运维人员权限按需授予、可审计，不得长期持有无限制特权
+    title: 第三方与运维人员权限按需授予，不得长期持有无限制特权
     rules:
       - os.hpux.sudo_all
       - os.linux.sudo_all
@@ -77,6 +91,8 @@ controls:
     title: 口令具备复杂度并定期更换，有登录失败锁定，鉴别信息安全存储
     rules:
       - db.oracle.profile_password_policy
+      - db.mysql.password_policy
+      - db.mssql.password_policy
       - db.pg.hba_trust
       - db.pg.hba_weak_method
       - db.pg.password_encryption_weak
@@ -94,6 +110,7 @@ controls:
       - mw.tomcat.plain_listener
       - mw.tomcat.tls_weak
       - mw.weblogic.plain_listener
+      - db.pg.ssl_off
   - id: 医疗-07
     ref: "《办法》第二十二条（四）（相关）"
     group: 数据安全
@@ -109,6 +126,7 @@ controls:
       - db.mssql.clr_enabled
       - db.mssql.xp_cmdshell
       - db.mysql.local_infile
+      - mw.iis.default_site
       - mw.nginx.autoindex
       - mw.tomcat.manager_deployed
       - mw.tomcat.sample_apps
@@ -120,7 +138,6 @@ controls:
     group: 安全加固
     title: 限制数据库与管理端口的访问来源
     rules:
-      - db.mysql.name_resolve_on
       - db.pg.hba_open_network
       - db.pg.listen_all
   - id: 医疗-10
@@ -136,3 +153,16 @@ controls:
       - os.linux.writable_service_file
       - os.windows.svc_account_mismatch
       - os.windows.writable_service_binary
+  - id: 医疗-11
+    ref: ""
+    group: 安全审计
+    title: 启用数据库审计功能
+    rules:
+      - db.oracle.audit_trail_off
+      - db.mssql.audit_off
+      - db.pg.audit_off
+  - id: 医疗-12
+    ref: ""
+    group: API 安全
+    title: 应用程序接口访问控制与鉴权，防止越权访问
+    rules: []

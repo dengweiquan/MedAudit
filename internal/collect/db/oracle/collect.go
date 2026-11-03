@@ -355,6 +355,17 @@ func mapTemplate(tid string, b *facts.FactBundle, nextID func() string) func(*db
 					Scope:      "instance",
 					Activation: facts.ActivationDefault,
 				})
+			case "ora.parameters":
+				b.Facts = append(b.Facts, facts.Fact{
+					FactID:  nextID(),
+					Kind:    facts.FactAccountConfig,
+					Subject: m["name"],
+					Status:  facts.StatusObserved,
+					Source:  tid,
+					Attributes: map[string]string{
+						"name": m["name"], "value": m["value"],
+					},
+				})
 			}
 		}
 	}

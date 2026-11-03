@@ -105,6 +105,8 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 	// 模板 linux.sudo v1：sudoers 授权规格
 	collectSudo(b, cfg.SudoersDir, addReceipt, &execStatus)
 	collectPasswdGroups(b, cfg.SudoersDir, addReceipt, &execStatus)
+	// 模板 linux.sshd v1：sshd 全局鉴别配置
+	collectSshd(b, cfg.SudoersDir, addReceipt, &execStatus)
 
 	b.Execution = execStatus
 	b.CollectedAt.Finished = time.Now().UTC().Truncate(time.Second)

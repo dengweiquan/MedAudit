@@ -2,6 +2,7 @@ package rules
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"medaudit/internal/facts"
@@ -174,6 +175,79 @@ var serverConfigRules = []struct {
 			return hits
 		},
 	},
+	{
+		spec: RuleSpec{
+			ID: "db.pg.ssl_off", Version: "1",
+			Name:        "PostgreSQL 未启用 SSL",
+			Target:      facts.TargetDBPostgres,
+			Description: "ssl=off 时数据库连接不加密，口令与业务数据在网络上传输可被窃听。",
+			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Risk:        RiskMedium,
+			Remediation: "启用 ssl 并配置有效证书；客户端以 hostssl 限定加密连接。",
+		},
+		check: func(c *EvalContext) []CheckHit {
+			var hits []CheckHit
+			for _, f := range c.ByKind[facts.FactAccountConfig] {
+				if f.Source != "pg.settings" || f.Attributes["name"] != "ssl" {
+					continue
+				}
+				if !strings.EqualFold(f.Attributes["setting"], "off") {
+					continue
+				}
+				if c.Baseline.Allowed("server", "settings", "ssl_off", "") {
+					continue
+				}
+				hits = append(hits, CheckHit{
+					Subject:  "server",
+					Detail:   "ssl=off（数据库连接未加密）",
+					Evidence: []string{f.FactID},
+				})
+			}
+			return hits
+		},
+	},
+	{
+		spec: RuleSpec{
+			ID: "db.pg.audit_off", Version: "1",
+			Name:        "PostgreSQL 未启用审计日志",
+			Target:      facts.TargetDBPostgres,
+			Description: "logging_collector、log_connections 与 log_statement 均未表明审计开启时，数据库无审计轨迹，无法追溯登录与数据操作。",
+			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Risk:        RiskMedium,
+			Remediation: "启用 logging_collector 并打开 log_connections（至少记录连接审计），按需将 log_statement 设为 ddl 或 mod。",
+		},
+		check: func(c *EvalContext) []CheckHit {
+			vals := map[string]string{}
+			var ev []string
+			for _, f := range c.ByKind[facts.FactAccountConfig] {
+				if f.Source != "pg.settings" || f.Status != facts.StatusObserved {
+					continue
+				}
+				switch f.Attributes["name"] {
+				case "logging_collector", "log_connections", "log_statement":
+					vals[f.Attributes["name"]] = strings.ToLower(f.Attributes["setting"])
+					ev = append(ev, f.FactID)
+				}
+			}
+			if len(vals) == 0 {
+				return nil
+			}
+			if vals["logging_collector"] == "on" || vals["log_connections"] == "on" {
+				return nil
+			}
+			if s := vals["log_statement"]; s != "" && s != "none" {
+				return nil
+			}
+			if c.Baseline.Allowed("server", "settings", "audit_off", "") {
+				return nil
+			}
+			return []CheckHit{{
+				Subject:  "server",
+				Detail:   "未启用审计日志（logging_collector、log_connections 均为 off，log_statement 为 none 或缺失）",
+				Evidence: ev,
+			}}
+		},
+	},
 	// ---------- SQL Server: sys.configurations ----------
 	{
 		spec: RuleSpec{
@@ -223,6 +297,82 @@ var serverConfigRules = []struct {
 		},
 		check: mssqlConfigCheck("Ad Hoc Distributed Queries", "Ad Hoc Distributed Queries 已启用（value_in_use=1）"),
 	},
+	{
+		spec: RuleSpec{
+			ID: "db.mssql.password_policy", Version: "1",
+			Name:        "SQL Server 登录口令策略未启用",
+			Target:      facts.TargetDBSQLSrv,
+			Description: "SQL 登录的 CHECK_POLICY 或 CHECK_EXPIRATION 为 OFF 时，口令不受 Windows 口令策略约束或永不过期。",
+			Requires:    []facts.FactKind{facts.FactIdentity},
+			Risk:        RiskMedium,
+			Remediation: "对 SQL 登录启用 CHECK_POLICY 与 CHECK_EXPIRATION；服务账号确需豁免的记入基线。",
+		},
+		check: func(c *EvalContext) []CheckHit {
+			var hits []CheckHit
+			for _, f := range c.ByKind[facts.FactIdentity] {
+				if f.Source != "mssql.server_principals" || f.Attributes["principal_type"] != "SQL_LOGIN" {
+					continue
+				}
+				if v := strings.ToLower(f.Attributes["is_disabled"]); v == "1" || v == "true" {
+					continue
+				}
+				if v := strings.ToLower(f.Attributes["is_policy_checked"]); v == "0" || v == "false" {
+					if !c.Baseline.Allowed(f.Subject, "login", "check_policy", "") {
+						hits = append(hits, CheckHit{
+							Subject:  f.Subject,
+							Detail:   fmt.Sprintf("登录 %s 的 CHECK_POLICY=OFF（口令不受策略约束）", f.Subject),
+							Evidence: []string{f.FactID},
+						})
+					}
+				}
+				if v := strings.ToLower(f.Attributes["is_expiration_checked"]); v == "0" || v == "false" {
+					if !c.Baseline.Allowed(f.Subject, "login", "check_expiration", "") {
+						hits = append(hits, CheckHit{
+							Subject:  f.Subject,
+							Detail:   fmt.Sprintf("登录 %s 的 CHECK_EXPIRATION=OFF（口令永不过期）", f.Subject),
+							Evidence: []string{f.FactID},
+						})
+					}
+				}
+			}
+			return hits
+		},
+	},
+	{
+		spec: RuleSpec{
+			ID: "db.mssql.audit_off", Version: "1",
+			Name:        "SQL Server 未启用服务器审计",
+			Target:      facts.TargetDBSQLSrv,
+			Description: "sys.server_audits 中无启用状态的服务器审计时，数据库操作无审计轨迹。",
+			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Risk:        RiskMedium,
+			Remediation: "创建并启用服务器审计（及数据库审计规范），审计目标指向受保护的存储。",
+		},
+		check: func(c *EvalContext) []CheckHit {
+			enabled := false
+			var ev []string
+			for _, f := range c.ByKind[facts.FactAccountConfig] {
+				if f.Source != "mssql.server_audits" || f.Status != facts.StatusObserved {
+					continue
+				}
+				ev = append(ev, f.FactID)
+				if v := strings.ToLower(f.Attributes["is_state_enabled"]); v == "1" || v == "true" {
+					enabled = true
+				}
+			}
+			if enabled || len(ev) == 0 {
+				return nil
+			}
+			if c.Baseline.Allowed("server", "audit", "server_audits", "") {
+				return nil
+			}
+			return []CheckHit{{
+				Subject:  "server",
+				Detail:   "未启用服务器审计（sys.server_audits 中无启用项）",
+				Evidence: ev,
+			}}
+		},
+	},
 	// ---------- MySQL: global variables ----------
 	{
 		spec: RuleSpec{
@@ -260,16 +410,59 @@ var serverConfigRules = []struct {
 		},
 		check: mysqlVarCheckInverse("skip_name_resolve", "OFF", "skip_name_resolve=OFF（主机名授权依赖 DNS 解析）"),
 	},
+	{
+		spec: RuleSpec{
+			ID: "db.mysql.password_policy", Version: "1",
+			Name:        "MySQL 口令策略弱",
+			Target:      facts.TargetDBMySQL,
+			Description: "validate_password 策略为 LOW 或长度要求低于 8 位时，弱口令可直接通过；未采集到该变量时本规则不判（以采集模板覆盖为准）。",
+			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Risk:        RiskMedium,
+			Remediation: "安装并启用 validate_password 组件，策略设为 MEDIUM 及以上、长度至少 8 位。",
+		},
+		check: func(c *EvalContext) []CheckHit {
+			var hits []CheckHit
+			for _, f := range c.ByKind[facts.FactAccountConfig] {
+				if f.Source != "mysql.server_config" {
+					continue
+				}
+				switch f.Attributes["name"] {
+				case "validate_password.policy":
+					if v := strings.ToUpper(f.Attributes["value"]); v == "LOW" || v == "0" {
+						if !c.Baseline.Allowed("global", "variable", "validate_password.policy", "") {
+							hits = append(hits, CheckHit{
+								Subject:  "global",
+								Detail:   fmt.Sprintf("validate_password.policy=%s（复杂度过低）", f.Attributes["value"]),
+								Evidence: []string{f.FactID},
+							})
+						}
+					}
+				case "validate_password.length":
+					n, err := strconv.Atoi(strings.TrimSpace(f.Attributes["value"]))
+					if err == nil && n < 8 {
+						if !c.Baseline.Allowed("global", "variable", "validate_password.length", "") {
+							hits = append(hits, CheckHit{
+								Subject:  "global",
+								Detail:   fmt.Sprintf("validate_password.length=%d（低于 8 位）", n),
+								Evidence: []string{f.FactID},
+							})
+						}
+					}
+				}
+			}
+			return hits
+		},
+	},
 	// ---------- Oracle: profiles ----------
 	{
 		spec: RuleSpec{
-			ID: "db.oracle.profile_password_policy", Version: "1",
+			ID: "db.oracle.profile_password_policy", Version: "2",
 			Name:        "Oracle 概要文件口令策略无限制",
 			Target:      facts.TargetDBOracle,
-			Description: "概要文件的口令寿命/失败锁定/复用限制为 UNLIMITED 时，口令永不过期且无锁定保护。",
+			Description: "概要文件的口令寿命/失败锁定/复用限制为 UNLIMITED，或未设置口令复杂度验证函数时，口令永不过期、无锁定保护或无复杂度约束。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
 			Risk:        RiskMedium,
-			Remediation: "为各概要文件设置 PASSWORD_LIFE_TIME 与 FAILED_LOGIN_ATTEMPTS 等有限值，或记入基线。",
+			Remediation: "为各概要文件设置 PASSWORD_LIFE_TIME 与 FAILED_LOGIN_ATTEMPTS 等有限值并配置 PASSWORD_VERIFY_FUNCTION，或记入基线。",
 		},
 		check: func(c *EvalContext) []CheckHit {
 			watched := map[string]bool{
@@ -283,6 +476,19 @@ var serverConfigRules = []struct {
 					continue
 				}
 				res := f.Attributes["resource"]
+				if res == "PASSWORD_VERIFY_FUNCTION" {
+					if strings.TrimSpace(f.Attributes["limit"]) == "" {
+						if c.Baseline.Allowed(f.Subject, "profile", res, "") {
+							continue
+						}
+						hits = append(hits, CheckHit{
+							Subject:  f.Subject,
+							Detail:   fmt.Sprintf("概要文件 %s 未设置口令复杂度验证函数", f.Subject),
+							Evidence: []string{f.FactID},
+						})
+					}
+					continue
+				}
 				if !watched[res] || !strings.EqualFold(f.Attributes["limit"], "UNLIMITED") {
 					continue
 				}
@@ -292,6 +498,37 @@ var serverConfigRules = []struct {
 				hits = append(hits, CheckHit{
 					Subject:  f.Subject,
 					Detail:   fmt.Sprintf("概要文件 %s 的 %s = UNLIMITED", f.Subject, res),
+					Evidence: []string{f.FactID},
+				})
+			}
+			return hits
+		},
+	},
+	{
+		spec: RuleSpec{
+			ID: "db.oracle.audit_trail_off", Version: "1",
+			Name:        "Oracle 未启用审计",
+			Target:      facts.TargetDBOracle,
+			Description: "AUDIT_TRAIL=NONE 时数据库审计完全关闭，无法追溯用户行为。",
+			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Risk:        RiskMedium,
+			Remediation: "将 AUDIT_TRAIL 设为 DB（或 DB_EXTENDED）并重启生效；审计记录定期归档。",
+		},
+		check: func(c *EvalContext) []CheckHit {
+			var hits []CheckHit
+			for _, f := range c.ByKind[facts.FactAccountConfig] {
+				if f.Source != "ora.parameters" || f.Attributes["name"] != "AUDIT_TRAIL" {
+					continue
+				}
+				if !strings.EqualFold(f.Attributes["value"], "NONE") {
+					continue
+				}
+				if c.Baseline.Allowed("server", "parameter", "audit_trail", "") {
+					continue
+				}
+				hits = append(hits, CheckHit{
+					Subject:  "server",
+					Detail:   "AUDIT_TRAIL=NONE（数据库审计未启用）",
 					Evidence: []string{f.FactID},
 				})
 			}

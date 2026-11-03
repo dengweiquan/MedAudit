@@ -47,8 +47,13 @@ func TestComplianceSection(t *testing.T) {
 	if c := clauseByID(t, r, "8.1.4.2 d)"); c.Status != "fail" {
 		t.Errorf("8.1.4.2 d) 应不满足, got %s", c.Status)
 	}
-	if c := clauseByID(t, r, "8.1.4.3 a)"); c.Status != "unchecked" {
-		t.Errorf("8.1.4.3 a) 应为本平台未检查, got %s", c.Status)
+	// 8.1.4.3 a) 已由 Oracle/MSSQL/PG 审计规则覆盖；MySQL 包上三条规则均不适用，故为 na
+	if c := clauseByID(t, r, "8.1.4.3 a)"); c.Status != "na" {
+		t.Errorf("8.1.4.3 a) 在 MySQL 包上应为不适用, got %s", c.Status)
+	}
+	// 8.1.4.3 b) 仍无规则，保持未检查语义
+	if c := clauseByID(t, r, "8.1.4.3 b)"); c.Status != "unchecked" {
+		t.Errorf("8.1.4.3 b) 应为本平台未检查, got %s", c.Status)
 	}
 	total := 0
 	for _, n := range r.Counts {
