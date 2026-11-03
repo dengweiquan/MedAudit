@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.windows.mssql_force_encryption_off
+version: "1"
+name: MSSQL 未强制加密
+target: os-windows
+risk: medium
+description: |
+  实例的 ForceEncryption 不是 1 时，服务端不强制加密连接。注册表值只证明“已配置”，重启后生效状态未验证（事实 effective=unknown，PASS 不代表运行中已生效）。注意：未强制加密不等于链路明文（客户端仍可协商加密）；会话 encrypt_option 不替代服务器策略；Linux 的 mssql.conf 渠道未实现。
+requires: [account_config]
+remediation: |
+  在 SQL Server 配置管理器中为该实例启用“强制加密”（ForceEncryption=1）并重启服务；确需关闭的记入基线。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.8 a) 数据保密性：采用密码技术保证重要数据在传输过程中的保密性"

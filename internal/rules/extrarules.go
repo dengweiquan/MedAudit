@@ -37,6 +37,29 @@ func sshdEvidence(c *EvalContext) (EvidenceStatus, string) {
 }
 
 // linuxExtraRules Linux 补盲规则（M4-4b，sudoers 维度）。
+// oracleSqlnetEvidence sqlnet.ora 规则的证据门控：宿主无 Oracle Home → 不适用；
+// 其余按收据判定，要求至少一条有效 ENCRYPTION_SERVER 事实（缺省 accepted 已由采集器填好）。
+func oracleSqlnetEvidence(c *EvalContext) (EvidenceStatus, string) {
+	for _, f := range c.Bundle.Facts {
+		if f.Source == "linux.oracle_sqlnet" && f.Attributes["oracle_homes"] == "0" {
+			return EvidenceNotApplicable, "宿主无 Oracle Home，sqlnet.ora 检查不适用"
+		}
+	}
+	if st, reason := receiptVerdict(c, "linux.oracle_sqlnet"); st != EvidenceReady {
+		return st, reason
+	}
+	for _, f := range c.Bundle.Facts {
+		if f.Source != "linux.oracle_sqlnet" || f.Status != facts.StatusObserved {
+			continue
+		}
+		switch strings.ToLower(f.Attributes["encryption_server"]) {
+		case "required", "requested", "accepted", "rejected":
+			return EvidenceReady, ""
+		}
+	}
+	return EvidenceMissing, "linux.oracle_sqlnet 查询成功但无有效 ENCRYPTION_SERVER 事实，无法判定"
+}
+
 var linuxExtraRules = []struct {
 	spec  RuleSpec
 	check CheckFunc
@@ -168,6 +191,46 @@ var linuxExtraRules = []struct {
 				hits = append(hits, CheckHit{
 					Subject:  "sshd_config",
 					Detail:   "sshd 允许 root 口令登录（PermitRootLogin=yes）",
+					Evidence: []string{f.FactID},
+				})
+			}
+			return hits
+		},
+	},
+	{
+		spec: RuleSpec{
+			ID: "os.linux.oracle_native_encryption_not_required", Version: "1",
+			Name:        "Oracle 未要求原生网络加密",
+			Target:      facts.TargetOSLinux,
+			Description: "宿主 Oracle Home 的 sqlnet.ora 中 SQLNET.ENCRYPTION_SERVER 不是 required 时，服务端不要求原生网络加密。注意：未要求原生加密不等于链路明文——TCPS 等传输层加密不在本规则评价范围，TCPS 部署记入基线豁免；文件缺失或参数缺失时取 Oracle 缺省 accepted；当前会话协商结果无可靠通道可取，不发会话证据。",
+			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Evidence:    oracleSqlnetEvidence,
+			Risk:        RiskMedium,
+			Remediation: "在 sqlnet.ora 中设 SQLNET.ENCRYPTION_SERVER=required（并配 ENCRYPTION_TYPES_SERVER）；或以 TCPS 覆盖全部连接并记入基线。",
+		},
+		check: func(c *EvalContext) []CheckHit {
+			var hits []CheckHit
+			for _, f := range c.ByKind[facts.FactAccountConfig] {
+				if f.Source != "linux.oracle_sqlnet" || f.Status != facts.StatusObserved {
+					continue
+				}
+				v := strings.ToLower(f.Attributes["encryption_server"])
+				if v == "required" {
+					continue
+				}
+				if c.Baseline.Allowed(f.Subject, "parameter", "encryption_server", "") {
+					continue
+				}
+				detail := fmt.Sprintf("Oracle Home %s 未要求原生网络加密（SQLNET.ENCRYPTION_SERVER=%s，文件 %s）",
+					f.Subject, v, f.Attributes["sqlnet_file"])
+				if f.Attributes["file_missing"] == "true" {
+					detail += "；sqlnet.ora 缺失，取 Oracle 缺省 accepted"
+				} else if f.Attributes["param_missing"] == "true" {
+					detail += "；参数缺失，取 Oracle 缺省 accepted"
+				}
+				hits = append(hits, CheckHit{
+					Subject:  f.Subject,
+					Detail:   detail,
 					Evidence: []string{f.FactID},
 				})
 			}

@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.linux.oracle_native_encryption_not_required
+version: "1"
+name: Oracle 未要求原生网络加密
+target: os-linux
+risk: medium
+description: |
+  宿主 Oracle Home 的 sqlnet.ora 中 SQLNET.ENCRYPTION_SERVER 不是 required 时，服务端不要求原生网络加密。注意：未要求原生加密不等于链路明文——TCPS 等传输层加密不在本规则评价范围，TCPS 部署记入基线豁免；文件缺失或参数缺失时取 Oracle 缺省 accepted；当前会话协商结果无可靠通道可取，不发会话证据。
+requires: [account_config]
+remediation: |
+  在 sqlnet.ora 中设 SQLNET.ENCRYPTION_SERVER=required（并配 ENCRYPTION_TYPES_SERVER）；或以 TCPS 覆盖全部连接并记入基线。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.8 a) 数据保密性：采用密码技术保证重要数据在传输过程中的保密性"

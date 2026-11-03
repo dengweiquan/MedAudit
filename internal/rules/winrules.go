@@ -351,6 +351,69 @@ var windowsPasswordRules = []struct {
 	},
 }
 
+// mssqlForceEncryptionEvidence ForceEncryption 规则的证据门控：宿主无 SQL Server 实例 → 不适用；
+// 其余按收据判定，要求至少一条实例 ForceEncryption 事实。单实例不可读的事实不纳入结论，
+// 但不掩盖其他实例的真实 FAIL（见规则描述）。
+func mssqlForceEncryptionEvidence(c *EvalContext) (EvidenceStatus, string) {
+	for _, f := range c.Bundle.Facts {
+		if f.Source == "win.mssql_force_encryption" && f.Attributes["mssql_instances"] == "0" {
+			return EvidenceNotApplicable, "宿主无 SQL Server 实例，ForceEncryption 检查不适用"
+		}
+	}
+	if st, reason := winReceiptVerdict(c, "win.mssql_force_encryption"); st != EvidenceReady {
+		return st, reason
+	}
+	for _, f := range c.Bundle.Facts {
+		if f.Source == "win.mssql_force_encryption" && f.Status == facts.StatusObserved && f.Attributes["force_encryption"] != "" {
+			return EvidenceReady, ""
+		}
+	}
+	return EvidenceMissing, "win.mssql_force_encryption 查询成功但无实例 ForceEncryption 事实，无法判定"
+}
+
+// windowsEncryptionRules Windows 传输加密规则（ForceEncryption）。
+var windowsEncryptionRules = []struct {
+	spec  RuleSpec
+	check CheckFunc
+}{
+	{
+		spec: RuleSpec{
+			ID: "os.windows.mssql_force_encryption_off", Version: "1",
+			Name:        "MSSQL 未强制加密",
+			Target:      facts.TargetOSWindows,
+			Description: "实例的 ForceEncryption 不是 1 时，服务端不强制加密连接。注册表值只证明“已配置”，重启后生效状态未验证（事实 effective=unknown，PASS 不代表运行中已生效）。注意：未强制加密不等于链路明文（客户端仍可协商加密）；会话 encrypt_option 不替代服务器策略；Linux 的 mssql.conf 渠道未实现。",
+			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Evidence:    mssqlForceEncryptionEvidence,
+			Risk:        RiskMedium,
+			Remediation: "在 SQL Server 配置管理器中为该实例启用“强制加密”（ForceEncryption=1）并重启服务；确需关闭的记入基线。",
+		},
+		check: func(c *EvalContext) []CheckHit {
+			var hits []CheckHit
+			for _, f := range c.ByKind[facts.FactAccountConfig] {
+				if f.Source != "win.mssql_force_encryption" || f.Status != facts.StatusObserved {
+					continue
+				}
+				if f.Attributes["force_encryption"] != "0" {
+					continue
+				}
+				if c.Baseline.Allowed(f.Subject, "registry", "force_encryption", "") {
+					continue
+				}
+				detail := fmt.Sprintf("SQL Server 实例 %s 未强制加密（ForceEncryption=0）", f.Subject)
+				if f.Attributes["value_missing"] == "true" {
+					detail += "；注册表值缺失，取缺省 0"
+				}
+				hits = append(hits, CheckHit{
+					Subject:  f.Subject,
+					Detail:   detail,
+					Evidence: []string{f.FactID},
+				})
+			}
+			return hits
+		},
+	},
+}
+
 // normalizeWinAccount 归一化 Windows 账户名用于比较。
 // 处理同一主体的不同写法：LocalService/LOCAL SERVICE、NetworkService/NETWORK SERVICE、LocalSystem/SYSTEM。
 func normalizeWinAccount(a string) string {

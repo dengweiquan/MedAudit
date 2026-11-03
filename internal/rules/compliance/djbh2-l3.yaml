@@ -185,6 +185,8 @@ controls:
       - mw.nginx.plain_listener
       - mw.nginx.tls_weak
       - mw.tomcat.plain_listener
+      - os.linux.oracle_native_encryption_not_required
+      - os.windows.mssql_force_encryption_off
       - mw.tomcat.tls_weak
       - mw.weblogic.plain_listener
       - db.pg.ssl_off

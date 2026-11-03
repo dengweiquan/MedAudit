@@ -317,6 +317,49 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		return 1, nil
 	})
 
+	// 9) MSSQL ForceEncryption（本机注册表，逐实例）：值只证明“已配置”，
+	//    重启后生效状态未验证（事实 effective=unknown）；单实例不可读不掩盖其他实例。
+	addReceipt("win.mssql_force_encryption", "1", func() (int, error) {
+		insts, err := enumMSSQLInstances()
+		if err != nil {
+			return 0, err
+		}
+		if len(insts) == 0 {
+			b.Facts = append(b.Facts, facts.Fact{
+				FactID: nextID("ms"), Kind: facts.FactAccountConfig,
+				Subject: "mssql-instances", Status: facts.StatusObserved, Source: "win.mssql_force_encryption",
+				Attributes: map[string]string{"mssql_instances": "0"},
+			})
+			return 0, nil
+		}
+		n := 0
+		for _, inst := range insts {
+			present, value, rerr := readForceEncryption(inst.ID)
+			if rerr != nil {
+				st := facts.StatusUnsupported
+				if isRegistryDenied(rerr) {
+					st = facts.StatusPermissionDenied
+				}
+				b.Facts = append(b.Facts, facts.Fact{
+					FactID: nextID("ms"), Kind: facts.FactAccountConfig,
+					Subject: inst.Name, Status: st, Source: "win.mssql_force_encryption",
+					Attributes: map[string]string{
+						"instance_id": inst.ID, "registry_path": MSSQLSuperSocketPath(inst.ID),
+						"error": rerr.Error(),
+					},
+				})
+				continue
+			}
+			b.Facts = append(b.Facts, facts.Fact{
+				FactID: nextID("ms"), Kind: facts.FactAccountConfig,
+				Subject: inst.Name, Status: facts.StatusObserved, Source: "win.mssql_force_encryption",
+				Attributes: MSSQLForceEncryptionAttrs(inst, MSSQLSuperSocketPath(inst.ID), present, value),
+			})
+			n++
+		}
+		return n, nil
+	})
+
 	finished := time.Now().UTC()
 	b.CollectedAt.Finished = finished
 	b.Execution = facts.ExecutionComplete

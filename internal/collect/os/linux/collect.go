@@ -107,6 +107,8 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 	collectPasswdGroups(b, cfg.SudoersDir, addReceipt, &execStatus)
 	// 模板 linux.sshd v1：sshd 全局鉴别配置
 	collectSshd(b, cfg.SudoersDir, addReceipt, &execStatus)
+	// 模板 linux.oracle_sqlnet v1：宿主 Oracle 各 Home 的 sqlnet.ora 原生网络加密策略
+	collectOracleSqlnet(b, cfg.SudoersDir, addReceipt, &execStatus)
 
 	b.Execution = execStatus
 	b.CollectedAt.Finished = time.Now().UTC().Truncate(time.Second)

@@ -32,8 +32,12 @@
 # - Windows 口令策略与 RDP 已覆盖（口令 4 条 + RDP NLA 1 条）；覆盖边界：RDP NLA 仅覆盖 RDP 通道，
 #   不代表全部管理端口来源限制；Windows 口令策略覆盖范围为本地 SAM 或域默认策略（见事实 scope），
 #   细粒度用户策略（FGPP/PSO）未覆盖，本机策略不代表全部域用户。
-# - 仍未覆盖：Oracle/MSSQL 传输加密（采集面不可达：sqlnet.ora 与 ForceEncryption 不在 DB 连接可查范围）、
-#   数据分级分类与去标识化（需敏感对象标记产品能力）、GB/T 39725 条款号（全空，待合规人员持标准文本填写）。
+# - Oracle/MSSQL 传输加密已覆盖（宿主规则：sqlnet.ora 与 ForceEncryption）；覆盖边界：
+#   只评价“是否要求加密”，不鉴定链路实际是否加密；未要求原生加密不等于链路明文
+#   （TCPS 等传输层加密不在规则范围，TCPS 部署记入基线豁免）；当前会话协商结果无可靠通道，
+#   不发会话证据；Linux 的 mssql.conf 渠道未实现。
+# - 仍未覆盖：数据分级分类与去标识化（需敏感对象标记产品能力）、
+#   GB/T 39725 条款号（全空，待合规人员持标准文本填写）。
 id: medical-draft
 name: 医疗卫生行业网络与数据安全要求
 short: 医疗行业
@@ -118,6 +122,8 @@ controls:
       - mw.tomcat.tls_weak
       - mw.weblogic.plain_listener
       - db.pg.ssl_off
+      - os.linux.oracle_native_encryption_not_required
+      - os.windows.mssql_force_encryption_off
   - id: 医疗-07
     ref: "《办法》第二十二条（四）（相关）"
     group: 数据安全
