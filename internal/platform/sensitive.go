@@ -689,9 +689,12 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 							labelExposures[len(labelExposures)-1].Note = "CONTAINER=ALL：该权限可达全部 PDB，本节只计本包。"
 						}
 					}
-					if isRole && !membersComplete && len(expUsers) > 0 {
+					if isRole && !membersComplete && len(expUsers) > 0 && !exempt(f.Subject, priv, f.Scope) {
 						// 已知成员全部豁免时，“无违规”结论依赖成员枚举完整：
 						// 来源不完整可能漏掉未采集的违规成员，不能判“未发现”。
+						// 但基线放行授权角色本身时除外：角色级豁免覆盖该权限下
+						// 全部成员（已知与未采集），与零成员分支的豁免 guard 一致；
+						// 用户级豁免只覆盖已知用户本人，不覆盖未采集成员。
 						allExempt := true
 						for _, e := range labelExposures[expStart:] {
 							if !e.Exempt {
@@ -780,9 +783,12 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				for _, u := range expUsers {
 					add(kind, u.name, priv, []string{f.FactID}, f.Scope, u.via, f.Source)
 				}
-				if isRole && !membersComplete && len(expUsers) > 0 {
+				if isRole && !membersComplete && len(expUsers) > 0 && !exempt(f.Subject, priv, f.Scope) {
 					// 已知成员全部豁免时，“无违规”结论依赖成员枚举完整：
 					// 来源不完整可能漏掉未采集的违规成员，不能判“未发现”。
+					// 但基线放行授权角色本身时除外：角色级豁免覆盖该权限下
+					// 全部成员（已知与未采集），与零成员分支的豁免 guard 一致；
+					// 用户级豁免只覆盖已知用户本人，不覆盖未采集成员。
 					allExempt := true
 					for _, e := range labelExposures[expStart:] {
 						if !e.Exempt {
