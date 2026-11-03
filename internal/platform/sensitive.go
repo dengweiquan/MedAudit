@@ -637,6 +637,10 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 		// mysqlCaseIndeterminate 本标签是否存在模式未知且仅大小写不同的库级授权
 		// （无法确认是否匹配，不计命中、不判不匹配）。
 		mysqlCaseIndeterminate := false
+		// roleMemberIncomplete 本标签是否存在角色授权：已知成员全部豁免，
+		// 但成员来源不完整——“全部豁免”结论依赖成员枚举完整，未采集的成员
+		// 可能违规，故不能判“未发现”。
+		roleMemberIncomplete := false
 		switch adapter {
 		case facts.TargetDBOracle:
 			// 容器归属：标签库名（PDB）须与本包可信容器身份对应——只认新采集器
@@ -678,10 +682,25 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					// 本节只计本包（本资产容器），跨 PDB 可达另行注记。
 					common := f.Attributes["common"] == "YES"
 					expUsers, unproven, isRole, unknown, membersComplete := roles.expandGrantee(b, f.Subject)
+					expStart := len(labelExposures)
 					for _, u := range expUsers {
 						add("any", u.name, priv, []string{f.FactID}, f.Scope, u.via, f.Source)
 						if common {
 							labelExposures[len(labelExposures)-1].Note = "CONTAINER=ALL：该权限可达全部 PDB，本节只计本包。"
+						}
+					}
+					if isRole && !membersComplete && len(expUsers) > 0 {
+						// 已知成员全部豁免时，“无违规”结论依赖成员枚举完整：
+						// 来源不完整可能漏掉未采集的违规成员，不能判“未发现”。
+						allExempt := true
+						for _, e := range labelExposures[expStart:] {
+							if !e.Exempt {
+								allExempt = false
+								break
+							}
+						}
+						if allExempt {
+							roleMemberIncomplete = true
 						}
 					}
 					if unknown && !exempt(f.Subject, priv, f.Scope) {
@@ -757,8 +776,23 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					continue
 				}
 				expUsers, unproven, isRole, unknown, membersComplete := roles.expandGrantee(b, f.Subject)
+				expStart := len(labelExposures)
 				for _, u := range expUsers {
 					add(kind, u.name, priv, []string{f.FactID}, f.Scope, u.via, f.Source)
+				}
+				if isRole && !membersComplete && len(expUsers) > 0 {
+					// 已知成员全部豁免时，“无违规”结论依赖成员枚举完整：
+					// 来源不完整可能漏掉未采集的违规成员，不能判“未发现”。
+					allExempt := true
+					for _, e := range labelExposures[expStart:] {
+						if !e.Exempt {
+							allExempt = false
+							break
+						}
+					}
+					if allExempt {
+						roleMemberIncomplete = true
+					}
 				}
 				if unknown && !exempt(f.Subject, priv, f.Scope) {
 					// 身份未知：不得当成确定用户；显示疑似，不计确定暴露。
@@ -840,6 +874,11 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				// 不判“未发现”。
 				snap.Status = "unconfirmed"
 				snap.Notes = append(snap.Notes, "库名大小写模式未知（lower_case_table_names 未采集或无可信收据），且存在仅大小写不同的库级授权，无法确认是否覆盖该库；不判“未发现”。")
+			} else if roleMemberIncomplete {
+				// 角色授权已知成员全部豁免，但成员来源不完整：未采集的成员
+				// 可能违规，不能判“未发现”。
+				snap.Status = "unconfirmed"
+				snap.Notes = append(snap.Notes, "角色成员采集不完整（部分成员来源 partial/denied/缺失），且已知成员均已基线放行，无法确认不存在未采集的违规成员；不判“未发现”。")
 			} else if ok, incomplete := sensitiveSourcesComplete(b, adapter); !ok {
 				// 无违规暴露时，只有相关来源全部完整检查且无命中，才可称“未发现”；
 				// 来源缺失、失败或截断 → 未确认（Web 不显绿色），缺事实不等于安全。
