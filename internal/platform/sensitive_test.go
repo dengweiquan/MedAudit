@@ -23,6 +23,8 @@ func sensBundle(adapter facts.TargetType, fs ...facts.Fact) *facts.FactBundle {
 		{TemplateID: "mysql.db_privs", Status: "ok"},
 		{TemplateID: "mssql.db_permissions", Status: "ok"},
 		{TemplateID: "ora.role_privs", Status: "ok"},
+		{TemplateID: "ora.users", Status: "ok"},
+		{TemplateID: "mysql.accounts", Status: "ok"},
 	}, fs...)
 }
 
@@ -50,6 +52,11 @@ func containerFact(conName string) facts.Fact {
 	return facts.Fact{FactID: "c0", Kind: facts.FactAccountConfig, Subject: "container",
 		Status: facts.StatusObserved, Source: "ora.container",
 		Attributes: map[string]string{"con_name": conName, "con_id": "3"}}
+}
+
+func accountFact(id, source, subject string) facts.Fact {
+	return facts.Fact{FactID: id, Kind: facts.FactAccountConfig, Subject: subject,
+		Status: facts.StatusObserved, Source: source}
 }
 
 func readReportSnapshot(t *testing.T, db *sql.DB, id string) map[string]any {
@@ -160,6 +167,7 @@ func TestSensitiveOracleANY(t *testing.T) {
 		privFact("a2", "ora.sys_privs", "DBA", "instance", map[string]string{"privilege": "SELECT ANY TABLE"}),
 		privFact("a3", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "DELETE ANY TABLE"}),
 		privFact("a4", "ora.sys_privs", "TMP_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"}),
+		accountFact("u1", "ora.users", "APP_READER"),
 		roleEdgeFact("RPT_ROLE", "BOB", facts.ActivationDefault),
 		roleEdgeFact("TMP_ROLE", "CAROL", facts.ActivationConditional),
 	)
@@ -213,6 +221,8 @@ func TestSensitiveMySQLScopes(t *testing.T) {
 		privFact("m1", "mysql.user_privs", "app@%", "*.*", map[string]string{"privilege": "SELECT"}),
 		privFact("m2", "mysql.db_privs", "lis@%", "lisdb.*", map[string]string{"privilege": "SELECT"}),
 		privFact("m3", "mysql.global_grants", "ops@%", "*.*", map[string]string{"privilege": "CONNECTION_ADMIN", "dynamic": "true"}),
+		accountFact("u1", "mysql.accounts", "app@%"),
+		accountFact("u2", "mysql.accounts", "lis@%"),
 	)
 	labels := []SensitiveLabel{
 		{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"},
@@ -533,7 +543,7 @@ func TestSensitiveMySQLCase(t *testing.T) {
 	priv := privFact("f1", "mysql.db_privs", "app", "HisDB.*", map[string]string{"privilege": "SELECT"})
 	lbl := []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"}}
 	mk := func(lct string) *facts.FactBundle {
-		fs := []facts.Fact{priv}
+		fs := []facts.Fact{priv, accountFact("u1", "mysql.accounts", "app")}
 		if lct != "" {
 			fs = append(fs, facts.Fact{FactID: "c1", Kind: facts.FactAccountConfig, Subject: "global",
 				Status: facts.StatusObserved, Source: "mysql.server_config",
@@ -545,6 +555,7 @@ func TestSensitiveMySQLCase(t *testing.T) {
 					{TemplateID: "mysql.global_grants", Status: "ok"},
 					{TemplateID: "mysql.db_privs", Status: "ok"},
 					{TemplateID: "mysql.server_config", Status: "ok"},
+					{TemplateID: "mysql.accounts", Status: "ok"},
 				}, fs...)
 		}
 		return sensBundle("db-mysql", fs...)
@@ -596,22 +607,24 @@ func TestSensitiveMySQLCaseUnknownIndeterminate(t *testing.T) {
 		{TemplateID: "mysql.user_privs", Status: "ok"},
 		{TemplateID: "mysql.global_grants", Status: "ok"},
 		{TemplateID: "mysql.db_privs", Status: "ok"},
+		{TemplateID: "mysql.accounts", Status: "ok"},
 	}
+	acct := accountFact("u1", "mysql.accounts", "app")
 	priv := func(db string) facts.Fact {
 		return privFact("f1", "mysql.db_privs", "app", db+".*", map[string]string{"privilege": "SELECT"})
 	}
 	// 未知模式 + 仅大小写不同 → 未确认（不得称“未发现”）。
-	s := findSnap(t, MatchSensitive(sensBundle("db-mysql", priv("HisDB")), lbl, nil), "l1")
+	s := findSnap(t, MatchSensitive(sensBundle("db-mysql", priv("HisDB"), acct), lbl, nil), "l1")
 	if s.Status != "unconfirmed" {
 		t.Errorf("未知模式 + 仅大小写不同：want unconfirmed, got %s", s.Status)
 	}
 	// 未知模式 + 精确相等 → 仍可匹配为暴露。
-	s = findSnap(t, MatchSensitive(sensBundle("db-mysql", priv("hisdb")), lbl, nil), "l1")
+	s = findSnap(t, MatchSensitive(sensBundle("db-mysql", priv("hisdb"), acct), lbl, nil), "l1")
 	if s.Status != "exposed" {
 		t.Errorf("未知模式 + 精确相等：want exposed, got %s", s.Status)
 	}
 	// 未知模式 + 完全不同库名 → 无命中，可称“未发现”（来源齐全）。
-	s = findSnap(t, MatchSensitive(sensBundle("db-mysql", priv("otherdb")), lbl, nil), "l1")
+	s = findSnap(t, MatchSensitive(sensBundle("db-mysql", priv("otherdb"), acct), lbl, nil), "l1")
 	if s.Status != "no-broad-grant" {
 		t.Errorf("未知模式 + 不同库名：want no-broad-grant, got %s", s.Status)
 	}
@@ -621,7 +634,7 @@ func TestSensitiveMySQLCaseUnknownIndeterminate(t *testing.T) {
 		Attributes: map[string]string{"name": "lower_case_table_names", "value": "1"}}
 	rcs := append(append([]facts.Receipt{}, coreOK...),
 		facts.Receipt{TemplateID: "mysql.server_config", Status: "denied"})
-	s = findSnap(t, MatchSensitive(sensBundleReceipts("db-mysql", rcs, priv("HisDB"), lct), lbl, nil), "l1")
+	s = findSnap(t, MatchSensitive(sensBundleReceipts("db-mysql", rcs, priv("HisDB"), lct, acct), lbl, nil), "l1")
 	if s.Status != "unconfirmed" {
 		t.Errorf("配置事实无可信收据 + 仅大小写不同：want unconfirmed, got %s", s.Status)
 	}
@@ -631,7 +644,7 @@ func TestSensitiveMySQLCaseUnknownIndeterminate(t *testing.T) {
 		Attributes: map[string]string{"name": "lower_case_table_names", "value": "2"}}
 	rcs2 := append(append([]facts.Receipt{}, coreOK...),
 		facts.Receipt{TemplateID: "mysql.server_config", Status: "ok"})
-	s = findSnap(t, MatchSensitive(sensBundleReceipts("db-mysql", rcs2, priv("HisDB"), lct2), lbl, nil), "l1")
+	s = findSnap(t, MatchSensitive(sensBundleReceipts("db-mysql", rcs2, priv("HisDB"), lct2, acct), lbl, nil), "l1")
 	if s.Status != "exposed" {
 		t.Errorf("模式 2 + 仅大小写不同：want exposed, got %s", s.Status)
 	}
@@ -710,9 +723,10 @@ func TestSensitiveMySQLCaseFactValidation(t *testing.T) {
 		{TemplateID: "mysql.global_grants", Status: "ok"},
 		{TemplateID: "mysql.db_privs", Status: "ok"},
 		{TemplateID: "mysql.server_config", Status: "ok"},
+		{TemplateID: "mysql.accounts", Status: "ok"},
 	}
 	mk := func(f facts.Fact) *facts.FactBundle {
-		return sensBundleReceipts("db-mysql", coreOK, priv, f)
+		return sensBundleReceipts("db-mysql", coreOK, priv, f, accountFact("u1", "mysql.accounts", "app"))
 	}
 	base := map[string]string{"name": "lower_case_table_names", "value": "1"}
 	badKind := facts.Fact{FactID: "c1", Kind: facts.FactPrivilege, Subject: "global",
@@ -724,5 +738,74 @@ func TestSensitiveMySQLCaseFactValidation(t *testing.T) {
 		Status: facts.StatusPermissionDenied, Source: "mysql.server_config", Attributes: base}
 	if s := findSnap(t, MatchSensitive(mk(badStatus), lbl, nil), "l1"); s.Status != "unconfirmed" {
 		t.Errorf("模式事实 Status 不符：want unconfirmed, got %s", s.Status)
+	}
+}
+
+// 静态复核回归四轮：被授者三态——确认角色 / 确认用户 / 身份未知。
+// 角色边缺失或被拒时，未知被授者不得直接当成确定用户。
+func TestSensitiveGranteeIdentityThreeStates(t *testing.T) {
+	grant := privFact("a1", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	tabOK := facts.Receipt{TemplateID: "ora.tab_privs", Status: "ok"}
+	sysOK := facts.Receipt{TemplateID: "ora.sys_privs", Status: "ok"}
+	usersOK := facts.Receipt{TemplateID: "ora.users", Status: "ok"}
+	// 零角色边 + 角色边来源被拒 → 未确认（不得把角色名当成用户暴露）。
+	b := sensBundleReceipts("db-oracle",
+		[]facts.Receipt{tabOK, sysOK, usersOK, {TemplateID: "ora.role_privs", Status: "denied"}}, grant)
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("零边+来源被拒：want unconfirmed, got %s", s.Status)
+	}
+	if n := countExposures(MatchSensitive(b, lbl, nil), "l1", false); n != 0 {
+		t.Errorf("零边+来源被拒：不应有确定暴露，得到 %d", n)
+	}
+	// 零角色边 + 角色边来源缺收据 → 未确认。
+	b = sensBundleReceipts("db-oracle", []facts.Receipt{tabOK, sysOK, usersOK}, grant)
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("零边+来源缺失：want unconfirmed, got %s", s.Status)
+	}
+	// 非 observed 边不识别角色 → 未确认。
+	nonObsEdge := facts.Fact{Kind: facts.FactRoleEdge, Subject: "BOB",
+		Status: facts.StatusPermissionDenied, Source: "ora.role_privs",
+		PermissionPath: []string{"RPT_ROLE", "BOB"}, Activation: facts.ActivationDefault}
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{tabOK, sysOK, usersOK, {TemplateID: "ora.role_privs", Status: "ok"}}, grant, nonObsEdge)
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("非 observed 边：want unconfirmed, got %s", s.Status)
+	}
+	// 确认的直接用户（用户清单事实 + 可信收据）→ 暴露。
+	userGrant := privFact("a2", "ora.sys_privs", "APP_USER", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{tabOK, sysOK, usersOK, {TemplateID: "ora.role_privs", Status: "ok"}},
+		userGrant, accountFact("u1", "ora.users", "APP_USER"))
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "exposed" {
+		t.Errorf("确认直接用户：want exposed, got %s", s.Status)
+	}
+	// 已确认角色、完整采集、无默认成员（仅非默认边）→ 无自动可达暴露。
+	condEdge := roleEdgeFact("RPT_ROLE", "CAROL", facts.ActivationConditional)
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{tabOK, sysOK, usersOK, {TemplateID: "ora.role_privs", Status: "ok"}}, grant, condEdge)
+	sec := MatchSensitive(b, lbl, nil)
+	if s := findSnap(t, sec, "l1"); s.Status != "no-broad-grant" {
+		t.Errorf("确认角色无默认成员：want no-broad-grant, got %s", s.Status)
+	}
+	if n := countExposures(sec, "l1", false); n != 0 {
+		t.Errorf("确认角色无默认成员：不应有暴露，得到 %d", n)
+	}
+	// MySQL：无清单事实的被授者 → 未确认；有清单事实 → 暴露。
+	myGrant := privFact("m1", "mysql.db_privs", "ghost@%", "hisdb.*", map[string]string{"privilege": "SELECT"})
+	myLbl := []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"}}
+	myOK := []facts.Receipt{
+		{TemplateID: "mysql.user_privs", Status: "ok"},
+		{TemplateID: "mysql.global_grants", Status: "ok"},
+		{TemplateID: "mysql.db_privs", Status: "ok"},
+		{TemplateID: "mysql.accounts", Status: "ok"},
+	}
+	b = sensBundleReceipts("db-mysql", myOK, myGrant)
+	if s := findSnap(t, MatchSensitive(b, myLbl, nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("MySQL 无清单事实：want unconfirmed, got %s", s.Status)
+	}
+	b = sensBundleReceipts("db-mysql", myOK, myGrant, accountFact("u1", "mysql.accounts", "ghost@%"))
+	if s := findSnap(t, MatchSensitive(b, myLbl, nil), "l1"); s.Status != "exposed" {
+		t.Errorf("MySQL 有清单事实：want exposed, got %s", s.Status)
 	}
 }
