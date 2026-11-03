@@ -264,6 +264,59 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		return n, nil
 	})
 
+	// 6) Windows 口令策略（NetUserModalsGet level 0/3）：本地 SAM 或域默认策略；
+	//    细粒度用户策略（FGPP/PSO）不在本 API 覆盖内，事实 scope 标注覆盖范围。
+	addReceipt("win.password_policy", "1", func() (int, error) {
+		pol, err := queryPasswordPolicy()
+		if err != nil {
+			return 0, err
+		}
+		b.Facts = append(b.Facts, facts.Fact{
+			FactID: nextID("pwd"), Kind: facts.FactAccountConfig,
+			Subject: "password-policy", Status: facts.StatusObserved, Source: "win.password_policy",
+			Attributes: PasswordPolicyAttributes(pol),
+		})
+		return 1, nil
+	})
+
+	// 7) secedit 复杂度（只读导出）：渠道不可用则无事实，复杂度规则 UNKNOWN；
+	//    不解析本地化 net accounts 文案。
+	addReceipt("win.secedit", "1", func() (int, error) {
+		raw, err := exportSecedit()
+		if err != nil {
+			return 0, err
+		}
+		sec := ParseSeceditInf(raw)
+		attrs := map[string]string{"scope": machinePasswordScope()}
+		if v, ok := sec["passwordcomplexity"]; ok {
+			attrs["password_complexity"] = v
+		}
+		b.Facts = append(b.Facts, facts.Fact{
+			FactID: nextID("sec"), Kind: facts.FactAccountConfig,
+			Subject: "password-policy", Status: facts.StatusObserved, Source: "win.secedit",
+			Attributes: attrs,
+		})
+		return 1, nil
+	})
+
+	// 8) RDP 有效配置（组策略优先于本地）：enabled 读不到则整段失败；
+	//    NLA 缺失则事实无 nla 属性，NLA 规则 UNKNOWN（不默认为安全）。
+	addReceipt("win.rdp", "1", func() (int, error) {
+		s, err := readRDPSettings()
+		if err != nil {
+			return 0, err
+		}
+		if !s.Enabled.Present {
+			return 0, fmt.Errorf("RDP 开关注册表值均不存在，无法判定")
+		}
+		b.Facts = append(b.Facts, facts.Fact{
+			FactID: nextID("rdp"), Kind: facts.FactAccountConfig,
+			Subject: "rdp", Status: facts.StatusObserved, Source: "win.rdp",
+			Attributes: RDPAttributes(s),
+		})
+		return 1, nil
+	})
+
 	finished := time.Now().UTC()
 	b.CollectedAt.Finished = finished
 	b.Execution = facts.ExecutionComplete

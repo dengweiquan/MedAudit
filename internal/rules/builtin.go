@@ -80,6 +80,9 @@ func DefaultRegistry() *Registry {
 	for _, e := range windowsBuiltinRules {
 		_ = r.Register(e.spec, e.check)
 	}
+	for _, e := range windowsPasswordRules {
+		_ = r.Register(e.spec, e.check)
+	}
 	for _, e := range postgresBuiltinRules {
 		_ = r.Register(e.spec, e.check)
 	}

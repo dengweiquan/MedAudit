@@ -16,6 +16,9 @@ controls:
       - db.oracle.profile_password_policy
       - db.mysql.password_policy
       - db.mssql.password_policy
+      - os.windows.password_min_length
+      - os.windows.password_max_age_never
+      - os.windows.password_complexity_off
       - db.pg.hba_trust
       - db.pg.hba_weak_method
       - mw.iis.anon_open
@@ -26,6 +29,7 @@ controls:
     title: 登录失败处理、限制非法登录次数、连接超时自动退出
     rules:
       - db.oracle.profile_password_policy
+      - os.windows.password_lockout_disabled
   - id: "8.1.4.1 c)"
     group: 身份鉴别
     title: 远程管理时防止鉴别信息在网络传输中被窃听
@@ -159,6 +163,7 @@ controls:
       - mw.weblogic.console_deployed
       - os.linux.ssh_password_auth
       - os.linux.ssh_root_login
+      - os.windows.rdp_nla_disabled
   - id: "8.1.4.4 d)"
     group: 入侵防范
     title: 提供数据有效性检验功能，保证输入内容符合系统设定要求

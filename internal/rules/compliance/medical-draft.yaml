@@ -29,7 +29,10 @@
 # - 新增医疗-11 安全审计（Oracle/MSSQL/PG 审计启用规则）；审计记录保护、留存期限仍无规则，属未检查；
 # - 新增医疗-12 API 安全（控制项占位，rules 为空；apiaudit 引擎存在但未挂入本框架，映射待做）；
 # - 医疗-05 补 MySQL/MSSQL 口令策略规则，医疗-06 补 PG 传输加密规则；
-# - 仍未覆盖：Windows 口令策略与 RDP、Oracle/MSSQL 传输加密（采集面不可达：sqlnet.ora 与 ForceEncryption 不在 DB 连接可查范围）、
+# - Windows 口令策略与 RDP 已覆盖（口令 4 条 + RDP NLA 1 条）；覆盖边界：RDP NLA 仅覆盖 RDP 通道，
+#   不代表全部管理端口来源限制；Windows 口令策略覆盖范围为本地 SAM 或域默认策略（见事实 scope），
+#   细粒度用户策略（FGPP/PSO）未覆盖，本机策略不代表全部域用户。
+# - 仍未覆盖：Oracle/MSSQL 传输加密（采集面不可达：sqlnet.ora 与 ForceEncryption 不在 DB 连接可查范围）、
 #   数据分级分类与去标识化（需敏感对象标记产品能力）、GB/T 39725 条款号（全空，待合规人员持标准文本填写）。
 id: medical-draft
 name: 医疗卫生行业网络与数据安全要求
@@ -93,6 +96,10 @@ controls:
       - db.oracle.profile_password_policy
       - db.mysql.password_policy
       - db.mssql.password_policy
+      - os.windows.password_min_length
+      - os.windows.password_max_age_never
+      - os.windows.password_lockout_disabled
+      - os.windows.password_complexity_off
       - db.pg.hba_trust
       - db.pg.hba_weak_method
       - db.pg.password_encryption_weak
@@ -140,6 +147,7 @@ controls:
     rules:
       - db.pg.hba_open_network
       - db.pg.listen_all
+      - os.windows.rdp_nla_disabled
   - id: 医疗-10
     ref: "《办法》第六条（相关）"
     group: 安全加固
