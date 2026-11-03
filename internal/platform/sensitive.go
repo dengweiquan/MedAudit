@@ -248,9 +248,10 @@ func isTableANY(priv string) bool {
 	return p == "ANY TABLE" || strings.Contains(p, " ANY TABLE")
 }
 
-// roleResolution 从角色边事实建解析表：roles 为全部角色名（边
+// roleResolution 从角色边与身份清单事实建解析表：roles 为全部角色名（边
 // PermissionPath[0]），defaultUsers 为角色 → 默认激活用户，
-// credibleDefaultUsers 为其中边来源可信的默认用户。
+// credibleDefaultUsers 为其中边来源可信的默认用户，users 为已确认用户
+// （身份清单事实中的账号，且清单来源收据可信）。
 // 角色与用户共用命名空间：出现在边中的名字即角色；角色权限只通过
 // 默认激活边到达用户，非默认角色需 SET ROLE 激活，不计入自动可达。
 // 边逐条验收据：边事实的来源收据被拒/失败/缺失/冲突时，该边不可信——
@@ -259,10 +260,24 @@ type roleResolution struct {
 	roles                map[string]bool
 	defaultUsers         map[string][]string
 	credibleDefaultUsers map[string][]string
+	users                map[string]bool
+}
+
+// identityKey 身份清单键：Oracle 用户名按大写折叠（字典存储惯例），
+// MySQL 账号为 user@host 全量匹配；其余类型无清单，返回空键。
+func identityKey(adapter facts.TargetType, subject string) string {
+	switch adapter {
+	case facts.TargetDBOracle:
+		return "ora:" + strings.ToUpper(subject)
+	case facts.TargetDBMySQL:
+		return "mysql:" + subject
+	default:
+		return ""
+	}
 }
 
 func resolveRoles(b *facts.FactBundle) roleResolution {
-	r := roleResolution{roles: map[string]bool{}, defaultUsers: map[string][]string{}, credibleDefaultUsers: map[string][]string{}}
+	r := roleResolution{roles: map[string]bool{}, defaultUsers: map[string][]string{}, credibleDefaultUsers: map[string][]string{}, users: map[string]bool{}}
 	for _, f := range b.Facts {
 		if f.Kind != facts.FactRoleEdge || f.Status != facts.StatusObserved || len(f.PermissionPath) == 0 {
 			continue
@@ -276,27 +291,47 @@ func resolveRoles(b *facts.FactBundle) roleResolution {
 			}
 		}
 	}
+	// 已确认用户：身份清单事实（Oracle ora.users/ora.cdb_users、MySQL
+	// mysql.accounts）中已观察的配置事实，且清单来源收据可信。
+	for _, f := range b.Facts {
+		if f.Kind != facts.FactAccountConfig || f.Status != facts.StatusObserved {
+			continue
+		}
+		switch f.Source {
+		case "ora.users", "ora.cdb_users", "mysql.accounts":
+		default:
+			continue
+		}
+		if key := identityKey(b.Collector.Adapter, f.Subject); key != "" && sensitiveSourceCredible(b, f.Source) {
+			r.users[key] = true
+		}
+	}
 	return r
 }
 
-// granteesDetailed 把被授者解析为实际用户，并区分边可信与否：
-// credible 为边来源可信的默认用户（可计确定暴露）；uncredible 为边来源
-// 不可信的默认用户（只显角色授权，不计用户可达性）；非角色名即用户本人
-// （credible 为本人，uncredible 为空）。
-func (r roleResolution) granteesDetailed(subject string) (credible, uncredible []string, isRole bool) {
-	if !r.roles[subject] {
-		return []string{subject}, nil, false
-	}
-	cred := map[string]bool{}
-	for _, u := range r.credibleDefaultUsers[subject] {
-		cred[u] = true
-	}
-	for _, u := range r.defaultUsers[subject] {
-		if !cred[u] {
-			uncredible = append(uncredible, u)
+// expandGrantee 三态展开被授者：
+//   - 已确认角色 → 按默认边展开（可信边用户 / 不可信边用户），isRole=true；
+//   - 已确认用户 → 本人，isRole=false；
+//   - 身份未知 → unknown=true，不展开：角色边缺失/被拒且无可信用户清单时，
+//     不得把未知被授者直接当成确定用户（角色采集被拒、根本没有返回边时，
+//     角色名会被误当成用户暴露）。
+func (r roleResolution) expandGrantee(adapter facts.TargetType, subject string) (credible, uncredible []string, isRole, unknown bool) {
+	if r.roles[subject] {
+		cred := map[string]bool{}
+		for _, u := range r.credibleDefaultUsers[subject] {
+			cred[u] = true
 		}
+		for _, u := range r.defaultUsers[subject] {
+			if !cred[u] {
+				uncredible = append(uncredible, u)
+			}
+		}
+		return r.credibleDefaultUsers[subject], uncredible, true, false
 	}
-	return r.credibleDefaultUsers[subject], uncredible, true
+	if r.users[identityKey(adapter, subject)] {
+		return []string{subject}, nil, false, false
+	}
+	return nil, nil, false, true
 }
 
 // hasPrivilegeFacts 包中是否存在授权事实（无则无法判定暴露面）。
@@ -585,7 +620,7 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					// CDB 通用权限（common=YES，CONTAINER=ALL）可达全部 PDB，
 					// 本节只计本包（本资产容器），跨 PDB 可达另行注记。
 					common := f.Attributes["common"] == "YES"
-					credUsers, uncredUsers, isRole := roles.granteesDetailed(f.Subject)
+					credUsers, uncredUsers, isRole, unknown := roles.expandGrantee(adapter, f.Subject)
 					for _, u := range credUsers {
 						via := ""
 						if isRole {
@@ -595,6 +630,13 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 						if common {
 							labelExposures[len(labelExposures)-1].Note = "CONTAINER=ALL：该权限可达全部 PDB，本节只计本包。"
 						}
+					}
+					if unknown && !exempt(f.Subject, priv, f.Scope) {
+						// 身份未知：不得当成确定用户；显示疑似，不计确定暴露。
+						add("any", f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
+						labelCredible[len(labelCredible)-1] = false
+						labelExposures[len(labelExposures)-1].Note = "被授者身份无法确认（角色边缺失/被拒且无可信用户清单），不能直接当成确定用户；不计入确定暴露。"
+						snap.Notes = append(snap.Notes, "被授者 "+f.Subject+" 身份无法确认（非确认角色、非确认用户），不计入确定暴露。")
 					}
 					if isRole && len(uncredUsers) > 0 && !exempt(f.Subject, priv, f.Scope) {
 						// 角色授权存在，但成员边来源不可信：只显角色授权，
@@ -653,13 +695,20 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				default:
 					continue
 				}
-				credUsers, uncredUsers, isRole := roles.granteesDetailed(f.Subject)
+				credUsers, uncredUsers, isRole, unknown := roles.expandGrantee(adapter, f.Subject)
 				for _, u := range credUsers {
 					via := ""
 					if isRole {
 						via = f.Subject
 					}
 					add(kind, u, priv, []string{f.FactID}, f.Scope, via, f.Source)
+				}
+				if unknown && !exempt(f.Subject, priv, f.Scope) {
+					// 身份未知：不得当成确定用户；显示疑似，不计确定暴露。
+					add(kind, f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
+					labelCredible[len(labelCredible)-1] = false
+					labelExposures[len(labelExposures)-1].Note = "被授者身份无法确认（角色边缺失/被拒且无可信用户清单），不能直接当成确定用户；不计入确定暴露。"
+					snap.Notes = append(snap.Notes, "被授者 "+f.Subject+" 身份无法确认（非确认角色、非确认用户），不计入确定暴露。")
 				}
 				if isRole && len(uncredUsers) > 0 && !exempt(f.Subject, priv, f.Scope) {
 					// 角色授权存在，但成员边来源不可信：只显角色授权，

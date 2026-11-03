@@ -152,32 +152,19 @@ func winEvidence(source string, match func(facts.Fact) bool) EvidenceCheck {
 	}
 }
 
-// winParseInt / winParseUint32 Windows 数值策略的统一解析（门控与规则共用）：
-// 去空白后解析；min_length/lockout 为 64 位整数量纲，max_age 为 32 位无符号
-// 量纲（TIMEQ_FOREVER = 0xFFFFFFFF）。门控只认“可解析”，规则按解析后的值判定——
-// 二者不得各自定义解析，否则门控放行的值（如带空格的永不过期值、超 uint32
-// 的越界值、带空格的 0）会被规则的解析失败跳过而误判 PASS。
-func winParseInt(s string) (int, bool) {
-	n, err := strconv.Atoi(strings.TrimSpace(s))
-	return n, err == nil
-}
-
+// winParseUint32 Windows 数值策略的统一解析（门控与规则共用）：
+// 去空白后按 32 位无符号解析；min_length/lockout/max_age 均为 Win32 DWORD
+// 量纲（max_age 的 TIMEQ_FOREVER = 0xFFFFFFFF）。门控只认“可解析”，规则按
+// 解析后的值判定——二者不得各自定义解析，否则门控放行的值（如带空格的永不过
+// 期值、超 uint32 的越界值、带空格的 0）会被规则的解析失败跳过而误判 PASS。
 func winParseUint32(s string) (uint32, bool) {
 	v, err := strconv.ParseUint(strings.TrimSpace(s), 10, 32)
 	return uint32(v), err == nil
 }
 
-// winAttrInt 事实含某可解析为整数的属性。数值策略的原始值须可解析，
-// 否则 check 的解析失败会被跳过（无命中）而误判 PASS——存在键名不等于
-// 值可用，门控须验证值而非只核对键名。
-func winAttrInt(attr string) func(facts.Fact) bool {
-	return func(f facts.Fact) bool {
-		_, ok := winParseInt(f.Attributes[attr])
-		return ok
-	}
-}
-
-// winAttrUint32 事实含某可解析为 32 位无符号整数的属性（max_age 专用）。
+// winAttrUint32 事实含某可解析为 32 位无符号整数的属性。数值策略的原始值
+// 须可解析，否则 check 的解析失败会被跳过（无命中）而误判 PASS——存在键名
+// 不等于值可用，门控须验证值而非只核对键名。
 func winAttrUint32(attr string) func(facts.Fact) bool {
 	return func(f facts.Fact) bool {
 		_, ok := winParseUint32(f.Attributes[attr])
