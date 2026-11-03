@@ -21,9 +21,14 @@
 - 结果语义：
   - `SQLNET.ENCRYPTION_SERVER=required` → 要求原生加密；
   - `requested/accepted/rejected` → 未要求；
-  - 文件缺失 → 取 Oracle 缺省 `accepted`（事实标注 `file_missing=true`，明细中明示）；
-  - 文件不可读 → PermissionDenied 事实，规则 UNKNOWN；
+  - 入口文件本身缺失 → 取 Oracle 缺省 `accepted`（事实标注 `file_missing=true`，明细中明示）；
+  - 入口文件存在但其 IFILE 链内文件缺失/不可读 → 链内解析失败，不猜默认值：
+    出 Unsupported 事实并记 partial 收据，规则 UNKNOWN（入口缺失与链内失败严格区分，
+    后者不得误入“入口缺失”分支）；
+  - 入口文件不可读（权限拒绝等）→ PermissionDenied 事实，规则 UNKNOWN；
   - 实例无法确定（无 oratab / 无 Home）→ 盘点事实 `oracle_homes=0`，规则 NA（宿主无 Oracle）。
+  - 证据门控收据先行：收据缺失/失败/截断时，安全的 Observed 事实也不判 Ready；
+    失败的枚举不得被「无 Oracle Home」盘点事实掩盖为不适用。
 - 规则：`os.linux.oracle_native_encryption_not_required`（v1，带证据门控）。
 
 ## MSSQL：ForceEncryption（Windows 宿主）
@@ -35,8 +40,16 @@
 - 结果语义：
   - `ForceEncryption=1` → 已配置强制加密；
   - `=0` 或值缺失（缺省 0）→ 未强制（事实标注 `value_missing=true`，明细中明示）；
-  - 值不可读 → PermissionDenied 事实（该实例不纳入结论，其余实例照常判定，不掩盖真实 FAIL）；
-  - 宿主无实例 → 盘点事实 `mssql_instances=0`，规则 NA。
+  - 值不可读 → PermissionDenied（注册表拒绝访问）或 Unsupported（其他错误）事实，
+    并附实例 ID、注册表路径与脱敏错误；该实例不纳入 PASS 结论，但不掩盖真实 FAIL；
+  - 多实例汇总：只要任一实例读取/枚举失败且至少一实例可读，收据记 partial——
+    评估层继续跑 check：已有明确 `force_encryption=0` 仍判 FAIL，无命中判 UNKNOWN，
+    不得因部分实例开启而整体 PASS；全部实例不可读时收据记 denied，规则 UNKNOWN；
+  - 宿主无实例 → 盘点事实 `mssql_instances=0`，规则 NA；盘点事实只在枚举
+    成功且无跳过时才写——实例名键缺失视同无实例，打开键/读值名失败、
+    单个实例 ID 读不到均不写无实例盘点（避免枚举失败误判无实例）。
+  - 证据门控收据先行：收据失败时不得被 `mssql_instances=0` 掩盖为不适用；
+    收据 partial 时评估层按上条 partial 语义处理。
 - 已配置 vs 运行中生效：注册表值只证明“已配置”；重启后生效状态未验证
   （事实 `effective=unknown`，PASS 明细中明示）；注册表 LastWriteTime × 服务进程启动时间
   的生效判定列为后续增强。

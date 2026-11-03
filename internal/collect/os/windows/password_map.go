@@ -14,17 +14,46 @@ type PasswordPolicy struct {
 	LockoutWindowSec   uint32
 	LockoutThreshold   uint32
 	Scope              string // "local-sam" | "domain-default" | "unknown"
-	Role               string // "workgroup" | "domain-member" | "domain-controller" | "unknown"
+	Role               string // "unjoined" | "workgroup" | "domain-member" | "domain-controller" | "unknown"
+}
+
+// NetSetupJoinStatus（微软定义）：0 未知、1 未加入、2 工作组、3 域。
+// 旧代码误把 1 当工作组、2 当域、3 当未知，导致域成员被标为未知覆盖范围。
+const (
+	joinStatusUnknown   = 0
+	joinStatusUnjoined  = 1
+	joinStatusWorkgroup = 2
+	joinStatusDomain    = 3
+)
+
+// joinStatusToRole 加入状态 → 机器角色（纯函数，可单测）：
+// 域控由 NetServerGetInfo 的 SV_TYPE_DOMAIN_CTRL 另行判定（isDC 时优先返回域控，
+// 与加入状态无关——域控本身的加入状态也是 3 域）；未加入/工作组/域成员均为
+// 本地 SAM 查询口径（域成员本机的查询不等于域账号默认策略）。
+func joinStatusToRole(joinStatus uint32, isDC bool) string {
+	if isDC {
+		return "domain-controller"
+	}
+	switch joinStatus {
+	case joinStatusUnjoined:
+		return "unjoined"
+	case joinStatusWorkgroup:
+		return "workgroup"
+	case joinStatusDomain:
+		return "domain-member"
+	default:
+		return "unknown"
+	}
 }
 
 // passwordScopeForRole 由机器角色定覆盖范围（纯函数，可单测）：
-// 域控返回域默认策略；工作组与域成员均返回本地 SAM 策略——域成员本机的查询不等于域账号默认策略，
+// 域控返回域默认策略；未加入、工作组与域成员均返回本地 SAM 策略——域成员本机的查询不等于域账号默认策略，
 // 域账号的默认策略不在本 API 覆盖内；角色未知时不猜测，返回 unknown。
 func passwordScopeForRole(role string) string {
 	switch role {
 	case "domain-controller":
 		return "domain-default"
-	case "workgroup", "domain-member":
+	case "unjoined", "workgroup", "domain-member":
 		return "local-sam"
 	default:
 		return "unknown"

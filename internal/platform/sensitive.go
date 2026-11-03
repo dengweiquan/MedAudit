@@ -294,6 +294,77 @@ func hasPrivilegeFacts(b *facts.FactBundle) bool {
 // MatchSensitive 对一批标签做 broad 授权匹配，返回报告节。
 // baseline 为 nil 时不做豁免标记；豁免只按事实被授者（角色传递时角色或用户
 // 任一放行即豁免）判定，与评估口径一致。
+// sensitiveSourceComplete 某授权来源的收据是否完整：收据须存在且状态 ok、
+// 未截断。缺失/被拒/失败/截断都算不完整——不能据此声称“未发现 broad 授权”。
+func sensitiveSourceComplete(b *facts.FactBundle, source string) (bool, string) {
+	var saw bool
+	for _, rc := range b.Receipts {
+		if rc.TemplateID != source {
+			continue
+		}
+		saw = true
+		if rc.Status != "ok" || rc.Truncated {
+			if rc.Truncated && rc.Status == "ok" {
+				return false, "truncated"
+			}
+			return false, rc.Status
+		}
+	}
+	if !saw {
+		return false, "missing"
+	}
+	return true, "ok"
+}
+
+// sensitiveSourcesComplete 该资产类型相关授权来源是否全部完整。
+// Oracle：tab_privs + sys_privs 必备；cdb_sys_privs 仅当包内有该来源的
+// 事实或收据时才要求（非 CDB 无此来源，不强求）。
+// PG：object_privileges 必备。MySQL：user_privs + global_grants + db_privs 必备。
+// MSSQL：对象级事实从未采集，恒为不完整（匹配分支直接置未确认）。
+func sensitiveSourcesComplete(b *facts.FactBundle, adapter facts.TargetType) (bool, []string) {
+	var core, conditional []string
+	switch adapter {
+	case facts.TargetDBOracle:
+		core = []string{"ora.tab_privs", "ora.sys_privs"}
+		conditional = []string{"ora.cdb_sys_privs"}
+	case facts.TargetDBPostgres:
+		core = []string{"pg.object_privileges"}
+	case facts.TargetDBMySQL:
+		core = []string{"mysql.user_privs", "mysql.global_grants", "mysql.db_privs"}
+	default:
+		return false, []string{"对象级授权来源未采集"}
+	}
+	var incomplete []string
+	for _, src := range core {
+		if ok, state := sensitiveSourceComplete(b, src); !ok {
+			incomplete = append(incomplete, src+"（"+state+"）")
+		}
+	}
+	for _, src := range conditional {
+		present := false
+		for _, f := range b.Facts {
+			if f.Source == src {
+				present = true
+				break
+			}
+		}
+		if !present {
+			for _, rc := range b.Receipts {
+				if rc.TemplateID == src {
+					present = true
+					break
+				}
+			}
+		}
+		if present {
+			if ok, state := sensitiveSourceComplete(b, src); !ok {
+				incomplete = append(incomplete, src+"（"+state+"）")
+			}
+		}
+	}
+	return len(incomplete) == 0, incomplete
+}
+
 func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rules.Baseline) *SensitiveSection {
 	var adapter facts.TargetType
 	if b != nil {
@@ -315,6 +386,33 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 	}
 	if b.Execution == "PARTIAL" {
 		sec.Notes = append(sec.Notes, "采集不完整（PARTIAL），暴露面可能低估。")
+	}
+	// MySQL 库名大小写：按包内 lower_case_table_names 事实（0 → 区分，
+	// 1/2 → 不区分）；未采集或非法时保守按区分处理，避免在
+	// lower_case_table_names=0 的实例上跨库误报。
+	mysqlCaseSensitive, mysqlCaseKnown := true, false
+	if adapter == facts.TargetDBMySQL {
+		for _, f := range b.Facts {
+			if f.Source != "mysql.server_config" || f.Attributes["name"] != "lower_case_table_names" {
+				continue
+			}
+			switch strings.TrimSpace(f.Attributes["value"]) {
+			case "1", "2":
+				mysqlCaseSensitive, mysqlCaseKnown = false, true
+			case "0":
+				mysqlCaseSensitive, mysqlCaseKnown = true, true
+			}
+			break
+		}
+		if !mysqlCaseKnown {
+			sec.Notes = append(sec.Notes, "MySQL 实例 lower_case_table_names 未采集，库名按区分大小写匹配（保守处理；新版采集模板已含该变量，重采后按实例配置匹配）。")
+		}
+	}
+	matchMySQLDB := func(a, b string) bool {
+		if mysqlCaseSensitive {
+			return a == b
+		}
+		return strings.EqualFold(a, b)
 	}
 	roles := resolveRoles(b)
 	// 事实按来源分桶，避免每标签全量扫描重复判定。
@@ -378,6 +476,24 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 		}
 		switch adapter {
 		case facts.TargetDBOracle:
+			// 容器归属：标签库名（PDB）须与本包容器（Scope.Container，采集连接的
+			// 服务名）对应；容器身份缺失或不符时不作跨容器匹配，整标签未确认
+			// （同名表在不同 PDB 是不同对象；Scope.Instance 为写死占位值，不可信）。
+			containerMismatch := false
+			if l.Database != "" {
+				switch {
+				case b.Scope.Container == "":
+					containerMismatch = true
+					snap.Notes = append(snap.Notes, "标签指定了库名（"+l.Database+"），但本包无可信容器身份，无法确认标签归属，不作跨容器匹配。")
+				case !strings.EqualFold(b.Scope.Container, l.Database):
+					containerMismatch = true
+					snap.Notes = append(snap.Notes, "标签库名（"+l.Database+"）与本包容器（"+b.Scope.Container+"）不符，不作跨容器匹配；请以该库的资产包复评。")
+				}
+			}
+			if containerMismatch {
+				snap.Status = "unconfirmed"
+				break
+			}
 			// PUBLIC 对象授权：Scope 为 OWNER.TABLE 精确匹配。
 			for _, f := range oraTab {
 				if !strings.EqualFold(f.Subject, "PUBLIC") {
@@ -386,11 +502,6 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				owner, tbl, ok := splitOraScope(f.Scope)
 				if !ok || !matchName(adapter, owner, l.Schema) || !matchName(adapter, tbl, l.Table) {
 					continue
-				}
-				if l.Database != "" {
-					// Oracle 事实不带 PDB 名：标签库名无法与事实库名对应，
-					// 以资产（包）为界，不再按库名过滤（见文档注记）。
-					_ = l.Database
 				}
 				add("public", "PUBLIC", f.Attributes["privilege"], []string{f.FactID}, f.Scope, "")
 			}
@@ -451,7 +562,7 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				case f.Scope == "*.*":
 					kind = "global"
 				case strings.HasSuffix(f.Scope, ".*") &&
-					matchName(adapter, strings.TrimSuffix(f.Scope, ".*"), effDB):
+					matchMySQLDB(strings.TrimSuffix(f.Scope, ".*"), effDB):
 					kind = "database-wide"
 				default:
 					continue
@@ -466,8 +577,10 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				}
 			}
 		case facts.TargetDBSQLSrv:
-			// MSSQL 事实只到数据库级（对象未采集）：public 授权存在时无法确认
-			// 是否覆盖该表——列为未确认，不计暴露、不判安全。
+			// MSSQL 事实只到数据库级（对象未采集）：无论有无数据库级 public 授权，
+			// 都无法确认该表是否被 public 授权——恒为未确认，不计暴露、不判“未发现”。
+			snap.Status = "unconfirmed"
+			found := false
 			for _, f := range mssqlPerm {
 				if !strings.EqualFold(f.Subject, "public") {
 					continue
@@ -476,10 +589,14 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				if l.Database != "" && !matchName(adapter, dbName, l.Database) {
 					continue
 				}
-				snap.Status = "unconfirmed"
 				snap.Notes = append(snap.Notes,
 					"数据库级 public 授权存在（"+f.Attributes["permission"]+"），但对象级事实未采集，无法确认是否覆盖该表。")
+				found = true
 				break
+			}
+			if !found {
+				snap.Notes = append(snap.Notes,
+					"对象级授权事实未采集（MSSQL 采集只到数据库级），无法确认该表是否被 broad 授权。")
 			}
 		default:
 			snap.Status = "unconfirmed"
@@ -492,11 +609,19 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 			}
 		}
 		if violations > 0 {
+			// 已有可靠暴露证据：即使其他来源不完整，风险仍可报告。
 			snap.Status = "exposed"
 		} else if snap.Status != "unconfirmed" {
-			snap.Status = "no-broad-grant"
-			if len(labelExposures) > 0 {
-				snap.Notes = append(snap.Notes, "匹配到的 broad 授权均已基线放行，不计入违规暴露。")
+			// 无违规暴露时，只有相关来源全部完整检查且无命中，才可称“未发现”；
+			// 来源缺失、失败或截断 → 未确认（Web 不显绿色），缺事实不等于安全。
+			if ok, incomplete := sensitiveSourcesComplete(b, adapter); !ok {
+				snap.Status = "unconfirmed"
+				snap.Notes = append(snap.Notes, "相关授权来源采集不完整（"+strings.Join(incomplete, "、")+"），无法确认无 broad 授权；缺授权事实不等于安全。")
+			} else {
+				snap.Status = "no-broad-grant"
+				if len(labelExposures) > 0 {
+					snap.Notes = append(snap.Notes, "匹配到的 broad 授权均已基线放行，不计入违规暴露。")
+				}
 			}
 		}
 		sec.Labels = append(sec.Labels, snap)

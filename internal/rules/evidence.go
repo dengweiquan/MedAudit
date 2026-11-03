@@ -104,3 +104,59 @@ func contains(list []string, v string) bool {
 	}
 	return false
 }
+
+// EvidenceSourceValue 在 EvidenceSource 基础上再验证值字段：键匹配的事实
+// 其值属性必须存在且被 valid 接受（存在、可解析、值域合法），否则 Missing。
+// 键存在但值缺失/非法时不得 Ready——否则 check 见不到违规值会误判 PASS
+// （如 pg.settings 只有 name=ssl 而 setting 缺失/非法时，ssl_off 的 check
+// 找不到 off 值即无命中，直接 PASS）。
+func EvidenceSourceValue(source, keyAttr string, keys []string, valueAttr string, valid func(string) bool, emptyOK bool) EvidenceCheck {
+	return func(c *EvalContext) (EvidenceStatus, string) {
+		if st, reason := receiptVerdict(c, source); st != EvidenceReady {
+			return st, reason
+		}
+		var keySeen bool
+		for _, f := range c.Bundle.Facts {
+			if f.Source != source || f.Status != facts.StatusObserved {
+				continue
+			}
+			if len(keys) > 0 && !contains(keys, f.Attributes[keyAttr]) {
+				continue
+			}
+			keySeen = true
+			if valid(f.Attributes[valueAttr]) {
+				return EvidenceReady, ""
+			}
+		}
+		if emptyOK {
+			return EvidenceReady, ""
+		}
+		if !keySeen {
+			if len(keys) == 0 {
+				return EvidenceMissing, fmt.Sprintf("%s 查询成功但无事实，无法判定", source)
+			}
+			return EvidenceMissing, fmt.Sprintf("%s 查询成功但未见 %s∈{%s} 的事实，无法判定",
+				source, keyAttr, strings.Join(keys, ","))
+		}
+		return EvidenceMissing, fmt.Sprintf("%s 的 %s 事实值 %s 缺失或非法，无法判定",
+			source, keyAttr, valueAttr)
+	}
+}
+
+// pgBoolValue PG 布尔型设置的可接受值（pg_settings 的布尔量纲）。
+func pgBoolValue(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "on", "off", "true", "false", "yes", "no", "1", "0":
+		return true
+	}
+	return false
+}
+
+// auditTrailValue Oracle AUDIT_TRAIL 的可接受值（传统审计参数量纲）。
+func auditTrailValue(v string) bool {
+	switch strings.ToUpper(strings.TrimSpace(v)) {
+	case "NONE", "OS", "DB", "XML", "DB,EXTENDED", "XML,EXTENDED":
+		return true
+	}
+	return false
+}

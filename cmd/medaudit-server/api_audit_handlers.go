@@ -14,8 +14,9 @@ import (
 // 业务接口越权检测报告的存档与查询（M4-1，M4-4 合规绑定）。
 // 报告由 medaudit-collector apicheck 生成后上传；结论逐项保存在 report JSON 中。
 // 服务端不信任客户端汇总：存档统计由 checks 重算；绑定（医院/资产）须经库核实，
-// 否则拒绝上传。机器通道（POST）无浏览器会话，故权限与归属的核验即这两项
-// （绑定存在性与一致性 + 统计重算），而非用户身份。
+// 否则拒绝上传。上传须持有效会话（中间件强制；采集器以超级令牌登录换会话后上传），
+// 服务端据此记录 upload_authenticated：认证上传的报告可用于合规判定，
+// 未认证历史报告只保留查阅，不作可信合规依据。
 
 type apiAuditSummary struct {
 	ReportID     string `json:"report_id"`
@@ -28,6 +29,7 @@ type apiAuditSummary struct {
 	FailCount    int    `json:"fail_count"`
 	UnknownCount int    `json:"unknown_count"`
 	NotRunCount  int    `json:"not_run_count"`
+	Trusted      bool   `json:"trusted"`
 	ImportedAt   string `json:"imported_at"`
 }
 
@@ -109,9 +111,10 @@ func registerAPIAuditRoutes(mux *http.ServeMux, db *sql.DB) {
 				writeJSON(w, map[string]any{"report_id": rep.ReportID, "status": "duplicate"})
 				return
 			}
+			// 请求已过会话中间件：本次上传为认证上传，记可信。
 			_, err = db.Exec(
-				`INSERT INTO api_audit_reports (report_id, target, execution, hospital_id, asset_id, total, pass_count, fail_count, unknown_count, not_run_count, report)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT INTO api_audit_reports (report_id, target, execution, hospital_id, asset_id, total, pass_count, fail_count, unknown_count, not_run_count, upload_authenticated, report)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
 				rep.ReportID, rep.Target, rep.Execution, rep.HospitalID, rep.AssetID, len(rep.Checks),
 				rep.Summary["PASS"], rep.Summary["FAIL"], rep.Summary["UNKNOWN"], rep.Summary["NOT_RUN"],
 				string(normalized))
@@ -124,7 +127,7 @@ func registerAPIAuditRoutes(mux *http.ServeMux, db *sql.DB) {
 		case http.MethodGet:
 			rows, err := db.Query(
 				`SELECT report_id, target, execution, hospital_id, asset_id, total, pass_count, fail_count, unknown_count, not_run_count,
-				        strftime('%Y-%m-%d %H:%M:%S', imported_at)
+				        upload_authenticated, strftime('%Y-%m-%d %H:%M:%S', imported_at)
 				 FROM api_audit_reports ORDER BY imported_at DESC LIMIT 100`)
 			if err != nil {
 				http.Error(w, "查询失败: "+err.Error(), http.StatusInternalServerError)
@@ -134,11 +137,13 @@ func registerAPIAuditRoutes(mux *http.ServeMux, db *sql.DB) {
 			out := []apiAuditSummary{}
 			for rows.Next() {
 				var s apiAuditSummary
+				var trusted int
 				if err := rows.Scan(&s.ReportID, &s.Target, &s.Execution, &s.HospitalID, &s.AssetID, &s.Total,
-					&s.PassCount, &s.FailCount, &s.UnknownCount, &s.NotRunCount, &s.ImportedAt); err != nil {
+					&s.PassCount, &s.FailCount, &s.UnknownCount, &s.NotRunCount, &trusted, &s.ImportedAt); err != nil {
 					http.Error(w, "读取失败: "+err.Error(), http.StatusInternalServerError)
 					return
 				}
+				s.Trusted = trusted != 0
 				out = append(out, s)
 			}
 			writeJSON(w, out)
@@ -166,7 +171,8 @@ func registerAPIAuditRoutes(mux *http.ServeMux, db *sql.DB) {
 			return
 		}
 		var raw string
-		err := db.QueryRow(`SELECT report FROM api_audit_reports WHERE report_id = ?`, id).Scan(&raw)
+		var trusted int
+		err := db.QueryRow(`SELECT report, upload_authenticated FROM api_audit_reports WHERE report_id = ?`, id).Scan(&raw, &trusted)
 		if err == sql.ErrNoRows {
 			http.Error(w, "报告不存在", http.StatusNotFound)
 			return
@@ -176,7 +182,8 @@ func registerAPIAuditRoutes(mux *http.ServeMux, db *sql.DB) {
 			return
 		}
 		if wantCompliance {
-			// 合规判定（医疗-12）：绑定资产须在库中存在且归属报告医院，否则不评估。
+			// 合规判定（医疗-12）：绑定资产须在库中存在且归属报告医院，否则不评估；
+			// 未认证上传的历史报告即使绑定一致也不作可信依据（见 APICompliance）。
 			var rep apiaudit.Report
 			assetVerified := false
 			if err := json.Unmarshal([]byte(raw), &rep); err == nil && rep.HospitalID != "" && rep.AssetID != "" {
@@ -185,7 +192,7 @@ func registerAPIAuditRoutes(mux *http.ServeMux, db *sql.DB) {
 					assetVerified = true
 				}
 			}
-			res, err := platform.APICompliance([]byte(raw), assetVerified)
+			res, err := platform.APICompliance([]byte(raw), assetVerified, trusted != 0)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return

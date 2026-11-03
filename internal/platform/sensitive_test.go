@@ -10,11 +10,27 @@ import (
 	"medaudit/internal/rules"
 )
 
+// sensBundle 建模一次完整采集：各授权来源收据均为 ok（匹配逻辑测试用）。
+// 不完整采集（缺失/被拒/截断）须用 sensBundleReceipts 显式构造。
 func sensBundle(adapter facts.TargetType, fs ...facts.Fact) *facts.FactBundle {
+	return sensBundleReceipts(adapter, []facts.Receipt{
+		{TemplateID: "ora.tab_privs", Status: "ok"},
+		{TemplateID: "ora.sys_privs", Status: "ok"},
+		{TemplateID: "ora.cdb_sys_privs", Status: "ok"},
+		{TemplateID: "pg.object_privileges", Status: "ok"},
+		{TemplateID: "mysql.user_privs", Status: "ok"},
+		{TemplateID: "mysql.global_grants", Status: "ok"},
+		{TemplateID: "mysql.db_privs", Status: "ok"},
+		{TemplateID: "mssql.db_permissions", Status: "ok"},
+	}, fs...)
+}
+
+func sensBundleReceipts(adapter facts.TargetType, rcs []facts.Receipt, fs ...facts.Fact) *facts.FactBundle {
 	return &facts.FactBundle{
 		Collector: facts.CollectorInfo{Adapter: adapter},
 		Execution: facts.ExecutionComplete,
 		Facts:     fs,
+		Receipts:  rcs,
 	}
 }
 
@@ -262,13 +278,14 @@ func TestSensitiveColumnLabel(t *testing.T) {
 	if !found {
 		t.Errorf("列级标记应附列级未覆盖注记，得到 %v", s.Notes)
 	}
-	empty := sensBundle("db-oracle")
+	// 无授权事实且无收据（采集不完整）：不得称“未发现”，应为未确认。
+	empty := sensBundleReceipts("db-oracle", nil)
 	sec2 := MatchSensitive(empty, []SensitiveLabel{
 		{ID: "l1", Schema: "HIS", Table: "PATIENTS", Column: "ID_NO", Category: "患者身份"},
 	}, nil)
 	s2 := findSnap(t, sec2, "l1")
-	if s2.Status != "no-broad-grant" {
-		t.Errorf("无授权事实时列级标记应为 no-broad-grant（不等于安全），得到 %s", s2.Status)
+	if s2.Status != "unconfirmed" {
+		t.Errorf("无授权事实且无收据时列级标记应为 unconfirmed，得到 %s", s2.Status)
 	}
 	joined := strings.Join(sec2.Notes, " ")
 	if !strings.Contains(joined, "缺授权事实不等于安全") {
@@ -406,5 +423,111 @@ func TestSensitiveReportSnapshotImmutable(t *testing.T) {
 	snap1b := readReportSnapshot(t, db, rep1)
 	if snapCategory(t, snap1b) != "患者身份" {
 		t.Errorf("旧报告重读应仍为患者身份，得到 %q", snapCategory(t, snap1b))
+	}
+}
+
+// 静态复核回归：相关来源不完整时不得称“未发现”。
+
+// Oracle：tab_privs 收据截断/被拒/缺失 → 未确认（即使无命中）；收据齐全无命中 → 未发现。
+func TestSensitiveReceiptIncomplete(t *testing.T) {
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	mk := func(rcs []facts.Receipt) *facts.FactBundle {
+		return sensBundleReceipts("db-oracle", rcs)
+	}
+	ok := []facts.Receipt{
+		{TemplateID: "ora.tab_privs", Status: "ok"},
+		{TemplateID: "ora.sys_privs", Status: "ok"},
+	}
+	for _, tc := range []struct {
+		name string
+		rcs  []facts.Receipt
+		want string
+	}{
+		{"截断", []facts.Receipt{{TemplateID: "ora.tab_privs", Status: "partial"}, {TemplateID: "ora.sys_privs", Status: "ok"}}, "unconfirmed"},
+		{"被拒", []facts.Receipt{{TemplateID: "ora.tab_privs", Status: "denied"}, {TemplateID: "ora.sys_privs", Status: "ok"}}, "unconfirmed"},
+		{"缺失", []facts.Receipt{{TemplateID: "ora.sys_privs", Status: "ok"}}, "unconfirmed"},
+		{"齐全", ok, "no-broad-grant"},
+	} {
+		s := findSnap(t, MatchSensitive(mk(tc.rcs), lbl, nil), "l1")
+		if s.Status != tc.want {
+			t.Errorf("%s: want %s, got %s", tc.name, tc.want, s.Status)
+		}
+	}
+}
+
+// 已有可靠暴露证据时，即使其他来源不完整仍报告风险（不被未确认掩盖）。
+func TestSensitiveExposedDespiteIncomplete(t *testing.T) {
+	b := sensBundleReceipts("db-oracle",
+		[]facts.Receipt{{TemplateID: "ora.tab_privs", Status: "partial"}, {TemplateID: "ora.sys_privs", Status: "ok"}},
+		privFact("f1", "ora.tab_privs", "PUBLIC", "HIS.PATIENTS", map[string]string{"privilege": "SELECT"}),
+	)
+	s := findSnap(t, MatchSensitive(b, []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}, nil), "l1")
+	if s.Status != "exposed" {
+		t.Errorf("已有 PUBLIC 暴露时应为 exposed，得到 %s", s.Status)
+	}
+}
+
+// MSSQL：即使无数据库级 public 授权，对象级事实未采集 → 恒为未确认，不得称“未发现”。
+func TestSensitiveMSSQLNoPublicUnconfirmed(t *testing.T) {
+	b := sensBundle("db-sqlserver")
+	s := findSnap(t, MatchSensitive(b, []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "dbo", Table: "patients", Category: "患者身份"}}, nil), "l1")
+	if s.Status != "unconfirmed" {
+		t.Errorf("MSSQL 无 public 时应为 unconfirmed，得到 %s", s.Status)
+	}
+}
+
+// Oracle 容器归属：标签库名须与包容器对应，否则未确认（同名表在不同 PDB 是不同对象）。
+func TestSensitiveOracleContainer(t *testing.T) {
+	fact := privFact("f1", "ora.tab_privs", "PUBLIC", "HIS.PATIENTS", map[string]string{"privilege": "SELECT"})
+	mk := func(container string) *facts.FactBundle {
+		b := sensBundle("db-oracle", fact)
+		b.Scope.Container = container
+		return b
+	}
+	for _, tc := range []struct {
+		name      string
+		container string
+		db        string
+		want      string
+	}{
+		{"容器一致", "zemr", "zemr", "exposed"},
+		{"容器不符", "zemr", "pdb1", "unconfirmed"},
+		{"容器缺失", "", "pdb1", "unconfirmed"},
+		{"标签无库名", "zemr", "", "exposed"},
+	} {
+		s := findSnap(t, MatchSensitive(mk(tc.container),
+			[]SensitiveLabel{{ID: "l1", Database: tc.db, Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}, nil), "l1")
+		if s.Status != tc.want {
+			t.Errorf("%s: want %s, got %s", tc.name, tc.want, s.Status)
+		}
+	}
+}
+
+// MySQL 库名大小写：按 lower_case_table_names 匹配，未知时保守按区分处理。
+func TestSensitiveMySQLCase(t *testing.T) {
+	priv := privFact("f1", "mysql.db_privs", "app", "HisDB.*", map[string]string{"privilege": "SELECT"})
+	lbl := []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"}}
+	mk := func(lct string) *facts.FactBundle {
+		fs := []facts.Fact{priv}
+		if lct != "" {
+			fs = append(fs, facts.Fact{FactID: "c1", Kind: facts.FactAccountConfig, Subject: "global",
+				Status: facts.StatusObserved, Source: "mysql.server_config",
+				Attributes: map[string]string{"name": "lower_case_table_names", "value": lct}})
+		}
+		return sensBundle("db-mysql", fs...)
+	}
+	for _, tc := range []struct {
+		name string
+		lct  string
+		want string
+	}{
+		{"0区分", "0", "no-broad-grant"},
+		{"1不区分", "1", "exposed"},
+		{"未知保守区分", "", "no-broad-grant"},
+	} {
+		s := findSnap(t, MatchSensitive(mk(tc.lct), lbl, nil), "l1")
+		if s.Status != tc.want {
+			t.Errorf("%s: want %s, got %s", tc.name, tc.want, s.Status)
+		}
 	}
 }

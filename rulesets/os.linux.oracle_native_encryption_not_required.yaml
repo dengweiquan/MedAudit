@@ -1,6 +1,6 @@
 # MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
 id: os.linux.oracle_native_encryption_not_required
-version: "1"
+version: "2"
 name: Oracle 未要求原生网络加密
 target: os-linux
 risk: medium

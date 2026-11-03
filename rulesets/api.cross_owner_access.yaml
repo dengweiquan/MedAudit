@@ -1,11 +1,11 @@
 # MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
 id: api.cross_owner_access
-version: "1"
+version: "2"
 name: 跨所有者访问
 target: api
 risk: high
 description: |
-  非管理员身份跨主体读到他人的私有数据（跨主体探针 2xx 且命中属主 canary，水平越权）。2xx 但未命中 canary 仍为证据不足（可能是脱敏或共享数据），不判 FAIL 也不判 PASS。通过要求每个通过探针都有同端点属主自访问正向对照（属主 2xx），否则拒答可能是端点不存在。
+  非管理员身份跨主体读到他人的私有数据（跨主体探针 2xx 且命中属主 canary，水平越权）。2xx 但未命中 canary 仍为证据不足（可能是脱敏或共享数据），不判 FAIL 也不判 PASS。通过要求每个负向通过探针（跨主体拒答）都有同端点属主自访问正向对照（属主 2xx），否则拒答可能是端点不存在；仅有属主自访问而无跨主体探针时，跨主体从未被测，不判通过。
 requires: [api_check]
 remediation: |
   给资源端点补属主校验：只能读自有资源，管理员除外；并复测跨主体探针。

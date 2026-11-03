@@ -65,6 +65,49 @@ func pgAuditEvidence(c *EvalContext) (EvidenceStatus, string) {
 	return EvidenceMissing, "pg.settings 查询成功但无审计相关事实，无法判定"
 }
 
+// mysqlPasswordEvidence validate_password 规则的证据门控。
+// 两项各有量纲（策略 ∈ LOW/MEDIUM/STRONG/0/1/2，长度为非负整数）；
+// 门控只放行两种情形：(a) 已有确定的违规（策略 LOW/0，或长度合法且 <8）
+// ——违规不依赖另一项，check 命中即 FAIL；(b) 两项同时合法——check 可完整判定。
+// 其余（任一缺失/非法且无确定违规）→ Missing（UNKNOWN），不得误判 PASS：
+// 如只有 policy=MEDIUM 而 length 未采集，长度 <8 的弱口令会被漏判为通过。
+func mysqlPasswordEvidence(c *EvalContext) (EvidenceStatus, string) {
+	if st, reason := receiptVerdict(c, "mysql.server_config"); st != EvidenceReady {
+		return st, reason
+	}
+	var policy, length string
+	policyOK, lengthOK, definiteFail := false, false, false
+	for _, f := range c.Bundle.Facts {
+		if f.Source != "mysql.server_config" || f.Status != facts.StatusObserved {
+			continue
+		}
+		switch f.Attributes["name"] {
+		case "validate_password.policy":
+			policy = f.Attributes["value"]
+			switch strings.ToUpper(strings.TrimSpace(policy)) {
+			case "LOW", "0":
+				policyOK, definiteFail = true, true
+			case "MEDIUM", "STRONG", "1", "2":
+				policyOK = true
+			}
+		case "validate_password.length":
+			length = f.Attributes["value"]
+			if n, err := strconv.Atoi(strings.TrimSpace(length)); err == nil && n >= 0 {
+				lengthOK = true
+				if n < 8 {
+					definiteFail = true
+				}
+			}
+		}
+	}
+	if definiteFail || (policyOK && lengthOK) {
+		return EvidenceReady, ""
+	}
+	return EvidenceMissing, fmt.Sprintf(
+		"mysql.server_config 的 validate_password.policy（%q）与 length（%q）须同时合法（或已有确定违规），当前无法判定",
+		policy, length)
+}
+
 // mssqlAuditEvidence sys.server_audits 规则的证据门控（不沿用通用 Partial 语义：
 // 通用 Partial 会跑 check，而零行 FAIL 是完整清单判断，不能在截断结果上推断）。
 //   - 收据被拒/失败/无收据 → Missing（UNKNOWN）；冲突收据（ok 与 denied/failed 并存）同样 Missing；
@@ -290,12 +333,12 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.pg.ssl_off", Version: "2",
+			ID: "db.pg.ssl_off", Version: "3",
 			Name:        "PostgreSQL 未启用 SSL",
 			Target:      facts.TargetDBPostgres,
 			Description: "ssl=off 时数据库连接不加密，口令与业务数据在网络上传输可被窃听。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
-			Evidence:    EvidenceSource("pg.settings", "name", []string{"ssl"}, false),
+			Evidence:    EvidenceSourceValue("pg.settings", "name", []string{"ssl"}, "setting", pgBoolValue, false),
 			Risk:        RiskMedium,
 			Remediation: "启用 ssl 并配置有效证书；客户端以 hostssl 限定加密连接。",
 		},
@@ -556,12 +599,12 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.mysql.password_policy", Version: "2",
+			ID: "db.mysql.password_policy", Version: "3",
 			Name:        "MySQL 口令策略弱",
 			Target:      facts.TargetDBMySQL,
 			Description: "validate_password 策略为 LOW 或长度要求低于 8 位时，弱口令可直接通过；未采集到该变量时结论为证据不足（UNKNOWN），不判通过。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
-			Evidence:    EvidenceSource("mysql.server_config", "name", []string{"validate_password.policy", "validate_password.length"}, false),
+			Evidence:    mysqlPasswordEvidence,
 			Risk:        RiskMedium,
 			Remediation: "安装并启用 validate_password 组件，策略设为 MEDIUM 及以上、长度至少 8 位。",
 		},
@@ -651,12 +694,12 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.oracle.audit_trail_off", Version: "3",
+			ID: "db.oracle.audit_trail_off", Version: "4",
 			Name:        "Oracle 传统审计未启用",
 			Target:      facts.TargetDBOracle,
 			Description: "AUDIT_TRAIL=NONE 时传统审计关闭，传统审计轨迹缺失。本规则只评价传统审计，不评价统一审计（Unified Auditing）：12c+ 环境即使 AUDIT_TRAIL=NONE 也可能已启用统一审计，需另查统一审计模式与策略；统一审计不在本规则评价范围，本规则结论不等于“数据库完全无审计”。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
-			Evidence:    EvidenceSource("ora.parameters", "name", []string{"AUDIT_TRAIL"}, false),
+			Evidence:    EvidenceSourceValue("ora.parameters", "name", []string{"AUDIT_TRAIL"}, "value", auditTrailValue, false),
 			Risk:        RiskMedium,
 			Remediation: "将 AUDIT_TRAIL 设为 DB（或 DB_EXTENDED）并重启生效；或确认统一审计已启用并覆盖所需策略，审计记录定期归档。",
 		},

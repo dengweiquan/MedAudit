@@ -2,6 +2,7 @@ package platform
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"medaudit/internal/apiaudit"
@@ -39,7 +40,7 @@ func TestAPIComplianceBoundPass(t *testing.T) {
 			apiComplianceCheck("GET /api/me", "alice-logged-out", "replay:logged_out", "authenticated", 401, apiaudit.ConclPass),
 		},
 	}
-	res, err := APICompliance(apiReportJSON(t, rep), true)
+	res, err := APICompliance(apiReportJSON(t, rep), true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +66,7 @@ func TestAPIComplianceBoundFail(t *testing.T) {
 			apiComplianceCheck("GET /api/admin/users", "alice", "direct", "admin_only", 200, apiaudit.ConclFail),
 		},
 	}
-	res, err := APICompliance(apiReportJSON(t, rep), true)
+	res, err := APICompliance(apiReportJSON(t, rep), true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +83,7 @@ func TestAPIComplianceUnboundUnknown(t *testing.T) {
 			apiComplianceCheck("GET /api/profile", "alice", "direct", "authenticated", 200, apiaudit.ConclPass),
 		},
 	}
-	res, err := APICompliance(apiReportJSON(t, rep), true)
+	res, err := APICompliance(apiReportJSON(t, rep), true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +100,7 @@ func TestAPIComplianceOldFormatUnknown(t *testing.T) {
 			apiComplianceCheck("GET /api/profile", "alice", "direct", "authenticated", 200, apiaudit.ConclPass),
 		},
 	}
-	res, err := APICompliance(apiReportJSON(t, rep), true)
+	res, err := APICompliance(apiReportJSON(t, rep), true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,12 +118,33 @@ func TestAPIComplianceUnverifiedUnknown(t *testing.T) {
 			apiComplianceCheck("GET /api/profile", "alice", "direct", "authenticated", 200, apiaudit.ConclPass),
 		},
 	}
-	res, err := APICompliance(apiReportJSON(t, rep), false)
+	res, err := APICompliance(apiReportJSON(t, rep), false, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Clause.Status != "unknown" {
 		t.Fatalf("unverified binding must be unknown, got %s", res.Clause.Status)
+	}
+}
+
+// 未认证上传的历史报告：即使绑定已核实也不作可信依据 → unknown。
+func TestAPIComplianceUntrustedUnknown(t *testing.T) {
+	rep := apiaudit.Report{
+		SchemaVersion: apiaudit.SchemaVersion, ReportID: "r6", Target: "http://api",
+		HospitalID: "h1", AssetID: "a1",
+		Checks: []apiaudit.Check{
+			apiComplianceCheck("GET /api/profile", "alice", "direct", "authenticated", 200, apiaudit.ConclPass),
+		},
+	}
+	res, err := APICompliance(apiReportJSON(t, rep), true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Clause.Status != "unknown" {
+		t.Fatalf("untrusted upload must be unknown, got %s", res.Clause.Status)
+	}
+	if !strings.Contains(res.Note, "未认证") {
+		t.Fatalf("untrusted note must mention 未认证，got %q", res.Note)
 	}
 }
 

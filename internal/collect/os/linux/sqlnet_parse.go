@@ -1,6 +1,7 @@
 package linux
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -77,10 +78,17 @@ func ParseSqlnetOra(data []byte) (params map[string]string, ifiles []string) {
 // SqlnetMaxIFILEDepth IFILE 递归跟随深度上限。
 const SqlnetMaxIFILEDepth = 10
 
+// ErrSqlnetEntryMissing 入口 sqlnet.ora 本身不存在（区别于链内 IFILE 缺失）。
+// 入口缺失时 Oracle 取缺省值是合法语义；链内文件缺失时参数不可信，
+// 调用方不得猜默认值，须按解析失败处理（UNKNOWN/partial）。
+var ErrSqlnetEntryMissing = errors.New("sqlnet.ora 入口文件不存在")
+
 // ResolveSqlnetOra 从 startPath 起解析 sqlnet.ora 并跟随 IFILE 链。
 // 返回合并后的参数（后出现覆盖先前）与按读取顺序的文件链。
 // 相对 IFILE 路径按包含文件所在目录解析；环（已访路径）与超深时返回错误，
-// 调用方不得用部分参数下结论。
+// 调用方不得用部分参数下结论。入口文件读失败时错误满足
+// errors.Is(err, ErrSqlnetEntryMissing)；链内 IFILE 读失败时不满足，
+// 即使同样是文件不存在（os.IsNotExist）也不得按入口缺失处理。
 func ResolveSqlnetOra(readFile func(path string) ([]byte, error), startPath string) (map[string]string, []string, error) {
 	params := map[string]string{}
 	var chain []string
@@ -97,6 +105,9 @@ func ResolveSqlnetOra(readFile func(path string) ([]byte, error), startPath stri
 		visited[clean] = true
 		data, err := readFile(clean)
 		if err != nil {
+			if depth == 0 {
+				return fmt.Errorf("%w: %s: %w", ErrSqlnetEntryMissing, clean, err)
+			}
 			return err
 		}
 		chain = append(chain, clean)

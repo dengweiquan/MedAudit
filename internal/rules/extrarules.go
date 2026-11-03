@@ -13,6 +13,11 @@ import (
 //   - 读事实被拒绝 → Missing（权限不足）；
 //   - 其余（无事实）按收据区分：无收据/失败 → Missing，成功但无事实 → Missing（包不一致，不判通过）。
 func sshdEvidence(c *EvalContext) (EvidenceStatus, string) {
+	// 收据先行：任何事实（哪怕是“安全”的 Observed 事实）不得绕过缺失、
+	// 失败或截断的收据——否则一次不完整的采集会被读成“配置安全”而误判 PASS。
+	if st, reason := receiptVerdict(c, "linux.sshd"); st != EvidenceReady {
+		return st, reason
+	}
 	for _, f := range c.Bundle.Facts {
 		if f.Source != "linux.sshd" {
 			continue
@@ -30,9 +35,6 @@ func sshdEvidence(c *EvalContext) (EvidenceStatus, string) {
 			return EvidenceMissing, "sshd_config 不可读（权限不足），无法判定"
 		}
 	}
-	if st, reason := receiptVerdict(c, "linux.sshd"); st != EvidenceReady {
-		return st, reason
-	}
 	return EvidenceMissing, "linux.sshd 查询成功但无 sshd 配置事实，无法判定"
 }
 
@@ -40,13 +42,15 @@ func sshdEvidence(c *EvalContext) (EvidenceStatus, string) {
 // oracleSqlnetEvidence sqlnet.ora 规则的证据门控：宿主无 Oracle Home → 不适用；
 // 其余按收据判定，要求至少一条有效 ENCRYPTION_SERVER 事实（缺省 accepted 已由采集器填好）。
 func oracleSqlnetEvidence(c *EvalContext) (EvidenceStatus, string) {
+	// 收据先行（与 sshdEvidence 同理）：失败的枚举不得被一张旧的“无 Home”
+	// 盘点事实掩盖为不适用。
+	if st, reason := receiptVerdict(c, "linux.oracle_sqlnet"); st != EvidenceReady {
+		return st, reason
+	}
 	for _, f := range c.Bundle.Facts {
 		if f.Source == "linux.oracle_sqlnet" && f.Attributes["oracle_homes"] == "0" {
 			return EvidenceNotApplicable, "宿主无 Oracle Home，sqlnet.ora 检查不适用"
 		}
-	}
-	if st, reason := receiptVerdict(c, "linux.oracle_sqlnet"); st != EvidenceReady {
-		return st, reason
 	}
 	for _, f := range c.Bundle.Facts {
 		if f.Source != "linux.oracle_sqlnet" || f.Status != facts.StatusObserved {
@@ -126,7 +130,7 @@ var linuxExtraRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.linux.ssh_password_auth", Version: "2",
+			ID: "os.linux.ssh_password_auth", Version: "3",
 			Name:        "sshd 允许口令鉴别",
 			Target:      facts.TargetOSLinux,
 			Description: "sshd 允许口令鉴别时，远程管理依赖口令（可爆破、可窃听重放），应改用密钥鉴别。本规则只评价全局配置；Match 条件块（如针对特定用户/地址的例外）不在评价范围。",
@@ -167,7 +171,7 @@ var linuxExtraRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.linux.ssh_root_login", Version: "3",
+			ID: "os.linux.ssh_root_login", Version: "4",
 			Name:        "sshd 允许 root 口令登录",
 			Target:      facts.TargetOSLinux,
 			Description: "PermitRootLogin=yes 且口令鉴别未关闭时，root 可直接口令登录，远程爆破一旦成功即获最高权限。只看 PermitRootLogin 会误判：PasswordAuthentication=no 时 root 只能密钥登录，不判口令登录。本规则只评价全局配置；Match 条件块不在评价范围；键盘交互（PAM）等其他口令通道不在本规则评价范围。",
@@ -208,7 +212,7 @@ var linuxExtraRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.linux.oracle_native_encryption_not_required", Version: "1",
+			ID: "os.linux.oracle_native_encryption_not_required", Version: "2",
 			Name:        "Oracle 未要求原生网络加密",
 			Target:      facts.TargetOSLinux,
 			Description: "宿主 Oracle Home 的 sqlnet.ora 中 SQLNET.ENCRYPTION_SERVER 不是 required 时，服务端不要求原生网络加密。注意：未要求原生加密不等于链路明文——TCPS 等传输层加密不在本规则评价范围，TCPS 部署记入基线豁免；文件缺失或参数缺失时取 Oracle 缺省 accepted；当前会话协商结果无可靠通道可取，不发会话证据。",

@@ -4,6 +4,7 @@ package windows
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,13 @@ import (
 	"golang.org/x/sys/windows"
 	"medaudit/internal/facts"
 )
+
+// partialError 部分采集失败：已产出部分事实，但有项目未能读取，
+// 收据应记 partial（而非 ok 或 denied），使规则门控走 Partial 语义：
+// 已有明确违规仍 FAIL，无命中则 UNKNOWN，绝不误判 PASS。
+type partialError struct{ msg string }
+
+func (e *partialError) Error() string { return e.msg }
 
 // Config 采集配置。
 type Config struct {
@@ -83,7 +91,12 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		status := "ok"
 		errStage := ""
 		if err != nil {
-			status = "denied"
+			var pe *partialError
+			if errors.As(err, &pe) {
+				status = "partial"
+			} else {
+				status = "denied"
+			}
 			errStage = facts.RedactSecrets(err.Error())
 		}
 		b.Receipts = append(b.Receipts, facts.Receipt{
@@ -320,13 +333,16 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 	})
 
 	// 9) MSSQL ForceEncryption（本机注册表，逐实例）：值只证明“已配置”，
-	//    重启后生效状态未验证（事实 effective=unknown）；单实例不可读不掩盖其他实例。
+	//    重启后生效状态未验证（事实 effective=unknown）；单实例不可读不掩盖其他实例：
+	//    有实例不可读时收据记 partial（门控 Partial：已有明确违规仍 FAIL，
+	//    无命中则 UNKNOWN）；枚举跳过（实例名存在但 ID 读不到）同样 partial，
+	//    绝不把枚举不全读成“无实例”。
 	addReceipt("win.mssql_force_encryption", "1", func() (int, error) {
-		insts, err := enumMSSQLInstances()
+		insts, skipped, err := enumMSSQLInstances()
 		if err != nil {
 			return 0, err
 		}
-		if len(insts) == 0 {
+		if len(insts) == 0 && skipped == 0 {
 			b.Facts = append(b.Facts, facts.Fact{
 				FactID: nextID("ms"), Kind: facts.FactAccountConfig,
 				Subject: "mssql-instances", Status: facts.StatusObserved, Source: "win.mssql_force_encryption",
@@ -335,6 +351,8 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 			return 0, nil
 		}
 		n := 0
+		failed := 0
+		var firstErr error
 		for _, inst := range insts {
 			present, value, rerr := readForceEncryption(inst.ID)
 			if rerr != nil {
@@ -350,6 +368,10 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 						"error": facts.RedactSecrets(rerr.Error()),
 					},
 				})
+				failed++
+				if firstErr == nil {
+					firstErr = rerr
+				}
 				continue
 			}
 			b.Facts = append(b.Facts, facts.Fact{
@@ -358,6 +380,19 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 				Attributes: MSSQLForceEncryptionAttrs(inst, MSSQLSuperSocketPath(inst.ID), present, value),
 			})
 			n++
+		}
+		// 部分实例不可读（或枚举跳过）且已有可读实例：partial 收据。
+		if (failed > 0 || skipped > 0) && n > 0 {
+			return n, &partialError{msg: fmt.Sprintf(
+				"部分实例 ForceEncryption 不可读（实例读取失败 %d 个，枚举跳过 %d 个），已读 %d 个",
+				failed, skipped, n)}
+		}
+		// 全部不可读（含枚举到的实例名全部跳过）：无可读事实，记失败，不判无实例。
+		if n == 0 {
+			if firstErr != nil {
+				return 0, firstErr
+			}
+			return 0, fmt.Errorf("枚举到实例名但实例 ID 全部读不到（跳过 %d 个），无法判定", skipped)
 		}
 		return n, nil
 	})

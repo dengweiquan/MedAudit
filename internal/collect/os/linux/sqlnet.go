@@ -1,6 +1,7 @@
 package linux
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -79,8 +80,10 @@ func collectOracleSqlnet(b *facts.FactBundle, dir string, addReceipt func(facts.
 		}
 		params, chain, rerr := ResolveSqlnetOra(os.ReadFile, sqlnetPath)
 		switch {
-		case rerr != nil && os.IsNotExist(rerr):
-			// 文件缺失 → Oracle 缺省 accepted（事实标注 file_missing，规则按缺省值判）。
+		case rerr != nil && errors.Is(rerr, ErrSqlnetEntryMissing):
+			// 入口文件本身缺失 → Oracle 缺省 accepted（事实标注 file_missing，规则按缺省值判）。
+			// 链内 IFILE 缺失不进此分支（其错误不满足 ErrSqlnetEntryMissing），
+			// 即使同样是文件不存在也不得猜默认值，须走下方的解析失败分支。
 			attrs["encryption_server"] = "accepted"
 			attrs["file_missing"] = "true"
 			b.Facts = append(b.Facts, facts.Fact{

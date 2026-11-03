@@ -152,9 +152,14 @@ func winEvidence(source string, match func(facts.Fact) bool) EvidenceCheck {
 	}
 }
 
-// winAttrPresent 事实含某非空属性。
-func winAttrPresent(attr string) func(facts.Fact) bool {
-	return func(f facts.Fact) bool { return f.Attributes[attr] != "" }
+// winAttrInt 事实含某可解析为整数的属性。数值策略的原始值须可解析，
+// 否则 check 的解析失败会被跳过（无命中）而误判 PASS——存在键名不等于
+// 值可用，门控须验证值而非只核对键名。
+func winAttrInt(attr string) func(facts.Fact) bool {
+	return func(f facts.Fact) bool {
+		_, err := strconv.Atoi(strings.TrimSpace(f.Attributes[attr]))
+		return err == nil
+	}
 }
 
 // rdpEvidence RDP 规则的证据门控：RDP 关闭 → 不适用；开启但 NLA 未读到 → 缺失。
@@ -186,12 +191,12 @@ var windowsPasswordRules = []struct {
 }{
 	{
 		spec: RuleSpec{
-			ID: "os.windows.password_min_length", Version: "1",
+			ID: "os.windows.password_min_length", Version: "2",
 			Name:        "Windows 口令最小长度不足",
 			Target:      facts.TargetOSWindows,
-			Description: "本地 SAM 或域默认策略的口令最小长度低于项目基线 8 位时，短口令易被爆破。阈值 8 位为项目基线选择（与 MySQL 口令长度口径一致），非未核实标准的规定值；覆盖范围见事实 scope 与 machine_role：工作组与域成员为本地 SAM 策略（域成员本机查询不等于域账号默认策略），域控为域默认策略；细粒度用户策略（FGPP/PSO）未覆盖。",
+			Description: "本地 SAM 或域默认策略的口令最小长度低于项目基线 8 位时，短口令易被爆破。阈值 8 位为项目基线选择（与 MySQL 口令长度口径一致），非未核实标准的规定值；覆盖范围见事实 scope 与 machine_role：未加入、工作组与域成员为本地 SAM 策略（域成员本机查询不等于域账号默认策略），域控为域默认策略；细粒度用户策略（FGPP/PSO）未覆盖。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
-			Evidence:    winEvidence("win.password_policy", winAttrPresent("min_password_length")),
+			Evidence:    winEvidence("win.password_policy", winAttrInt("min_password_length")),
 			Risk:        RiskMedium,
 			Remediation: "将口令最小长度提高到至少 8 位（组策略或本地安全策略）；确需短口令的记入基线并注明覆盖范围。",
 		},
@@ -223,12 +228,12 @@ var windowsPasswordRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.windows.password_max_age_never", Version: "1",
+			ID: "os.windows.password_max_age_never", Version: "2",
 			Name:        "Windows 口令永不过期",
 			Target:      facts.TargetOSWindows,
-			Description: "MaximumPasswordAge 为 TIMEQ_FOREVER（永不过期）时，口令泄漏后长期有效。本规则只判永不过期，属于基础子集：有限但过长的周期尚未判定（实际值保留在事实 max_password_age_sec 中），阈值遵循组织基线，不随意补天数。覆盖范围见事实 scope 与 machine_role（工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
+			Description: "MaximumPasswordAge 为 TIMEQ_FOREVER（永不过期）时，口令泄漏后长期有效。本规则只判永不过期，属于基础子集：有限但过长的周期尚未判定（实际值保留在事实 max_password_age_sec 中），阈值遵循组织基线，不随意补天数。覆盖范围见事实 scope 与 machine_role（未加入/工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
-			Evidence:    winEvidence("win.password_policy", winAttrPresent("max_password_age_sec")),
+			Evidence:    winEvidence("win.password_policy", winAttrInt("max_password_age_sec")),
 			Risk:        RiskMedium,
 			Remediation: "为口令设置有限的最长使用期；确需永不过期的服务账号记入基线。",
 		},
@@ -256,12 +261,12 @@ var windowsPasswordRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.windows.password_lockout_disabled", Version: "1",
+			ID: "os.windows.password_lockout_disabled", Version: "2",
 			Name:        "Windows 未启用登录失败锁定",
 			Target:      facts.TargetOSWindows,
-			Description: "LockoutThreshold=0（锁定阈值关闭）时，口令可被无限次尝试爆破。覆盖范围见事实 scope 与 machine_role（工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
+			Description: "LockoutThreshold=0（锁定阈值关闭）时，口令可被无限次尝试爆破。覆盖范围见事实 scope 与 machine_role（未加入/工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
-			Evidence:    winEvidence("win.password_policy", winAttrPresent("lockout_threshold")),
+			Evidence:    winEvidence("win.password_policy", winAttrInt("lockout_threshold")),
 			Risk:        RiskMedium,
 			Remediation: "设置登录失败锁定阈值（如 5 次）及锁定时长；确需关闭的记入基线。",
 		},
@@ -288,10 +293,10 @@ var windowsPasswordRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.windows.password_complexity_off", Version: "1",
+			ID: "os.windows.password_complexity_off", Version: "2",
 			Name:        "Windows 未要求口令复杂度",
 			Target:      facts.TargetOSWindows,
-			Description: "secedit 导出的 PasswordComplexity=0 时，口令无复杂度要求。复杂度不能从 NetUserModalsGet 推断，本规则仅以 secedit 只读导出为准；导出渠道不可用时结论为 UNKNOWN，不解析本地化 net accounts 文案。secedit 与数值策略的适用范围一致（同一机器角色派生：工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
+			Description: "secedit 导出的 PasswordComplexity=0 时，口令无复杂度要求。复杂度不能从 NetUserModalsGet 推断，本规则仅以 secedit 只读导出为准；导出渠道不可用时结论为 UNKNOWN，不解析本地化 net accounts 文案。secedit 与数值策略的适用范围一致（同一机器角色派生：未加入/工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
 			Evidence: winEvidence("win.secedit", func(f facts.Fact) bool {
 				v := f.Attributes["password_complexity"]
@@ -359,13 +364,16 @@ var windowsPasswordRules = []struct {
 // 其余按收据判定，要求至少一条实例 ForceEncryption 事实。单实例不可读的事实不纳入结论，
 // 但不掩盖其他实例的真实 FAIL（见规则描述）。
 func mssqlForceEncryptionEvidence(c *EvalContext) (EvidenceStatus, string) {
+	// 收据先行：枚举失败或部分实例不可读时，收据已为失败/截断，不得被
+	// 一张“无实例”盘点事实掩盖为不适用；截断时返回 Partial（评估仍跑
+	// check：已有明确违规仍 FAIL，无命中则 UNKNOWN，绝不误判 PASS）。
+	if st, reason := winReceiptVerdict(c, "win.mssql_force_encryption"); st != EvidenceReady {
+		return st, reason
+	}
 	for _, f := range c.Bundle.Facts {
 		if f.Source == "win.mssql_force_encryption" && f.Attributes["mssql_instances"] == "0" {
 			return EvidenceNotApplicable, "宿主无 SQL Server 实例，ForceEncryption 检查不适用"
 		}
-	}
-	if st, reason := winReceiptVerdict(c, "win.mssql_force_encryption"); st != EvidenceReady {
-		return st, reason
 	}
 	for _, f := range c.Bundle.Facts {
 		if f.Source == "win.mssql_force_encryption" && f.Status == facts.StatusObserved && f.Attributes["force_encryption"] != "" {
@@ -382,7 +390,7 @@ var windowsEncryptionRules = []struct {
 }{
 	{
 		spec: RuleSpec{
-			ID: "os.windows.mssql_force_encryption_off", Version: "1",
+			ID: "os.windows.mssql_force_encryption_off", Version: "2",
 			Name:        "MSSQL 未强制加密",
 			Target:      facts.TargetOSWindows,
 			Description: "实例的 ForceEncryption 不是 1 时，服务端不强制加密连接。注册表值只证明“已配置”，重启后生效状态未验证（事实 effective=unknown，PASS 不代表运行中已生效）。注意：未强制加密不等于链路明文（客户端仍可协商加密）；会话 encrypt_option 不替代服务器策略；Linux 的 mssql.conf 渠道未实现。",

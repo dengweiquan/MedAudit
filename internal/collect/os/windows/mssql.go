@@ -12,29 +12,33 @@ import (
 const mssqlInstanceNamesPath = `SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL`
 
 // enumMSSQLInstances 枚举实例名 → 实例 ID（Instance Names\SQL 的值名 → 值）。
-// 实例名键不存在 = 宿主无实例，返回空切片（不报错）；单个值读失败则跳过该实例。
-func enumMSSQLInstances() ([]MSSQLInstance, error) {
+// 返回（实例，跳过数，错误）：实例名键不存在 = 宿主无实例，返回空切片（不报错）；
+// 单个值读失败不再静默跳过——跳过数由调用方汇总为 partial 收据，否则一次
+// 枚举失败会被读成“无实例”（不适用）或漏掉违规实例而误判 PASS。
+func enumMSSQLInstances() ([]MSSQLInstance, int, error) {
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, mssqlInstanceNamesPath, registry.QUERY_VALUE)
 	if err != nil {
 		if errors.Is(err, registry.ErrNotExist) {
-			return nil, nil
+			return nil, 0, nil
 		}
-		return nil, err
+		return nil, 0, err
 	}
 	defer k.Close()
 	names, err := k.ReadValueNames(0)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var out []MSSQLInstance
+	skipped := 0
 	for _, name := range names {
 		id, _, err := k.GetStringValue(name)
 		if err != nil {
+			skipped++
 			continue
 		}
 		out = append(out, MSSQLInstance{Name: name, ID: id})
 	}
-	return out, nil
+	return out, skipped, nil
 }
 
 // readForceEncryption 读某实例的 ForceEncryption：

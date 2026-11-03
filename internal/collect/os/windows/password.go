@@ -75,10 +75,11 @@ func queryPasswordPolicy() (PasswordPolicy, error) {
 	return p, nil
 }
 
-// machineRole 探测本机角色（工作组 / 域成员 / 域控），三态分别验证实际查询对象：
-//   - NetGetJoinInformation 得加入状态（Workgroup/Domain）；
-//   - 域加入状态下再以 NetServerGetInfo 的 SV_TYPE_DOMAIN_CTRL 区分域控与普通域成员；
-//   - 域控的 NetUserModalsGet 返回域默认策略；工作组与域成员均返回本地 SAM 策略——
+// machineRole 探测本机角色（未加入 / 工作组 / 域成员 / 域控），分别验证实际查询对象：
+//   - NetGetJoinInformation 得加入状态（NetSetupJoinStatus：0 未知、1 未加入、
+//     2 工作组、3 域，见 joinStatusToRole）；
+//   - 再以 NetServerGetInfo 的 SV_TYPE_DOMAIN_CTRL 区分域控与普通域成员；
+//   - 域控的 NetUserModalsGet 返回域默认策略；未加入、工作组与域成员均返回本地 SAM 策略——
 //     域成员本机的查询不等于域账号默认策略，域账号默认策略不在本 API 覆盖内；
 //   - 探测失败时返回 unknown（值仍可用，不猜测覆盖范围）。
 //
@@ -90,27 +91,21 @@ func machineRole() string {
 	if nameBuf != nil {
 		defer procNetApiBufferFree.Call(uintptr(unsafe.Pointer(nameBuf)))
 	}
-	// NetSetupJoinStatus：0 未知，1 工作组，2 域。
 	isDC := false
 	var bufptr *byte
 	if r1, _, _ := procNetServerGetInfo.Call(0, 101, uintptr(unsafe.Pointer(&bufptr))); r1 == 0 && bufptr != nil {
 		defer procNetApiBufferFree.Call(uintptr(unsafe.Pointer(bufptr)))
 		isDC = (*serverInfo101)(unsafe.Pointer(bufptr)).Type&svTypeDomainCtrl != 0
 	}
+	// 域控信号（服务器类型）独立于加入状态调用：即使加入状态读不到，
+	// 服务器类型已证明是域控时仍返回域控（与旧逻辑一致）。
 	if isDC {
 		return "domain-controller"
 	}
 	if r1 != 0 {
 		return "unknown"
 	}
-	switch joinStatus {
-	case 1:
-		return "workgroup"
-	case 2:
-		return "domain-member"
-	default:
-		return "unknown"
-	}
+	return joinStatusToRole(joinStatus, false)
 }
 
 // machinePasswordScope 由机器角色定覆盖范围（见 passwordScopeForRole）。

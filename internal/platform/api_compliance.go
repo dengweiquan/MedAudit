@@ -50,7 +50,10 @@ func CountAPIAuditSummary(checks []apiaudit.Check) map[string]int {
 
 // APICompliance 计算医疗-12 条款判定。assetVerified 为 false 时（绑定资产
 // 未经库核实，如资产已删或归属不符）同样不评估，只返回 unknown。
-func APICompliance(reportJSON []byte, assetVerified bool) (*APIComplianceResult, error) {
+// APICompliance 医疗-12 合规判定。uploadTrusted 为 false 时（未认证上传的
+// 历史报告），即使绑定一致也不评估：上传者身份未经核实，不能证明其有权
+// 代表该资产，报告只保留查阅，不作为可信合规 PASS。
+func APICompliance(reportJSON []byte, assetVerified, uploadTrusted bool) (*APIComplianceResult, error) {
 	var rep apiaudit.Report
 	if err := json.Unmarshal(reportJSON, &rep); err != nil {
 		return nil, fmt.Errorf("解析 API 审计报告失败: %w", err)
@@ -90,6 +93,8 @@ func APICompliance(reportJSON []byte, assetVerified bool) (*APIComplianceResult,
 	switch {
 	case rep.SchemaVersion != apiaudit.SchemaVersion:
 		return unknownClause("报告为老格式（无 schema 版本），无法可靠绑定目标，不纳入合规通过；请用新版采集器重跑"), nil
+	case !uploadTrusted:
+		return unknownClause("该报告为未认证上传的历史报告，不能证明上传者有权代表该资产，不作为可信合规依据；请以认证方式（超级令牌登录后上传）重新上传后复评"), nil
 	case rep.HospitalID == "" || rep.AssetID == "":
 		return unknownClause("报告未绑定医院/资产，无法归属到具体对象，不纳入合规通过；请在 apicheck 配置中填写 hospital_id/asset_id 后重跑"), nil
 	case rep.Target == "" || rep.ReportID == "":
