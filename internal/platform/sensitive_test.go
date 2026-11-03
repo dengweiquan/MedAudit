@@ -168,6 +168,7 @@ func TestSensitiveOracleANY(t *testing.T) {
 		privFact("a3", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "DELETE ANY TABLE"}),
 		privFact("a4", "ora.sys_privs", "TMP_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"}),
 		accountFact("u1", "ora.users", "APP_READER"),
+		accountFact("u2", "ora.users", "BOB"),
 		roleEdgeFact("RPT_ROLE", "BOB", facts.ActivationDefault),
 		roleEdgeFact("TMP_ROLE", "CAROL", facts.ActivationConditional),
 	)
@@ -503,12 +504,26 @@ func TestSensitiveOracleContainer(t *testing.T) {
 		return []SensitiveLabel{{ID: "l1", Database: db, Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
 	}
 	// 新包：Scope 是服务名、事实是 PDB 名，事实胜出 → 暴露。
+	// 标签库名小写未引用输入，匹配时规范化为大写，与字典大写容器名精确匹配。
 	b := sensBundleReceipts("db-oracle",
 		[]facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, {TemplateID: "ora.sys_privs", Status: "ok"}, {TemplateID: "ora.container", Status: "ok"}},
-		fact, containerFact("pdb1"))
+		fact, containerFact("PDB1"))
 	b.Scope.Container = "orclservice"
 	if s := findSnap(t, MatchSensitive(b, lbl("pdb1"), nil), "l1"); s.Status != "exposed" {
 		t.Errorf("service≠PDB 但事实一致：want exposed, got %s", s.Status)
+	}
+	// 引用标签库名：去引号保留原样，与引用 PDB 名精确匹配；与大写 PDB 名不匹配。
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, {TemplateID: "ora.sys_privs", Status: "ok"}, {TemplateID: "ora.container", Status: "ok"}},
+		fact, containerFact("Pdb1"))
+	if s := findSnap(t, MatchSensitive(b, lbl(`"Pdb1"`), nil), "l1"); s.Status != "exposed" {
+		t.Errorf("引用库名一致：want exposed, got %s", s.Status)
+	}
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, {TemplateID: "ora.sys_privs", Status: "ok"}, {TemplateID: "ora.container", Status: "ok"}},
+		fact, containerFact("PDB1"))
+	if s := findSnap(t, MatchSensitive(b, lbl(`"Pdb1"`), nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("引用库名与大写容器名不匹配：want unconfirmed, got %s", s.Status)
 	}
 	// 旧包：Scope 非空且恰好等于标签库名，但无容器事实 → 未确认（服务名不作数）。
 	b = sensBundle("db-oracle", fact)
@@ -519,14 +534,14 @@ func TestSensitiveOracleContainer(t *testing.T) {
 	// 容器收据失败：事实存在也不可信 → 未确认。
 	b = sensBundleReceipts("db-oracle",
 		[]facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, {TemplateID: "ora.sys_privs", Status: "ok"}, {TemplateID: "ora.container", Status: "failed"}},
-		fact, containerFact("pdb1"))
+		fact, containerFact("PDB1"))
 	if s := findSnap(t, MatchSensitive(b, lbl("pdb1"), nil), "l1"); s.Status != "unconfirmed" {
 		t.Errorf("容器收据失败：want unconfirmed, got %s", s.Status)
 	}
 	// 容器事实与标签不符 → 未确认。
 	b = sensBundleReceipts("db-oracle",
 		[]facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, {TemplateID: "ora.sys_privs", Status: "ok"}, {TemplateID: "ora.container", Status: "ok"}},
-		fact, containerFact("pdb2"))
+		fact, containerFact("PDB2"))
 	if s := findSnap(t, MatchSensitive(b, lbl("pdb1"), nil), "l1"); s.Status != "unconfirmed" {
 		t.Errorf("容器事实不符：want unconfirmed, got %s", s.Status)
 	}
@@ -705,9 +720,10 @@ func TestSensitiveRoleEdgeUncredible(t *testing.T) {
 	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "unconfirmed" {
 		t.Errorf("边缺收据：want unconfirmed, got %s", s.Status)
 	}
-	// 边可信 → 暴露（经角色）。
+	// 边可信 + 成员为确认用户 → 暴露（经角色）。
 	b = sensBundleReceipts("db-oracle",
-		[]facts.Receipt{tabOK, sysOK, {TemplateID: "ora.role_privs", Status: "ok"}}, grant, edge)
+		[]facts.Receipt{tabOK, sysOK, {TemplateID: "ora.role_privs", Status: "ok"}, {TemplateID: "ora.users", Status: "ok"}},
+		grant, edge, accountFact("u1", "ora.users", "BOB"))
 	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "exposed" {
 		t.Errorf("边可信：want exposed, got %s", s.Status)
 	}
@@ -807,5 +823,140 @@ func TestSensitiveGranteeIdentityThreeStates(t *testing.T) {
 	b = sensBundleReceipts("db-mysql", myOK, myGrant, accountFact("u1", "mysql.accounts", "ghost@%"))
 	if s := findSnap(t, MatchSensitive(b, myLbl, nil), "l1"); s.Status != "exposed" {
 		t.Errorf("MySQL 有清单事实：want exposed, got %s", s.Status)
+	}
+}
+
+// 静态复核回归五轮：角色成员来源不完整时，不能断言无可达用户。
+func TestSensitiveRoleMemberSourceIncomplete(t *testing.T) {
+	grant := privFact("a1", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	condEdge := roleEdgeFact("RPT_ROLE", "CAROL", facts.ActivationConditional)
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	tabOK := facts.Receipt{TemplateID: "ora.tab_privs", Status: "ok"}
+	sysOK := facts.Receipt{TemplateID: "ora.sys_privs", Status: "ok"}
+	usersOK := facts.Receipt{TemplateID: "ora.users", Status: "ok"}
+	// 角色已确认、仅非默认边、成员来源完整 → 无自动可达，不判未确认。
+	b := sensBundleReceipts("db-oracle",
+		[]facts.Receipt{tabOK, sysOK, usersOK, {TemplateID: "ora.role_privs", Status: "ok"}}, grant, condEdge)
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "no-broad-grant" {
+		t.Errorf("成员来源完整无默认成员：want no-broad-grant, got %s", s.Status)
+	}
+	// 成员来源 partial → 未确认（截断可能漏掉默认边）。
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{tabOK, sysOK, usersOK, {TemplateID: "ora.role_privs", Status: "partial"}}, grant, condEdge)
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("成员来源 partial：want unconfirmed, got %s", s.Status)
+	}
+	// 成员来源 denied → 未确认。
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{tabOK, sysOK, usersOK, {TemplateID: "ora.role_privs", Status: "denied"}}, grant, condEdge)
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("成员来源 denied：want unconfirmed, got %s", s.Status)
+	}
+}
+
+// 静态复核回归五轮：多级角色传递展开——中间角色不是终点，只把确认用户作终点；
+// 循环分支剪枝不死循环；不可信传递路径判未确认。
+func TestSensitiveRoleTransitiveExpansion(t *testing.T) {
+	grant := privFact("a1", "ora.sys_privs", "R_INNER", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	rcs := []facts.Receipt{
+		{TemplateID: "ora.tab_privs", Status: "ok"},
+		{TemplateID: "ora.sys_privs", Status: "ok"},
+		{TemplateID: "ora.role_privs", Status: "ok"},
+		{TemplateID: "ora.users", Status: "ok"},
+	}
+	// R_INNER → R_OUTER → BOB：终点只应是 BOB（经链 R_INNER→R_OUTER），
+	// 不得把中间角色 R_OUTER 报告成用户。
+	b := sensBundleReceipts("db-oracle", rcs, grant,
+		roleEdgeFact("R_INNER", "R_OUTER", facts.ActivationDefault),
+		roleEdgeFact("R_OUTER", "BOB", facts.ActivationDefault),
+		accountFact("u1", "ora.users", "BOB"))
+	sec := MatchSensitive(b, lbl, nil)
+	if s := findSnap(t, sec, "l1"); s.Status != "exposed" {
+		t.Errorf("多级传递：want exposed, got %s", s.Status)
+	}
+	if n := countExposures(sec, "l1", false); n != 1 {
+		t.Errorf("多级传递应恰好 1 条暴露，得到 %d", n)
+	}
+	for _, e := range sec.Exposures {
+		if e.Subject == "R_OUTER" || !strings.Contains(e.Subject, "BOB") || !strings.Contains(e.Subject, "R_INNER→R_OUTER") {
+			t.Errorf("多级传递终点应为 BOB 经链 R_INNER→R_OUTER，得到 %q", e.Subject)
+		}
+	}
+	// 循环 R_A → R_B → R_A + R_B → BOB：剪枝后仍可达 BOB，不死循环。
+	cycGrant := privFact("a2", "ora.sys_privs", "R_A", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	b = sensBundleReceipts("db-oracle", rcs, cycGrant,
+		roleEdgeFact("R_A", "R_B", facts.ActivationDefault),
+		roleEdgeFact("R_B", "R_A", facts.ActivationDefault),
+		roleEdgeFact("R_B", "BOB", facts.ActivationDefault),
+		accountFact("u1", "ora.users", "BOB"))
+	sec = MatchSensitive(b, lbl, nil)
+	if s := findSnap(t, sec, "l1"); s.Status != "exposed" {
+		t.Errorf("循环传递：want exposed, got %s", s.Status)
+	}
+	if n := countExposures(sec, "l1", false); n != 1 {
+		t.Errorf("循环传递应恰好 1 条暴露（BOB），得到 %d", n)
+	}
+	// 传递链含不可信边：R_INNER → R_OUTER（边来源被拒）→ BOB，BOB 不可达为确定暴露。
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{
+			{TemplateID: "ora.tab_privs", Status: "ok"},
+			{TemplateID: "ora.sys_privs", Status: "ok"},
+			{TemplateID: "ora.role_privs", Status: "ok"},
+			{TemplateID: "ora.users", Status: "ok"},
+			{TemplateID: "ora.cdb_role_privs", Status: "denied"},
+		}, grant,
+		roleEdgeFact("R_INNER", "R_OUTER", facts.ActivationDefault),
+		facts.Fact{Kind: facts.FactRoleEdge, Subject: "BOB", Status: facts.StatusObserved,
+			Source:         "ora.cdb_role_privs",
+			PermissionPath: []string{"R_OUTER", "BOB"}, Activation: facts.ActivationDefault},
+		accountFact("u1", "ora.users", "BOB"))
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("不可信传递链：want unconfirmed, got %s", s.Status)
+	}
+	if n := countExposures(MatchSensitive(b, lbl, nil), "l1", false); n != 0 {
+		t.Errorf("不可信传递链不应有确定暴露，得到 %d", n)
+	}
+}
+
+// 静态复核回归五轮：Oracle 引用标识符精确匹配——混合大小写用户与大写角色
+// 并存时不得混淆；字典名不折叠。
+func TestSensitiveOracleCaseSensitiveIdentity(t *testing.T) {
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	rcs := []facts.Receipt{
+		{TemplateID: "ora.tab_privs", Status: "ok"},
+		{TemplateID: "ora.sys_privs", Status: "ok"},
+		{TemplateID: "ora.role_privs", Status: "ok"},
+		{TemplateID: "ora.users", Status: "ok"},
+	}
+	// 混合大小写用户 App_User（引用名）为确认用户 → 暴露。
+	userGrant := privFact("a1", "ora.sys_privs", "App_User", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	b := sensBundleReceipts("db-oracle", rcs, userGrant, accountFact("u1", "ora.users", "App_User"))
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "exposed" {
+		t.Errorf("混合大小写确认用户：want exposed, got %s", s.Status)
+	}
+	// 大写角色 APP_USER 经默认边到 BOB：终点为 BOB，不把 APP_USER 当用户。
+	roleGrant := privFact("a2", "ora.sys_privs", "APP_USER", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	b = sensBundleReceipts("db-oracle", rcs, roleGrant,
+		roleEdgeFact("APP_USER", "BOB", facts.ActivationDefault),
+		accountFact("u1", "ora.users", "BOB"),
+		accountFact("u2", "ora.users", "App_User"))
+	sec := MatchSensitive(b, lbl, nil)
+	if s := findSnap(t, sec, "l1"); s.Status != "exposed" {
+		t.Errorf("大写角色传递：want exposed, got %s", s.Status)
+	}
+	for _, e := range sec.Exposures {
+		if strings.Contains(e.Subject, "APP_USER") && !strings.Contains(e.Subject, "BOB") {
+			t.Errorf("大写角色不得当成用户终点，得到 %q", e.Subject)
+		}
+	}
+	// 反向混淆：授权给 App_User，但清单只有 APP_USER（且 APP_USER 为角色）→
+	// App_User 既非该角色也非该用户，判未确认（不得折叠匹配）。
+	b = sensBundleReceipts("db-oracle", rcs, userGrant,
+		roleEdgeFact("APP_USER", "BOB", facts.ActivationDefault),
+		accountFact("u1", "ora.users", "APP_USER"),
+		accountFact("u2", "ora.users", "BOB"))
+	if s := findSnap(t, MatchSensitive(b, lbl, nil), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("大小写不混淆：want unconfirmed, got %s", s.Status)
 	}
 }
