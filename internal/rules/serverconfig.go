@@ -65,6 +65,11 @@ func pgAuditEvidence(c *EvalContext) (EvidenceStatus, string) {
 	return EvidenceMissing, "pg.settings 查询成功但无审计相关事实，无法判定"
 }
 
+// mysqlPolicyNorm validate_password.policy 共享规范化：门控与检查共用，
+// 去空白 + 大写。门控去空格而检查不去时，policy 为 " LOW " 会门控 Ready
+// 后检查无命中而误判 PASS。
+func mysqlPolicyNorm(v string) string { return strings.ToUpper(strings.TrimSpace(v)) }
+
 // mysqlPasswordEvidence validate_password 规则的证据门控。
 // 两项各有量纲（策略 ∈ LOW/MEDIUM/STRONG/0/1/2，长度为非负整数）；
 // 门控只放行两种情形：(a) 已有确定的违规（策略 LOW/0，或长度合法且 <8）
@@ -84,7 +89,7 @@ func mysqlPasswordEvidence(c *EvalContext) (EvidenceStatus, string) {
 		switch f.Attributes["name"] {
 		case "validate_password.policy":
 			policy = f.Attributes["value"]
-			switch strings.ToUpper(strings.TrimSpace(policy)) {
+			switch mysqlPolicyNorm(policy) {
 			case "LOW", "0":
 				policyOK, definiteFail = true, true
 			case "MEDIUM", "STRONG", "1", "2":
@@ -601,7 +606,7 @@ var serverConfigRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "db.mysql.password_policy", Version: "3",
+			ID: "db.mysql.password_policy", Version: "4",
 			Name:        "MySQL 口令策略弱",
 			Target:      facts.TargetDBMySQL,
 			Description: "validate_password 策略为 LOW 或长度要求低于 8 位时，弱口令可直接通过；未采集到该变量时结论为证据不足（UNKNOWN），不判通过。",
@@ -618,7 +623,7 @@ var serverConfigRules = []struct {
 				}
 				switch f.Attributes["name"] {
 				case "validate_password.policy":
-					if v := strings.ToUpper(f.Attributes["value"]); v == "LOW" || v == "0" {
+					if v := mysqlPolicyNorm(f.Attributes["value"]); v == "LOW" || v == "0" {
 						if !c.Baseline.Allowed("global", "variable", "validate_password.policy", "") {
 							hits = append(hits, CheckHit{
 								Subject:  "global",

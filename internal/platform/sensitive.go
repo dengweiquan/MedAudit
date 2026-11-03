@@ -249,36 +249,54 @@ func isTableANY(priv string) bool {
 }
 
 // roleResolution 从角色边事实建解析表：roles 为全部角色名（边
-// PermissionPath[0]），defaultUsers 为角色 → 默认激活用户。
+// PermissionPath[0]），defaultUsers 为角色 → 默认激活用户，
+// credibleDefaultUsers 为其中边来源可信的默认用户。
 // 角色与用户共用命名空间：出现在边中的名字即角色；角色权限只通过
 // 默认激活边到达用户，非默认角色需 SET ROLE 激活，不计入自动可达。
+// 边逐条验收据：边事实的来源收据被拒/失败/缺失/冲突时，该边不可信——
+// 角色授权本身可显示，但实际用户可达性不得作为确定暴露。
 type roleResolution struct {
-	roles        map[string]bool
-	defaultUsers map[string][]string
+	roles                map[string]bool
+	defaultUsers         map[string][]string
+	credibleDefaultUsers map[string][]string
 }
 
 func resolveRoles(b *facts.FactBundle) roleResolution {
-	r := roleResolution{roles: map[string]bool{}, defaultUsers: map[string][]string{}}
+	r := roleResolution{roles: map[string]bool{}, defaultUsers: map[string][]string{}, credibleDefaultUsers: map[string][]string{}}
 	for _, f := range b.Facts {
-		if f.Kind != facts.FactRoleEdge || len(f.PermissionPath) == 0 {
+		if f.Kind != facts.FactRoleEdge || f.Status != facts.StatusObserved || len(f.PermissionPath) == 0 {
 			continue
 		}
 		role := f.PermissionPath[0]
 		r.roles[role] = true
 		if f.Activation == facts.ActivationDefault {
 			r.defaultUsers[role] = append(r.defaultUsers[role], f.Subject)
+			if sensitiveSourceCredible(b, f.Source) {
+				r.credibleDefaultUsers[role] = append(r.credibleDefaultUsers[role], f.Subject)
+			}
 		}
 	}
 	return r
 }
 
-// grantees 把被授者解析为实际用户：角色只展开默认激活用户（无默认用户时
-// 返回空，即不计暴露）；非角色名即用户本人。
-func (r roleResolution) grantees(subject string) ([]string, bool) {
+// granteesDetailed 把被授者解析为实际用户，并区分边可信与否：
+// credible 为边来源可信的默认用户（可计确定暴露）；uncredible 为边来源
+// 不可信的默认用户（只显角色授权，不计用户可达性）；非角色名即用户本人
+// （credible 为本人，uncredible 为空）。
+func (r roleResolution) granteesDetailed(subject string) (credible, uncredible []string, isRole bool) {
 	if !r.roles[subject] {
-		return []string{subject}, false
+		return []string{subject}, nil, false
 	}
-	return r.defaultUsers[subject], true
+	cred := map[string]bool{}
+	for _, u := range r.credibleDefaultUsers[subject] {
+		cred[u] = true
+	}
+	for _, u := range r.defaultUsers[subject] {
+		if !cred[u] {
+			uncredible = append(uncredible, u)
+		}
+	}
+	return r.credibleDefaultUsers[subject], uncredible, true
 }
 
 // hasPrivilegeFacts 包中是否存在授权事实（无则无法判定暴露面）。
@@ -317,16 +335,45 @@ func sensitiveSourceComplete(b *facts.FactBundle, source string) (bool, string) 
 }
 
 // sensitiveSourceCredible 某授权来源的事实是否可信：收据存在且状态为 ok 或
-// partial（采集实际读到了数据，观察到的授权事实可信）。收据被拒/失败/缺失时，
-// 该来源的 observed 事实不能作为确定暴露证据（可能是残留或不可信快照）：
-// partial 加可信命中可以报告，没有可信来源则未确认。
+// partial（采集实际读到了数据，观察到的授权事实可信），且同来源无冲突收据。
+// 收据被拒/失败/缺失时，该来源的 observed 事实不能作为确定暴露证据
+// （可能是残留或不可信快照）；同来源同时有 ok 与 denied/failed 时，事实无法
+// 绑定到某一次执行，保守不采信（与顺序无关）；partial 加可信命中可以报告，
+// 没有可信来源则未确认。
 func sensitiveSourceCredible(b *facts.FactBundle, source string) bool {
+	sawOK := false
 	for _, rc := range b.Receipts {
-		if rc.TemplateID == source && (rc.Status == "ok" || rc.Status == "partial") {
-			return true
+		if rc.TemplateID != source {
+			continue
+		}
+		switch rc.Status {
+		case "ok", "partial":
+			sawOK = true
+		case "denied", "failed":
+			return false
 		}
 	}
-	return false
+	return sawOK
+}
+
+// sensitiveOracleContainer 指定库名标签的可信容器身份：只认新采集器的
+// ora.container 事实（服务端 SYS_CONTEXT CON_NAME，Kind 为配置事实且已观察）
+// 加可信收据。旧包无此事实（Scope.Container 是连接服务名，不可信），探针失败
+// 时事实缺失或收据不可信——均不得据 Scope 判定归属；服务名与 PDB 名可能不同，
+// 服务名即使与标签库名相同也不作数。
+func sensitiveOracleContainer(b *facts.FactBundle, database string) (bool, string) {
+	if !sensitiveSourceCredible(b, "ora.container") {
+		return false, "标签指定了库名（" + database + "），但本包无可信容器身份（旧包无 ora.container 事实，或容器探针失败），无法确认标签归属，不作跨容器匹配。"
+	}
+	for _, f := range b.Facts {
+		if f.Source != "ora.container" || f.Kind != facts.FactAccountConfig || f.Status != facts.StatusObserved {
+			continue
+		}
+		if strings.EqualFold(f.Attributes["con_name"], database) {
+			return true, ""
+		}
+	}
+	return false, "标签库名（" + database + "）与本包可信容器身份不符或未采集到容器事实，不作跨容器匹配；请以该库的资产包复评。"
 }
 
 // sensitiveSourcesComplete 该资产类型相关授权来源是否全部完整。
@@ -408,7 +455,8 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 	if adapter == facts.TargetDBMySQL {
 		configCredible := sensitiveSourceCredible(b, "mysql.server_config")
 		for _, f := range b.Facts {
-			if f.Source != "mysql.server_config" || f.Attributes["name"] != "lower_case_table_names" {
+			if f.Source != "mysql.server_config" || f.Kind != facts.FactAccountConfig ||
+				f.Status != facts.StatusObserved || f.Attributes["name"] != "lower_case_table_names" {
 				continue
 			}
 			if !configCredible {
@@ -499,20 +547,16 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 		mysqlCaseIndeterminate := false
 		switch adapter {
 		case facts.TargetDBOracle:
-			// 容器归属：标签库名（PDB）须与本包容器（Scope.Container，采集器以
-			// 服务端 SYS_CONTEXT CON_NAME 确认的实际容器名，非连接服务名）对应；
-			// 容器身份缺失或不符时不作跨容器匹配，整标签未确认
-			// （同名表在不同 PDB 是不同对象；Scope.Instance 为写死占位值，不可信；
-			// 服务名与 PDB 名可能不同，服务名不得充当容器身份）。
+			// 容器归属：标签库名（PDB）须与本包可信容器身份对应——只认新采集器
+			// 的 ora.container 事实（服务端 CON_NAME）加可信收据；Scope.Container
+			// 不再作为依据（旧包中它是连接服务名，服务名与 PDB 名可能不同）。
+			// 容器身份缺失、不符或收据不可信时不作跨容器匹配，整标签未确认
+			// （同名表在不同 PDB 是不同对象；Scope.Instance 为写死占位值，不可信）。
 			containerMismatch := false
 			if l.Database != "" {
-				switch {
-				case b.Scope.Container == "":
+				if ok, reason := sensitiveOracleContainer(b, l.Database); !ok {
 					containerMismatch = true
-					snap.Notes = append(snap.Notes, "标签指定了库名（"+l.Database+"），但本包无可信容器身份，无法确认标签归属，不作跨容器匹配。")
-				case !strings.EqualFold(b.Scope.Container, l.Database):
-					containerMismatch = true
-					snap.Notes = append(snap.Notes, "标签库名（"+l.Database+"）与本包容器（"+b.Scope.Container+"）不符，不作跨容器匹配；请以该库的资产包复评。")
+					snap.Notes = append(snap.Notes, reason)
 				}
 			}
 			if containerMismatch {
@@ -541,8 +585,8 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					// CDB 通用权限（common=YES，CONTAINER=ALL）可达全部 PDB，
 					// 本节只计本包（本资产容器），跨 PDB 可达另行注记。
 					common := f.Attributes["common"] == "YES"
-					users, isRole := roles.grantees(f.Subject)
-					for _, u := range users {
+					credUsers, uncredUsers, isRole := roles.granteesDetailed(f.Subject)
+					for _, u := range credUsers {
 						via := ""
 						if isRole {
 							via = f.Subject
@@ -551,6 +595,14 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 						if common {
 							labelExposures[len(labelExposures)-1].Note = "CONTAINER=ALL：该权限可达全部 PDB，本节只计本包。"
 						}
+					}
+					if isRole && len(uncredUsers) > 0 && !exempt(f.Subject, priv, f.Scope) {
+						// 角色授权存在，但成员边来源不可信：只显角色授权，
+						// 不计确定暴露（实际用户可达性未确认）。
+						add("any", f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
+						labelCredible[len(labelCredible)-1] = false
+						labelExposures[len(labelExposures)-1].Note = "角色授权存在，但角色成员边来源不可信（被拒/失败/缺收据），无法确认实际用户可达性；不计入确定暴露。"
+						snap.Notes = append(snap.Notes, "角色 "+f.Subject+" 的 "+priv+" 授权存在，但角色成员边来源不可信，无法确认实际用户可达性（不计入确定暴露）。")
 					}
 				}
 			}
@@ -601,13 +653,21 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				default:
 					continue
 				}
-				users, isRole := roles.grantees(f.Subject)
-				for _, u := range users {
+				credUsers, uncredUsers, isRole := roles.granteesDetailed(f.Subject)
+				for _, u := range credUsers {
 					via := ""
 					if isRole {
 						via = f.Subject
 					}
 					add(kind, u, priv, []string{f.FactID}, f.Scope, via, f.Source)
+				}
+				if isRole && len(uncredUsers) > 0 && !exempt(f.Subject, priv, f.Scope) {
+					// 角色授权存在，但成员边来源不可信：只显角色授权，
+					// 不计确定暴露（实际用户可达性未确认）。
+					add(kind, f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
+					labelCredible[len(labelCredible)-1] = false
+					labelExposures[len(labelExposures)-1].Note = "角色授权存在，但角色成员边来源不可信（被拒/失败/缺收据），无法确认实际用户可达性；不计入确定暴露。"
+					snap.Notes = append(snap.Notes, "角色 "+f.Subject+" 的 "+priv+" 授权存在，但角色成员边来源不可信，无法确认实际用户可达性（不计入确定暴露）。")
 				}
 			}
 		case facts.TargetDBSQLSrv:

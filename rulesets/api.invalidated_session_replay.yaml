@@ -1,6 +1,6 @@
 # MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
 id: api.invalidated_session_replay
-version: "3"
+version: "4"
 name: 凭据失效后重放
 target: api
 risk: high

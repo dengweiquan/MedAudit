@@ -214,12 +214,12 @@ var windowsPasswordRules = []struct {
 }{
 	{
 		spec: RuleSpec{
-			ID: "os.windows.password_min_length", Version: "3",
+			ID: "os.windows.password_min_length", Version: "4",
 			Name:        "Windows 口令最小长度不足",
 			Target:      facts.TargetOSWindows,
-			Description: "本地 SAM 或域默认策略的口令最小长度低于项目基线 8 位时，短口令易被爆破。阈值 8 位为项目基线选择（与 MySQL 口令长度口径一致），非未核实标准的规定值；覆盖范围见事实 scope 与 machine_role：未加入、工作组与域成员为本地 SAM 策略（域成员本机查询不等于域账号默认策略），域控为域默认策略；细粒度用户策略（FGPP/PSO）未覆盖。",
+			Description: "本地 SAM 或域默认策略的口令最小长度低于项目基线 8 位时，短口令易被爆破。阈值 8 位为项目基线选择（与 MySQL 口令长度口径一致），非未核实标准的规定值；覆盖范围见事实 scope 与 machine_role：未加入、工作组与域成员为本地 SAM 策略（域成员本机查询不等于域账号默认策略），域控为域默认策略；细粒度用户策略（FGPP/PSO）未覆盖。长度为 Win32 DWORD 量纲，负值或超 uint32 的非法事实不采信（UNKNOWN），不判通过。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
-			Evidence:    winEvidence("win.password_policy", winAttrInt("min_password_length")),
+			Evidence:    winEvidence("win.password_policy", winAttrUint32("min_password_length")),
 			Risk:        RiskMedium,
 			Remediation: "将口令最小长度提高到至少 8 位（组策略或本地安全策略）；确需短口令的记入基线并注明覆盖范围。",
 		},
@@ -229,7 +229,7 @@ var windowsPasswordRules = []struct {
 				if f.Source != "win.password_policy" || f.Status != facts.StatusObserved {
 					continue
 				}
-				n, ok := winParseInt(f.Attributes["min_password_length"])
+				n, ok := winParseUint32(f.Attributes["min_password_length"])
 				if !ok || n >= 8 {
 					continue
 				}
@@ -284,12 +284,12 @@ var windowsPasswordRules = []struct {
 	},
 	{
 		spec: RuleSpec{
-			ID: "os.windows.password_lockout_disabled", Version: "3",
+			ID: "os.windows.password_lockout_disabled", Version: "4",
 			Name:        "Windows 未启用登录失败锁定",
 			Target:      facts.TargetOSWindows,
-			Description: "LockoutThreshold=0（锁定阈值关闭）时，口令可被无限次尝试爆破。覆盖范围见事实 scope 与 machine_role（未加入/工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。",
+			Description: "LockoutThreshold=0（锁定阈值关闭）时，口令可被无限次尝试爆破。覆盖范围见事实 scope 与 machine_role（未加入/工作组/域成员为本地 SAM，域控为域默认；FGPP 未覆盖）。阈值为 Win32 DWORD 量纲，负值或超 uint32 的非法事实不采信（UNKNOWN），不判通过。",
 			Requires:    []facts.FactKind{facts.FactAccountConfig},
-			Evidence:    winEvidence("win.password_policy", winAttrInt("lockout_threshold")),
+			Evidence:    winEvidence("win.password_policy", winAttrUint32("lockout_threshold")),
 			Risk:        RiskMedium,
 			Remediation: "设置登录失败锁定阈值（如 5 次）及锁定时长；确需关闭的记入基线。",
 		},
@@ -299,7 +299,7 @@ var windowsPasswordRules = []struct {
 				if f.Source != "win.password_policy" || f.Status != facts.StatusObserved {
 					continue
 				}
-				if n, ok := winParseInt(f.Attributes["lockout_threshold"]); !ok || n != 0 {
+				if n, ok := winParseUint32(f.Attributes["lockout_threshold"]); !ok || n != 0 {
 					continue
 				}
 				if c.Baseline.Allowed("password-policy", "policy", "lockout", f.Attributes["scope"]) {

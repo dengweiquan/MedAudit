@@ -24,6 +24,8 @@ import (
 //     不算缺口。全部未运行 → UNKNOWN；无此类探针（且无对照探针）→ NOT_APPLICABLE
 //     （该接口无此期望的端点，或未配置此类检查）；有对照探针但无负向探针 →
 //     UNKNOWN（端点存在但该身份从未被测，如仅有属主自访问而无跨主体探针）。
+//     全部探针均为公开端点重放跳过时 → NOT_APPLICABLE：纯公开端点无需重放探测，
+//     本规则不适用（不是通过，也不是未确认）。
 //   - 未认证与垂直越权的分流：直接探针按 anonymous 属性分流
 //     （true → 未认证规则的匿名证据；false → 已认证身份证据，不属未认证规则，
 //     管理员端点的 false FAIL 归垂直规则；缺失 → 老报告无法归属，未认证规则不认领）。
@@ -105,6 +107,7 @@ func apiRuleEvidence(match func(facts.Fact) bool, controls []string, classify fu
 		}
 		// 负向探针 = 除正向对照外的全部探针；对照探针只证明端点存在。
 		var executed, fails, unknowns, unattributed, gaps []facts.Fact
+		legitSkips := 0
 		endpointNegative := map[string]bool{}
 		endpointHasEffectiveProbe := map[string]bool{}
 		for _, f := range probes {
@@ -127,6 +130,7 @@ func apiRuleEvidence(match func(facts.Fact) bool, controls []string, classify fu
 			case apiProbeNegative:
 				if f.Attributes["outcome"] == "NOT_RUN" && apiIsLegitReplaySkip(f) {
 					// 合法省略：既不计覆盖，也不算缺口（公开端点无需重放探测）。
+					legitSkips++
 					continue
 				}
 				endpointHasEffectiveProbe[ep] = true
@@ -148,6 +152,11 @@ func apiRuleEvidence(match func(facts.Fact) bool, controls []string, classify fu
 			if !endpointNegative[ep] {
 				uncovered = append(uncovered, ep)
 			}
+		}
+		// 全部探针均为公开端点重放跳过 → 不适用（纯公开端点无需重放探测，
+		// 不是通过，也不是未确认）。
+		if legitSkips > 0 && legitSkips == len(probes) {
+			return EvidenceNotApplicable, "全部探针均为公开端点重放跳过（合法省略），本规则不适用"
 		}
 		// 可归属 FAIL 存在 → 直接 Ready（check 命中即 FAIL）。
 		if len(fails) > 0 {
@@ -314,7 +323,7 @@ var apiBuiltinRules = []builtinRule{
 	},
 	{
 		spec: RuleSpec{
-			ID: "api.invalidated_session_replay", Version: "3",
+			ID: "api.invalidated_session_replay", Version: "4",
 			Name:   "凭据失效后重放",
 			Target: facts.TargetAPI,
 			Description: "已失效会话（登出、过期、改密、吊销后捕获的凭证）重放仍被接受（重放探针 2xx）。" +
