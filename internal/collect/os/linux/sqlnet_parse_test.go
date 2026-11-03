@@ -1,6 +1,7 @@
 package linux
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,5 +108,36 @@ func TestLocateSqlnetOra(t *testing.T) {
 	}
 	if got := LocateSqlnetOra("/u01/dbhome", "/opt/tns"); got != "/opt/tns/sqlnet.ora" {
 		t.Fatalf("tns-admin: %s", got)
+	}
+}
+
+// 静态复核回归：入口缺失与链内 IFILE 缺失必须区分——后者不得猜默认值。
+func TestResolveSqlnetOraEntryVsChainMissing(t *testing.T) {
+	read := func(files map[string]string) func(string) ([]byte, error) {
+		return func(path string) ([]byte, error) {
+			data, ok := files[path]
+			if !ok {
+				return nil, &os.PathError{Op: "open", Path: path, Err: os.ErrNotExist}
+			}
+			return []byte(data), nil
+		}
+	}
+	// 入口本身缺失 → 满足 ErrSqlnetEntryMissing。
+	_, _, err := ResolveSqlnetOra(read(map[string]string{}), "/home/network/admin/sqlnet.ora")
+	if !errors.Is(err, ErrSqlnetEntryMissing) {
+		t.Fatalf("入口缺失应满足 ErrSqlnetEntryMissing，得到 %v", err)
+	}
+	// 入口存在但引用的 IFILE 缺失 → 是解析失败，不是入口缺失（不得猜默认值）。
+	_, _, err = ResolveSqlnetOra(read(map[string]string{
+		"/home/network/admin/sqlnet.ora": "SQLNET.ENCRYPTION_SERVER = required\nIFILE = /home/network/admin/missing.ora\n",
+	}), "/home/network/admin/sqlnet.ora")
+	if err == nil {
+		t.Fatal("链内 IFILE 缺失应返回错误")
+	}
+	if errors.Is(err, ErrSqlnetEntryMissing) {
+		t.Fatalf("链内 IFILE 缺失不得满足 ErrSqlnetEntryMissing，得到 %v", err)
+	}
+	if !os.IsNotExist(err) {
+		t.Fatalf("链内 IFILE 缺失应保留原始 NotExist 错误，得到 %v", err)
 	}
 }

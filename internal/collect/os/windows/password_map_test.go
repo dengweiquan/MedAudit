@@ -25,3 +25,29 @@ func TestPasswordPolicyAttributesRole(t *testing.T) {
 		t.Fatalf("attrs: %+v", attrs)
 	}
 }
+
+// 静态复核回归：NetSetupJoinStatus 微软定义为 0 未知、1 未加入、2 工作组、3 域
+// （旧代码误把 1 当工作组、2 当域、3 当未知，导致域成员被标为未知覆盖范围）。
+func TestJoinStatusToRole(t *testing.T) {
+	cases := []struct {
+		status uint32
+		isDC   bool
+		want   string
+	}{
+		{0, false, "unknown"},
+		{1, false, "unjoined"},
+		{2, false, "workgroup"},
+		{3, false, "domain-member"},
+		{3, true, "domain-controller"},
+		{1, true, "domain-controller"},
+		{99, false, "unknown"},
+	}
+	for _, tc := range cases {
+		if got := joinStatusToRole(tc.status, tc.isDC); got != tc.want {
+			t.Errorf("status %d isDC=%v: want %q, got %q", tc.status, tc.isDC, tc.want, got)
+		}
+	}
+	if got := passwordScopeForRole("unjoined"); got != "local-sam" {
+		t.Errorf("unjoined scope: want local-sam, got %q", got)
+	}
+}

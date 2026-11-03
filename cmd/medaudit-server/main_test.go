@@ -60,6 +60,7 @@ func newTestServer(t *testing.T, kr *platform.EvidenceKeyring) *testServer {
 	registerAssetBundlesRoute(mux, db)
 	registerEvalRoutes(mux, db, rules.DefaultRegistry())
 	registerSensitiveRoutes(mux, db)
+	registerAPIAuditRoutes(mux, db)
 	srv := httptest.NewServer(opLogMiddleware(authMiddleware(mux, sessions), db, sessions))
 	t.Cleanup(srv.Close)
 	return &testServer{srv: srv, db: db, sessions: sessions, client: &http.Client{}}

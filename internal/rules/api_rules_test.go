@@ -187,3 +187,92 @@ func TestAPIRulesControlWrongEndpoint(t *testing.T) {
 		t.Errorf("control on other endpoint: want UNKNOWN, got %s", got["api.user_admin_access"])
 	}
 }
+
+// 静态复核回归：正向对照探针（PASS+2xx）不计入负向覆盖。
+
+// 只配置管理员身份：管理端点只有管理员自己的成功探针 → 垂直规则 UNKNOWN（不得 PASS）。
+func TestAPIRulesOnlyAdminUnknown(t *testing.T) {
+	b := apiBundle(
+		apiProbeAnon("f3", "GET /api/admin/users", "direct", "admin_only", "root", "PASS", "200", "false"),
+		apiControl("c2", "GET /api/admin/users", "admin_reachable"),
+	)
+	expectAPI(t, b, map[string]facts.Conclusion{
+		"api.anon_protected_access":      facts.ConclusionNotApplicable,
+		"api.user_admin_access":          facts.ConclusionUnknown,
+		"api.cross_owner_access":         facts.ConclusionNotApplicable,
+		"api.invalidated_session_replay": facts.ConclusionNotApplicable,
+	})
+}
+
+// 只配置已认证身份：需认证端点只有已认证用户的成功探针 → 未认证规则 UNKNOWN（匿名从未被测）。
+func TestAPIRulesOnlyAuthedUnknown(t *testing.T) {
+	b := apiBundle(
+		apiProbeAnon("f2", "GET /api/profile", "direct", "authenticated", "alice", "PASS", "200", "false"),
+		apiControl("c1", "GET /api/profile", "authed_reachable"),
+	)
+	expectAPI(t, b, map[string]facts.Conclusion{
+		"api.anon_protected_access":      facts.ConclusionUnknown,
+		"api.user_admin_access":          facts.ConclusionNotApplicable,
+		"api.cross_owner_access":         facts.ConclusionNotApplicable,
+		"api.invalidated_session_replay": facts.ConclusionNotApplicable,
+	})
+}
+
+// 负向通过 + 只读策略未运行项 → UNKNOWN（覆盖缺口不得判 PASS）。
+func TestAPIRulesPassPlusNotRunUnknown(t *testing.T) {
+	b := apiBundle(
+		apiProbeAnon("f1", "GET /api/profile", "direct", "authenticated", "anon", "PASS", "403", "true"),
+		apiControl("c1", "GET /api/profile", "authed_reachable"),
+		apiProbe("f9", "POST /api/profile", "readonly-policy", "authenticated", "-", "NOT_RUN", "0"),
+	)
+	expectAPI(t, b, map[string]facts.Conclusion{
+		"api.anon_protected_access":      facts.ConclusionUnknown,
+		"api.user_admin_access":          facts.ConclusionNotApplicable,
+		"api.cross_owner_access":         facts.ConclusionNotApplicable,
+		"api.invalidated_session_replay": facts.ConclusionNotApplicable,
+	})
+}
+
+// 仅有属主自访问而无跨主体探针 → 水平规则 UNKNOWN（不得误判不适用）。
+func TestAPIRulesOnlySelfUnknown(t *testing.T) {
+	b := apiBundle(
+		apiProbe("f5", "GET /api/users/{id}", "self", "owner_or_admin", "alice", "PASS", "200"),
+		apiControl("c3", "GET /api/users/{id}", "self_reachable"),
+	)
+	expectAPI(t, b, map[string]facts.Conclusion{
+		"api.anon_protected_access":      facts.ConclusionNotApplicable,
+		"api.user_admin_access":          facts.ConclusionNotApplicable,
+		"api.cross_owner_access":         facts.ConclusionUnknown,
+		"api.invalidated_session_replay": facts.ConclusionNotApplicable,
+	})
+}
+
+// 重放：公开端点跳过是合法省略，不阻塞非公开端点的 PASS。
+func TestAPIRulesReplayPublicSkipPass(t *testing.T) {
+	b := apiBundle(
+		apiProbe("f8", "GET /api/me", "replay:logged_out", "authenticated", "alice-logged-out", "PASS", "401"),
+		apiControl("c4", "GET /api/me", "endpoint_reachable"),
+		apiProbe("f9", "GET /api/open", "replay:logged_out", "public", "alice-logged-out", "NOT_RUN", "0"),
+	)
+	expectAPI(t, b, map[string]facts.Conclusion{
+		"api.anon_protected_access":      facts.ConclusionNotApplicable,
+		"api.user_admin_access":          facts.ConclusionNotApplicable,
+		"api.cross_owner_access":         facts.ConclusionNotApplicable,
+		"api.invalidated_session_replay": facts.ConclusionPass,
+	})
+}
+
+// 重放：非公开端点未运行是覆盖缺口 → UNKNOWN。
+func TestAPIRulesReplayNonPublicNotRunUnknown(t *testing.T) {
+	b := apiBundle(
+		apiProbe("f8", "GET /api/me", "replay:logged_out", "authenticated", "alice-logged-out", "PASS", "401"),
+		apiControl("c4", "GET /api/me", "endpoint_reachable"),
+		apiProbe("f9", "POST /api/me", "replay:logged_out", "authenticated", "alice-logged-out", "NOT_RUN", "0"),
+	)
+	expectAPI(t, b, map[string]facts.Conclusion{
+		"api.anon_protected_access":      facts.ConclusionNotApplicable,
+		"api.user_admin_access":          facts.ConclusionNotApplicable,
+		"api.cross_owner_access":         facts.ConclusionNotApplicable,
+		"api.invalidated_session_replay": facts.ConclusionUnknown,
+	})
+}
