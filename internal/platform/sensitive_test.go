@@ -960,3 +960,72 @@ func TestSensitiveOracleCaseSensitiveIdentity(t *testing.T) {
 		t.Errorf("大小写不混淆：want unconfirmed, got %s", s.Status)
 	}
 }
+
+// 静态复核回归六轮：成员采集 partial、已知成员全部豁免时，不得判“未发现”。
+// 已知成员全部豁免的“无违规”结论依赖成员枚举完整；来源不完整可能漏掉
+// 未采集的违规成员，故判未确认。
+func TestSensitiveExemptMembersPartialCollection(t *testing.T) {
+	grant := privFact("a1", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	edge := roleEdgeFact("RPT_ROLE", "BOB", facts.ActivationDefault)
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	bl := &rules.Baseline{Allows: []rules.BaselineAllow{
+		{Subject: "BOB", Kind: "privilege", Value: "SELECT ANY TABLE", Scope: "instance"},
+	}}
+	mk := func(roleReceipt string) *facts.FactBundle {
+		return sensBundleReceipts("db-oracle",
+			[]facts.Receipt{
+				{TemplateID: "ora.tab_privs", Status: "ok"},
+				{TemplateID: "ora.sys_privs", Status: "ok"},
+				{TemplateID: "ora.role_privs", Status: roleReceipt},
+				{TemplateID: "ora.users", Status: "ok"},
+			}, grant, edge, accountFact("u1", "ora.users", "BOB"))
+	}
+	// 成员来源完整、已知成员全部豁免 → no-broad-grant。
+	sec := MatchSensitive(mk("ok"), lbl, bl)
+	if s := findSnap(t, sec, "l1"); s.Status != "no-broad-grant" {
+		t.Errorf("成员来源完整且全部豁免：want no-broad-grant, got %s", s.Status)
+	}
+	// 成员来源 partial、已知成员全部豁免 → 未确认（不得判“未发现”）。
+	sec = MatchSensitive(mk("partial"), lbl, bl)
+	if s := findSnap(t, sec, "l1"); s.Status != "unconfirmed" {
+		t.Errorf("成员来源 partial 且全部豁免：want unconfirmed, got %s", s.Status)
+	}
+	if n := countExposures(sec, "l1", false); n != 0 {
+		t.Errorf("成员来源 partial 且全部豁免：不应有违规暴露，得到 %d", n)
+	}
+	if n := countExposures(sec, "l1", true); n != 1 {
+		t.Errorf("成员来源 partial 且全部豁免：应仍显示 1 条豁免暴露，得到 %d", n)
+	}
+	// 对照：成员来源 partial、已知成员不豁免 → 照常暴露（暴露优先）。
+	sec = MatchSensitive(mk("partial"), lbl, nil)
+	if s := findSnap(t, sec, "l1"); s.Status != "exposed" {
+		t.Errorf("成员来源 partial 但有违规成员：want exposed, got %s", s.Status)
+	}
+	// MySQL 同口径。
+	myGrant := privFact("m1", "mysql.db_privs", "rpt_role", "hisdb.*", map[string]string{"privilege": "SELECT"})
+	myEdge := facts.Fact{Kind: facts.FactRoleEdge, Subject: "app@%", Status: facts.StatusObserved,
+		Source:         "mysql.role_edges",
+		PermissionPath: []string{"rpt_role", "app@%"}, Activation: facts.ActivationDefault}
+	myLbl := []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"}}
+	myBl := &rules.Baseline{Allows: []rules.BaselineAllow{
+		{Subject: "app@%", Kind: "privilege", Value: "SELECT", Scope: "hisdb.*"},
+	}}
+	myMk := func(roleReceipt string) *facts.FactBundle {
+		return sensBundleReceipts("db-mysql",
+			[]facts.Receipt{
+				{TemplateID: "mysql.user_privs", Status: "ok"},
+				{TemplateID: "mysql.global_grants", Status: "ok"},
+				{TemplateID: "mysql.db_privs", Status: "ok"},
+				{TemplateID: "mysql.role_edges", Status: roleReceipt},
+				{TemplateID: "mysql.accounts", Status: "ok"},
+			}, myGrant, myEdge, accountFact("u1", "mysql.accounts", "app@%"))
+	}
+	sec = MatchSensitive(myMk("ok"), myLbl, myBl)
+	if s := findSnap(t, sec, "l1"); s.Status != "no-broad-grant" {
+		t.Errorf("MySQL 成员来源完整且全部豁免：want no-broad-grant, got %s", s.Status)
+	}
+	sec = MatchSensitive(myMk("partial"), myLbl, myBl)
+	if s := findSnap(t, sec, "l1"); s.Status != "unconfirmed" {
+		t.Errorf("MySQL 成员来源 partial 且全部豁免：want unconfirmed, got %s", s.Status)
+	}
+}
