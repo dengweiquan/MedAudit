@@ -34,9 +34,11 @@ func TestAPIComplianceBoundPass(t *testing.T) {
 			apiComplianceCheck("GET /api/profile", "alice", "direct", "authenticated", 200, apiaudit.ConclPass),
 			apiComplianceCheck("GET /api/admin/users", "root", "direct", "admin_only", 200, apiaudit.ConclPass),
 			apiComplianceCheck("GET /api/admin/users", "alice", "direct", "admin_only", 403, apiaudit.ConclPass),
+			apiComplianceCheck("GET /api/admin/users", "anon", "direct", "admin_only", 401, apiaudit.ConclPass),
 			apiComplianceCheck("GET /api/users/{id}", "alice", "self", "owner_or_admin", 200, apiaudit.ConclPass),
 			apiComplianceCheck("GET /api/users/{id}", "bob", "cross-owner:alice", "owner_or_admin", 403, apiaudit.ConclPass),
 			apiComplianceCheck("GET /api/me", "alice", "direct", "authenticated", 200, apiaudit.ConclPass),
+			apiComplianceCheck("GET /api/me", "anon", "direct", "authenticated", 401, apiaudit.ConclPass),
 			apiComplianceCheck("GET /api/me", "alice-logged-out", "replay:logged_out", "authenticated", 401, apiaudit.ConclPass),
 		},
 	}
@@ -47,7 +49,7 @@ func TestAPIComplianceBoundPass(t *testing.T) {
 	if !res.Bound || res.Clause.Status != "pass" {
 		t.Fatalf("want bound pass, got bound=%v status=%s note=%s", res.Bound, res.Clause.Status, res.Note)
 	}
-	if res.Summary["PASS"] != 8 || res.Summary["FAIL"] != 0 {
+	if res.Summary["PASS"] != 10 || res.Summary["FAIL"] != 0 {
 		t.Fatalf("summary must be recomputed from checks, got %+v", res.Summary)
 	}
 	for _, r := range res.Clause.Rules {

@@ -513,6 +513,14 @@ func TestSensitiveMySQLCase(t *testing.T) {
 			fs = append(fs, facts.Fact{FactID: "c1", Kind: facts.FactAccountConfig, Subject: "global",
 				Status: facts.StatusObserved, Source: "mysql.server_config",
 				Attributes: map[string]string{"name": "lower_case_table_names", "value": lct}})
+			// 已知模式的用例须给配置事实配可信收据，否则模式仍未知。
+			return sensBundleReceipts("db-mysql",
+				[]facts.Receipt{
+					{TemplateID: "mysql.user_privs", Status: "ok"},
+					{TemplateID: "mysql.global_grants", Status: "ok"},
+					{TemplateID: "mysql.db_privs", Status: "ok"},
+					{TemplateID: "mysql.server_config", Status: "ok"},
+				}, fs...)
 		}
 		return sensBundle("db-mysql", fs...)
 	}
@@ -523,11 +531,83 @@ func TestSensitiveMySQLCase(t *testing.T) {
 	}{
 		{"0区分", "0", "no-broad-grant"},
 		{"1不区分", "1", "exposed"},
-		{"未知保守区分", "", "no-broad-grant"},
+		{"未知仅大小写不同 → 未确认", "", "unconfirmed"},
 	} {
 		s := findSnap(t, MatchSensitive(mk(tc.lct), lbl, nil), "l1")
 		if s.Status != tc.want {
 			t.Errorf("%s: want %s, got %s", tc.name, tc.want, s.Status)
 		}
+	}
+}
+
+// 静态复核回归二轮：命中先验收据——来源被拒/失败/缺收据的事实不作确定暴露。
+func TestSensitiveHitRequiresCredibleReceipt(t *testing.T) {
+	hit := privFact("f1", "ora.tab_privs", "PUBLIC", "HIS.PATIENTS", map[string]string{"privilege": "SELECT"})
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	sysOK := facts.Receipt{TemplateID: "ora.sys_privs", Status: "ok"}
+	for _, tc := range []struct {
+		name string
+		rcs  []facts.Receipt
+		want string
+	}{
+		{"来源被拒", []facts.Receipt{{TemplateID: "ora.tab_privs", Status: "denied"}, sysOK}, "unconfirmed"},
+		{"来源缺收据", []facts.Receipt{sysOK}, "unconfirmed"},
+		{"来源失败", []facts.Receipt{{TemplateID: "ora.tab_privs", Status: "failed"}, sysOK}, "unconfirmed"},
+		{"来源 partial 加命中可报告", []facts.Receipt{{TemplateID: "ora.tab_privs", Status: "partial"}, sysOK}, "exposed"},
+		{"来源 ok", []facts.Receipt{{TemplateID: "ora.tab_privs", Status: "ok"}, sysOK}, "exposed"},
+	} {
+		s := findSnap(t, MatchSensitive(sensBundleReceipts("db-oracle", tc.rcs, hit), lbl, nil), "l1")
+		if s.Status != tc.want {
+			t.Errorf("%s: want %s, got %s", tc.name, tc.want, s.Status)
+		}
+	}
+}
+
+// 静态复核回归二轮：MySQL 模式未知时，仅大小写不同的库名不得判“未发现”；
+// 配置事实无可信收据时模式仍未知；模式 2 与 1 同为不区分。
+func TestSensitiveMySQLCaseUnknownIndeterminate(t *testing.T) {
+	lbl := []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"}}
+	coreOK := []facts.Receipt{
+		{TemplateID: "mysql.user_privs", Status: "ok"},
+		{TemplateID: "mysql.global_grants", Status: "ok"},
+		{TemplateID: "mysql.db_privs", Status: "ok"},
+	}
+	priv := func(db string) facts.Fact {
+		return privFact("f1", "mysql.db_privs", "app", db+".*", map[string]string{"privilege": "SELECT"})
+	}
+	// 未知模式 + 仅大小写不同 → 未确认（不得称“未发现”）。
+	s := findSnap(t, MatchSensitive(sensBundle("db-mysql", priv("HisDB")), lbl, nil), "l1")
+	if s.Status != "unconfirmed" {
+		t.Errorf("未知模式 + 仅大小写不同：want unconfirmed, got %s", s.Status)
+	}
+	// 未知模式 + 精确相等 → 仍可匹配为暴露。
+	s = findSnap(t, MatchSensitive(sensBundle("db-mysql", priv("hisdb")), lbl, nil), "l1")
+	if s.Status != "exposed" {
+		t.Errorf("未知模式 + 精确相等：want exposed, got %s", s.Status)
+	}
+	// 未知模式 + 完全不同库名 → 无命中，可称“未发现”（来源齐全）。
+	s = findSnap(t, MatchSensitive(sensBundle("db-mysql", priv("otherdb")), lbl, nil), "l1")
+	if s.Status != "no-broad-grant" {
+		t.Errorf("未知模式 + 不同库名：want no-broad-grant, got %s", s.Status)
+	}
+	// 配置事实存在但 server_config 收据被拒 → 模式仍未知，仅大小写不同 → 未确认。
+	lct := facts.Fact{FactID: "c1", Kind: facts.FactAccountConfig, Subject: "global",
+		Status: facts.StatusObserved, Source: "mysql.server_config",
+		Attributes: map[string]string{"name": "lower_case_table_names", "value": "1"}}
+	rcs := append(append([]facts.Receipt{}, coreOK...),
+		facts.Receipt{TemplateID: "mysql.server_config", Status: "denied"})
+	s = findSnap(t, MatchSensitive(sensBundleReceipts("db-mysql", rcs, priv("HisDB"), lct), lbl, nil), "l1")
+	if s.Status != "unconfirmed" {
+		t.Errorf("配置事实无可信收据 + 仅大小写不同：want unconfirmed, got %s", s.Status)
+	}
+	// 模式 2 与 1 同为不区分。
+	lct2 := facts.Fact{FactID: "c1", Kind: facts.FactAccountConfig, Subject: "global",
+		Status: facts.StatusObserved, Source: "mysql.server_config",
+		Attributes: map[string]string{"name": "lower_case_table_names", "value": "2"}}
+	rcs2 := append(append([]facts.Receipt{}, coreOK...),
+		facts.Receipt{TemplateID: "mysql.server_config", Status: "ok"})
+	s = findSnap(t, MatchSensitive(sensBundleReceipts("db-mysql", rcs2, priv("HisDB"), lct2), lbl, nil), "l1")
+	if s.Status != "exposed" {
+		t.Errorf("模式 2 + 仅大小写不同：want exposed, got %s", s.Status)
 	}
 }

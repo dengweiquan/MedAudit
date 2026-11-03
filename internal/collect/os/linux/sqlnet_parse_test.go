@@ -1,6 +1,7 @@
 package linux
 
 import (
+	"syscall"
 	"errors"
 	"os"
 	"path/filepath"
@@ -139,5 +140,42 @@ func TestResolveSqlnetOraEntryVsChainMissing(t *testing.T) {
 	}
 	if !os.IsNotExist(err) {
 		t.Fatalf("链内 IFILE 缺失应保留原始 NotExist 错误，得到 %v", err)
+	}
+}
+
+// 静态复核回归二轮：入口读取错误须按类型区分——只有确实不存在（ENOENT）
+// 才是入口缺失；权限拒绝、I/O 错误与链内文件错误一律不得猜默认值。
+func TestResolveSqlnetOraEntryErrorKinds(t *testing.T) {
+	errFor := func(op string, err error) func(string) ([]byte, error) {
+		return func(path string) ([]byte, error) {
+			return nil, &os.PathError{Op: op, Path: path, Err: err}
+		}
+	}
+	// 入口 EACCES：不是入口缺失，且应可被调用方识别为权限错误。
+	_, _, err := ResolveSqlnetOra(errFor("open", syscall.EACCES), "/home/network/admin/sqlnet.ora")
+	if err == nil || errors.Is(err, ErrSqlnetEntryMissing) {
+		t.Fatalf("入口 EACCES 不得满足 ErrSqlnetEntryMissing，得到 %v", err)
+	}
+	if !os.IsPermission(err) {
+		t.Fatalf("入口 EACCES 应保留权限错误，得到 %v", err)
+	}
+	// 入口 EIO：不是入口缺失。
+	_, _, err = ResolveSqlnetOra(errFor("read", syscall.EIO), "/home/network/admin/sqlnet.ora")
+	if err == nil || errors.Is(err, ErrSqlnetEntryMissing) {
+		t.Fatalf("入口 EIO 不得满足 ErrSqlnetEntryMissing，得到 %v", err)
+	}
+	// 链内 IFILE EACCES：不是入口缺失。
+	read := func(path string) ([]byte, error) {
+		if path == "/home/network/admin/sqlnet.ora" {
+			return []byte("SQLNET.ENCRYPTION_SERVER = required\nIFILE = /home/network/admin/extra.ora\n"), nil
+		}
+		return nil, &os.PathError{Op: "open", Path: path, Err: syscall.EACCES}
+	}
+	_, _, err = ResolveSqlnetOra(read, "/home/network/admin/sqlnet.ora")
+	if err == nil || errors.Is(err, ErrSqlnetEntryMissing) {
+		t.Fatalf("链内 IFILE EACCES 不得满足 ErrSqlnetEntryMissing，得到 %v", err)
+	}
+	if !os.IsPermission(err) {
+		t.Fatalf("链内 IFILE EACCES 应保留权限错误，得到 %v", err)
 	}
 }

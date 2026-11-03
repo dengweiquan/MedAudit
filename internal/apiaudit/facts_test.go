@@ -119,3 +119,43 @@ func TestToFactsOldReportNoAnonAttr(t *testing.T) {
 		t.Fatalf("old report must not carry anonymous attr, got %q", fs[0].Attributes["anonymous"])
 	}
 }
+
+// 静态复核回归二轮：直接探针全部期望均须明确标记身份类型（此前只标管理员端点，
+// 需认证端点的普通用户拒答无法与匿名探针区分，可被误作匿名证据）。
+func TestToFactsDirectProbeIdentityMarking(t *testing.T) {
+	rep := &Report{
+		ReportID:            "mark",
+		AnonymousIdentities: []string{"anon"},
+		Checks: []Check{
+			apiCheck("GET /api/profile", "anon", "direct", "authenticated", 403, ConclPass, "匿名被拒"),
+			apiCheck("GET /api/profile", "alice", "direct", "authenticated", 200, ConclPass, "已认证身份可达"),
+			apiCheck("GET /api/public/health", "anon", "direct", "public", 200, ConclPass, "公开端点匿名可达"),
+			apiCheck("GET /api/users/{id}", "alice", "self", "owner_or_admin", 200, ConclPass, "属主自访问"),
+			apiCheck("POST /api/notes", "-", "readonly-policy", "authenticated", 0, ConclNotRun, "写方法跳过"),
+		},
+	}
+	fs := ToFacts(rep)
+	byKey := map[string]string{}
+	for _, f := range fs {
+		if f.Source != "api.audit" {
+			continue
+		}
+		byKey[f.Subject+"|"+f.Attributes["identity"]] = f.Attributes["anonymous"]
+	}
+	if byKey["GET /api/profile|anon"] != "true" {
+		t.Errorf("匿名身份的需认证端点探针应标 true，得到 %q", byKey["GET /api/profile|anon"])
+	}
+	if byKey["GET /api/profile|alice"] != "false" {
+		t.Errorf("已认证身份的需认证端点探针应标 false，得到 %q", byKey["GET /api/profile|alice"])
+	}
+	if byKey["GET /api/public/health|anon"] != "true" {
+		t.Errorf("匿名身份的公开端点探针应标 true，得到 %q", byKey["GET /api/public/health|anon"])
+	}
+	// 非直接探针不是匿名/垂直分流的身份证据，不标记。
+	if v, ok := byKey["GET /api/users/{id}|alice"]; ok && v != "" {
+		t.Errorf("属主自访问探针不应带 anonymous 标记，得到 %q", v)
+	}
+	if v, ok := byKey["POST /api/notes|-"]; ok && v != "" {
+		t.Errorf("只读策略探针不应带 anonymous 标记，得到 %q", v)
+	}
+}

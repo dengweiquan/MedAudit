@@ -56,6 +56,12 @@ func TestReviewPGSSLValueValidation(t *testing.T) {
 		{"bogus", facts.ConclusionUnknown},
 		{"on", facts.ConclusionPass},
 		{"off", facts.ConclusionFail},
+		{"false", facts.ConclusionFail},
+		{"no", facts.ConclusionFail},
+		{"0", facts.ConclusionFail},
+		{" off ", facts.ConclusionFail},
+		{"OFF", facts.ConclusionFail},
+		{"true", facts.ConclusionPass},
 	} {
 		r := singleResult(t, mk(tc.setting), &Baseline{}, "db.pg.ssl_off")
 		expectConclusion(t, r, tc.want)
@@ -79,6 +85,9 @@ func TestReviewOracleAuditTrailValueValidation(t *testing.T) {
 		{"BOGUS", facts.ConclusionUnknown},
 		{"DB", facts.ConclusionPass},
 		{"NONE", facts.ConclusionFail},
+		{" NONE ", facts.ConclusionFail},
+		{"none", facts.ConclusionFail},
+		{"db", facts.ConclusionPass},
 	} {
 		r := singleResult(t, mk(tc.value), &Baseline{}, "db.oracle.audit_trail_off")
 		expectConclusion(t, r, tc.want)
@@ -139,6 +148,7 @@ func TestReviewWinPasswordUnparseable(t *testing.T) {
 		{"bogus", facts.ConclusionUnknown},
 		{"", facts.ConclusionUnknown},
 		{"4", facts.ConclusionFail},
+		{" 4 ", facts.ConclusionFail},
 		{"12", facts.ConclusionPass},
 	} {
 		r := singleResult(t, mk(tc.v), &Baseline{}, "os.windows.password_min_length")
@@ -177,4 +187,39 @@ func TestReviewMSSQLForceEncryptionPartial(t *testing.T) {
 	// 收据 ok + 仅开启实例 → PASS。
 	b = testBundleR(facts.TargetOSWindows, []facts.Fact{on}, []facts.Receipt{receipt("win.mssql_force_encryption", "ok")})
 	expectConclusion(t, singleResult(t, b, &Baseline{}, "os.windows.mssql_force_encryption_off"), facts.ConclusionPass)
+}
+
+// 静态复核回归二轮：门控与规则共用解析——Windows 最大期限与锁定阈值。
+// 带空格的永不过期值必须命中；超 uint32 的越界值与负值门控不放行 → UNKNOWN；
+// 带空格的 0 锁定阈值必须命中（锁定关闭）。
+func TestReviewWinPasswordSharedParsing(t *testing.T) {
+	mk := func(attrs map[string]string) *facts.FactBundle {
+		base := map[string]string{"scope": "local-sam", "machine_role": "workgroup"}
+		for k, v := range attrs {
+			base[k] = v
+		}
+		return testBundleR(facts.TargetOSWindows, []facts.Fact{{
+			FactID: "f1", Kind: facts.FactAccountConfig, Subject: "password-policy",
+			Status: facts.StatusObserved, Source: "win.password_policy",
+			Attributes: base,
+		}}, []facts.Receipt{receipt("win.password_policy", "ok")})
+	}
+	for _, tc := range []struct {
+		rule string
+		attr string
+		v    string
+		want facts.Conclusion
+	}{
+		{"os.windows.password_max_age_never", "max_password_age_sec", "4294967295", facts.ConclusionFail},
+		{"os.windows.password_max_age_never", "max_password_age_sec", " 4294967295 ", facts.ConclusionFail},
+		{"os.windows.password_max_age_never", "max_password_age_sec", "5000000000", facts.ConclusionUnknown},
+		{"os.windows.password_max_age_never", "max_password_age_sec", "-1", facts.ConclusionUnknown},
+		{"os.windows.password_max_age_never", "max_password_age_sec", "86400", facts.ConclusionPass},
+		{"os.windows.password_lockout_disabled", "lockout_threshold", "0", facts.ConclusionFail},
+		{"os.windows.password_lockout_disabled", "lockout_threshold", " 0 ", facts.ConclusionFail},
+		{"os.windows.password_lockout_disabled", "lockout_threshold", "5", facts.ConclusionPass},
+	} {
+		r := singleResult(t, mk(map[string]string{tc.attr: tc.v}), &Baseline{}, tc.rule)
+		expectConclusion(t, r, tc.want)
+	}
 }

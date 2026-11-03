@@ -90,11 +90,13 @@ func TestAPIRulesAllPassWithControls(t *testing.T) {
 		apiControl("c1", "GET /api/profile", "authed_reachable"),
 		apiProbeAnon("f3", "GET /api/admin/users", "direct", "admin_only", "root", "PASS", "200", "false"),
 		apiProbeAnon("f4", "GET /api/admin/users", "direct", "admin_only", "alice", "PASS", "403", "false"),
+		apiProbeAnon("f4b", "GET /api/admin/users", "direct", "admin_only", "anon", "PASS", "401", "true"),
 		apiControl("c2", "GET /api/admin/users", "admin_reachable"),
 		apiProbe("f5", "GET /api/users/{id}", "self", "owner_or_admin", "alice", "PASS", "200"),
 		apiProbe("f6", "GET /api/users/{id}", "cross-owner:alice", "owner_or_admin", "bob", "PASS", "403"),
 		apiControl("c3", "GET /api/users/{id}", "self_reachable"),
 		apiProbe("f7", "GET /api/me", "direct", "authenticated", "alice", "PASS", "200"),
+		apiProbeAnon("f7b", "GET /api/me", "direct", "authenticated", "anon", "PASS", "401", "true"),
 		apiProbe("f8", "GET /api/me", "replay:logged_out", "authenticated", "alice-logged-out", "PASS", "401"),
 		apiControl("c4", "GET /api/me", "endpoint_reachable"),
 		apiControl("c5", "GET /api/me", "authed_reachable"),
@@ -190,14 +192,15 @@ func TestAPIRulesControlWrongEndpoint(t *testing.T) {
 
 // 静态复核回归：正向对照探针（PASS+2xx）不计入负向覆盖。
 
-// 只配置管理员身份：管理端点只有管理员自己的成功探针 → 垂直规则 UNKNOWN（不得 PASS）。
+// 只配置管理员身份：管理端点只有管理员自己的成功探针 → 未认证与垂直规则
+// 均 UNKNOWN（匿名与非管理员均从未被测；受保护端点存在，规则适用而非不适用）。
 func TestAPIRulesOnlyAdminUnknown(t *testing.T) {
 	b := apiBundle(
 		apiProbeAnon("f3", "GET /api/admin/users", "direct", "admin_only", "root", "PASS", "200", "false"),
 		apiControl("c2", "GET /api/admin/users", "admin_reachable"),
 	)
 	expectAPI(t, b, map[string]facts.Conclusion{
-		"api.anon_protected_access":      facts.ConclusionNotApplicable,
+		"api.anon_protected_access":      facts.ConclusionUnknown,
 		"api.user_admin_access":          facts.ConclusionUnknown,
 		"api.cross_owner_access":         facts.ConclusionNotApplicable,
 		"api.invalidated_session_replay": facts.ConclusionNotApplicable,
@@ -274,5 +277,71 @@ func TestAPIRulesReplayNonPublicNotRunUnknown(t *testing.T) {
 		"api.user_admin_access":          facts.ConclusionNotApplicable,
 		"api.cross_owner_access":         facts.ConclusionNotApplicable,
 		"api.invalidated_session_replay": facts.ConclusionUnknown,
+	})
+}
+
+// 静态复核回归二轮：匿名证据须为已确认匿名探针；覆盖按端点核对。
+
+// 只配置 admin 与普通用户、无匿名身份时：普通用户在管理员端点的 403
+// 是垂直证据，不是匿名证据 → 未认证 UNKNOWN（不得 PASS），垂直 PASS。
+func TestAPIRulesUserDenyNotAnonEvidence(t *testing.T) {
+	b := apiBundle(
+		apiProbeAnon("f3", "GET /api/admin/users", "direct", "admin_only", "root", "PASS", "200", "false"),
+		apiProbeAnon("f4", "GET /api/admin/users", "direct", "admin_only", "alice", "PASS", "403", "false"),
+		apiControl("c2", "GET /api/admin/users", "admin_reachable"),
+	)
+	expectAPI(t, b, map[string]facts.Conclusion{
+		"api.anon_protected_access":      facts.ConclusionUnknown,
+		"api.user_admin_access":          facts.ConclusionPass,
+		"api.cross_owner_access":         facts.ConclusionNotApplicable,
+		"api.invalidated_session_replay": facts.ConclusionNotApplicable,
+	})
+}
+
+// 老报告（缺 anonymous 标记）的管理员端点拒答：未认证无法归属 → UNKNOWN；
+// 垂直规则不需区分匿名与普通身份（同为非管理员），有对照即通过。
+func TestAPIRulesAnonUnattributablePassUnknown(t *testing.T) {
+	b := apiBundle(
+		apiProbeAnon("f4", "GET /api/admin/users", "direct", "admin_only", "someone", "PASS", "403", ""),
+		apiControl("c2", "GET /api/admin/users", "admin_reachable"),
+	)
+	expectAPI(t, b, map[string]facts.Conclusion{
+		"api.anon_protected_access":      facts.ConclusionUnknown,
+		"api.user_admin_access":          facts.ConclusionPass,
+		"api.cross_owner_access":         facts.ConclusionNotApplicable,
+		"api.invalidated_session_replay": facts.ConclusionNotApplicable,
+	})
+}
+
+// 按端点覆盖：A 端点负向完成 + 对照齐全，B 端点只有管理员正向响应 →
+// B 的缺口不得被 A 掩盖，垂直规则 UNKNOWN（无违规时不判 PASS）；
+// 未认证规则同样 UNKNOWN（两端点均无匿名探针）。
+func TestAPIRulesPerEndpointCoverage(t *testing.T) {
+	b := apiBundle(
+		apiProbeAnon("f1", "GET /api/admin/a", "direct", "admin_only", "alice", "PASS", "403", "false"),
+		apiControl("c1", "GET /api/admin/a", "admin_reachable"),
+		apiProbeAnon("f2", "GET /api/admin/b", "direct", "admin_only", "root", "PASS", "200", "false"),
+		apiControl("c2", "GET /api/admin/b", "admin_reachable"),
+	)
+	expectAPI(t, b, map[string]facts.Conclusion{
+		"api.anon_protected_access":      facts.ConclusionUnknown,
+		"api.user_admin_access":          facts.ConclusionUnknown,
+		"api.cross_owner_access":         facts.ConclusionNotApplicable,
+		"api.invalidated_session_replay": facts.ConclusionNotApplicable,
+	})
+}
+
+// 按端点覆盖 + 违规优先：B 端点未覆盖，但 A 端点有明确违规 → 仍 FAIL。
+func TestAPIRulesPerEndpointGapWithFail(t *testing.T) {
+	b := apiBundle(
+		apiProbeAnon("f1", "GET /api/admin/a", "direct", "admin_only", "alice", "FAIL", "200", "false"),
+		apiProbeAnon("f2", "GET /api/admin/b", "direct", "admin_only", "root", "PASS", "200", "false"),
+		apiControl("c2", "GET /api/admin/b", "admin_reachable"),
+	)
+	expectAPI(t, b, map[string]facts.Conclusion{
+		"api.anon_protected_access":      facts.ConclusionUnknown,
+		"api.user_admin_access":          facts.ConclusionFail,
+		"api.cross_owner_access":         facts.ConclusionNotApplicable,
+		"api.invalidated_session_replay": facts.ConclusionNotApplicable,
 	})
 }
