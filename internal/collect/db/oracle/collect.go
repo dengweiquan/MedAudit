@@ -82,7 +82,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 	conRc := facts.Receipt{
 		TemplateID: "ora.container", TemplateVersion: "1",
 		Started: conProbeStart.UTC().Truncate(time.Second),
-		Status: "ok", Visibility: "full",
+		Status:  "ok", Visibility: "full",
 	}
 	conRows, conErr := dbutil.QueryRows(ctx, db,
 		"SELECT SYS_CONTEXT('USERENV', 'CON_NAME') AS con_name, SYS_CONTEXT('USERENV', 'CON_ID') AS con_id FROM DUAL", 0, 0, 0)

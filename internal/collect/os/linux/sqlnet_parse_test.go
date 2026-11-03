@@ -1,11 +1,11 @@
 package linux
 
 import (
-	"syscall"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
