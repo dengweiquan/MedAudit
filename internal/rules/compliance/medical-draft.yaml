@@ -16,6 +16,14 @@
 # 启用步骤：合规人员确认每条 ref 后，把 status 改为 verified，复制到
 # /etc/medaudit/compliance/（或 MEDAUDIT_COMPLIANCE_DIR）后重启服务。也可不改状态，用
 # MEDAUDIT_COMPLIANCE_ENABLE=medical-draft 临时启用（报告会标「条款号待核实」）。
+#
+# P0 调整（2026-11-03，医疗范围）：
+# - 医疗-02 摘除 mw.iis.default_site（默认站点属示例应用，移入医疗-08）；医疗-02 现仅覆盖默认账号，
+#   示例账号、无用账号的其余情形目前为弱覆盖；
+# - 医疗-09 摘除 db.mysql.name_resolve_on（主机名解析方式，与“限制访问来源”仅弱相关；该规则仍由等保框架覆盖）；
+# - 医疗-04 标题去掉“可审计”（第三方访问的可审计性目前无规则覆盖，属未检查，见下）；
+# - 本框架未覆盖、报告中应标「本平台未检查」的范围：安全审计（审计启用、记录保护、留存期限）、
+#   API 越权检查（apiaudit 引擎存在但未挂入本框架）、数据分级分类与去标识化（GB/T 39725 相关要求超出权限审计范围）。
 id: medical-draft
 name: 医疗卫生行业网络与数据安全要求
 short: 医疗行业
@@ -34,7 +42,6 @@ controls:
     title: 及时锁定或删除默认账号、示例账号与无用账号
     rules:
       - db.oracle.default_account_open
-      - mw.iis.default_site
   - id: 医疗-03
     ref: "《办法》第二十二条（四）"
     group: 权限管理
@@ -66,7 +73,7 @@ controls:
   - id: 医疗-04
     ref: "《办法》第十条、第十六条"
     group: 权限管理
-    title: 第三方与运维人员权限按需授予、可审计，不得长期持有无限制特权
+    title: 第三方与运维人员权限按需授予，不得长期持有无限制特权
     rules:
       - os.hpux.sudo_all
       - os.linux.sudo_all
@@ -109,6 +116,7 @@ controls:
       - db.mssql.clr_enabled
       - db.mssql.xp_cmdshell
       - db.mysql.local_infile
+      - mw.iis.default_site
       - mw.nginx.autoindex
       - mw.tomcat.manager_deployed
       - mw.tomcat.sample_apps
@@ -120,7 +128,6 @@ controls:
     group: 安全加固
     title: 限制数据库与管理端口的访问来源
     rules:
-      - db.mysql.name_resolve_on
       - db.pg.hba_open_network
       - db.pg.listen_all
   - id: 医疗-10
