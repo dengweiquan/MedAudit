@@ -140,6 +140,14 @@ func (r *runner) runReplay(ctx context.Context, ops []Operation) {
 			note = "（" + s.Note + "）"
 		}
 		for _, op := range targets {
+			if cfg.expectationFor(op) == AccessPublic {
+				// 公开端点无需会话：失效会话被接受不是漏洞，不发探针、不判 FAIL。
+				r.add(Check{Endpoint: op.Method + " " + op.Path, Identity: s.Name,
+					Probe: probeKind, Expectation: AccessPublic,
+					Conclusion: ConclNotRun,
+					Detail:     "公开端点无需会话，重放探针跳过（接受失效会话不构成越权）"})
+				continue
+			}
 			if op.Method != http.MethodGet && !cfg.ProbeWrites {
 				// 只读策略：写方法登记 NOT_RUN，绝不默认发出写请求。
 				r.add(Check{Endpoint: op.Method + " " + op.Path, Identity: s.Name,

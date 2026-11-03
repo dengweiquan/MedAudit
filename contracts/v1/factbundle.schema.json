@@ -15,7 +15,7 @@
       "properties": {
         "name": {"type": "string"},
         "version": {"type": "string"},
-        "adapter": {"type": "string", "enum": ["os-linux", "os-windows", "db-oracle", "db-sqlserver", "db-mysql", "db-postgres", "mw-tomcat", "mw-nginx", "mw-weblogic", "mw-iis"]},
+        "adapter": {"type": "string", "enum": ["os-linux", "os-windows", "db-oracle", "db-sqlserver", "db-mysql", "db-postgres", "mw-tomcat", "mw-nginx", "mw-weblogic", "mw-iis", "api"]},
         "adapter_version": {"type": "string"}
       }
     },
@@ -33,7 +33,7 @@
       "properties": {
         "hospital_id": {"type": "string"},
         "asset_id": {"type": "string"},
-        "target_type": {"type": "string", "enum": ["os-linux", "os-windows", "db-oracle", "db-sqlserver", "db-mysql", "db-postgres", "mw-tomcat", "mw-nginx", "mw-weblogic", "mw-iis"]},
+        "target_type": {"type": "string", "enum": ["os-linux", "os-windows", "db-oracle", "db-sqlserver", "db-mysql", "db-postgres", "mw-tomcat", "mw-nginx", "mw-weblogic", "mw-iis", "api"]},
         "target_version": {"type": "string"},
         "instance": {"type": "string"},
         "container": {"type": "string"},
@@ -59,7 +59,7 @@
         "required": ["fact_id", "kind", "subject", "status", "source"],
         "properties": {
           "fact_id": {"type": "string"},
-          "kind": {"type": "string", "enum": ["identity", "role_edge", "privilege", "account_config", "process", "file_perm", "service_config"]},
+          "kind": {"type": "string", "enum": ["identity", "role_edge", "privilege", "account_config", "process", "file_perm", "service_config", "api_check"]},
           "subject": {"type": "string", "description": "对象稳定标识"},
           "status": {"type": "string", "enum": ["observed", "permission_denied", "unsupported", "inconsistent", "truncated", "timeout"]},
           "source": {"type": "string"},

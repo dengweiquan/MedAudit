@@ -54,6 +54,7 @@ const (
 	TargetMWNginx    TargetType = "mw-nginx"
 	TargetMWWebLogic TargetType = "mw-weblogic"
 	TargetMWIIS      TargetType = "mw-iis"
+	TargetAPI        TargetType = "api" // M4-4：业务接口越权检测（apiaudit 合成包）
 )
 
 // FactKind 事实种类。
@@ -67,6 +68,7 @@ const (
 	FactProcess       FactKind = "process"
 	FactFilePerm      FactKind = "file_perm"
 	FactServiceConfig FactKind = "service_config"
+	FactAPICheck      FactKind = "api_check" // M4-4：apiaudit 探针结论与正向对照（见 internal/apiaudit/facts.go）
 )
 
 // Activation 权限激活条件。

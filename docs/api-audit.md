@@ -25,6 +25,34 @@ cmd/medaudit-fixture（127.0.0.1:19090）：已知坏用例（水平越权 /api/
 - 对象/资源 ID 的属主映射由配置 owns 提供，HAR 路径的 {id} 与 OpenAPI 参数名不一致时需在配置中对齐。
 - 发现项的逐项复核（finding review）与报告导出集成是后续（M4-4）工作；当前报告以独立表存档可查。
 
+## 合规挂接（M4-4，医疗-12）
+
+- 四条规则（各立一条，不用笼统通过项包住引擎；Target 均为 api，Version 均为 1）：
+  `api.anon_protected_access`（未认证访问受保护接口）、`api.user_admin_access`（普通身份访问管理员接口）、
+  `api.cross_owner_access`（跨所有者访问）、`api.invalidated_session_replay`（凭据失效后重放）。
+  映射：医疗-12（草稿框架）+ 等保 8.1.4.2 a/d 与 8.1.4.1 b（对应关系；非 API 包上四规则均为 NA，
+  不影响既有等保报告）。
+- 事实契约（`internal/apiaudit/facts.go` ToFacts）：报告 checks → api_check 事实；
+  探针事实（Source api.audit）+ 正向对照事实（Source api.control，由同报告差分 2xx 派生，不新增探针）。
+  结论语义：FAIL 只在引擎已拿到确切证据时出现（水平越权要求 canary 命中；2xx 无 canary 仍 UNKNOWN）；
+  PASS 要求每个通过探针都有同端点对照（公开/已认证/管理员/属主/端点可达），否则拒答可能是 404，
+  一律 UNKNOWN；全部 NOT_RUN（写方法只读策略）→ UNKNOWN；无此类探针 → 不适用。
+  未认证与垂直的分流靠报告的匿名身份清单：管理员端点匿名 FAIL 归未认证规则，
+  已认证或清单缺失（老报告）的 FAIL 归垂直规则（匿名本就是非管理员子集）；清单缺失时
+  未认证规则对无法归属的 FAIL 不误判 PASS（返回 UNKNOWN）。
+- 报告绑定（`apiaudit/v1`）：apicheck 配置可选 `hospital_id`/`asset_id`；服务端存档时校验
+  资产存在且归属该医院（否则拒绝上传），统计由 checks 重算（不信任客户端 Summary）。
+  合规判定端点 `GET /api/v1/api-audits/{id}/compliance`（需登录）：绑定 + 资产库核实通过才评估，
+  否则条款为 unknown（老格式、无绑定、资产未核实皆如此，历史报告不自动纳入通过）。
+  机器通道（POST）无浏览器会话，其权限核验即绑定校验 + 统计重算。
+- 重放探针：公开端点跳过（NOT_RUN；公开端点接受失效会话不是漏洞）；重放 PASS 要求
+  同端点差分 2xx 对照（证明端点存在）。重放会话的有效性由操作员在配置中声明，本规则不验证该声明。
+- Web：报告页业务接口报告行有「合规判定」按钮（调合规端点，展示医疗-12 条款与四规则结论、
+  对照与未绑定原因）；对象页归属以 asset_id 绑定优先、目标地址匹配回退；医院过滤同样绑定优先。
+- 夹具验收（2026-11-03，隔离应用）：27 checks（PASS 18 / FAIL 7 / UNKNOWN 0 / NOT_RUN 2），
+  合规判定 bound=true、条款 fail：未认证 pass，垂直 fail 2（admin/users 任意登录可达），
+  水平 fail 2（跨主体 canary 命中），重放 fail 3（夹具令牌无失效机制，属预期）；对照五类齐全。
+
 ## 会话重放探针（M31）
 
 差分探测测权限设计对不对；重放探针测偷来的凭证好不好用，即会话失效

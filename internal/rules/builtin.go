@@ -113,6 +113,9 @@ func DefaultRegistry() *Registry {
 	for _, e := range mw2BuiltinRules {
 		_ = r.Register(e.spec, e.check)
 	}
+	for _, e := range apiBuiltinRules {
+		_ = r.Register(e.spec, e.check)
+	}
 	return r
 }
 

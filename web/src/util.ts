@@ -146,17 +146,17 @@ export function hospitalProgressStatus(
   return { status: 'clear', unaudited }
 }
 
-// filterApiReports 按医院过滤业务接口报告（M37-fix2-4）：
-// 已匹配到登记对象的，按对象所属医院过滤；未匹配的只在「全部医院」视图
-// 下显示，选定医院时不显示（此前未过滤，他院已匹配报告会以目标地址形式
-// 漏进本院视图，未匹配报告也会出现在选定医院视图里）。
+// filterApiReports 按医院过滤业务接口报告（M37-fix2-4，M4-4 绑定优先）：
+// 已绑定医院的报告直接按绑定医院过滤（可靠归属）；未绑定的回退到目标地址
+// 匹配登记对象（老报告）；未匹配的只在「全部医院」视图下显示，选定医院时
+// 不显示（此前未过滤，他院已匹配报告会以目标地址形式漏进本院视图）。
 export function filterApiReports(
   reports: ApiAuditSummary[],
   assetByEndpoint: Map<string, { hospital_id: string }>,
   hospitalId: string,
 ): ApiAuditSummary[] {
   if (!hospitalId) return reports
-  return reports.filter(r => assetByEndpoint.get(r.target)?.hospital_id === hospitalId)
+  return reports.filter(r => (r.hospital_id || assetByEndpoint.get(r.target)?.hospital_id) === hospitalId)
 }
 
 // loadBundlesByAssets 按对象逐个取全部包（复检候选，M37-fix2-2）：

@@ -30,6 +30,9 @@ controls:
     rules:
       - db.oracle.profile_password_policy
       - os.windows.password_lockout_disabled
+      # M4-4：会话失效重放（登出/过期/改密/吊销后凭证仍被接受）归入本条的会话终止语义；
+      # 本条不覆盖吊销传播时延等完整会话管理，映射仅为对应关系，非全部满足。
+      - api.invalidated_session_replay
   - id: "8.1.4.1 c)"
     group: 身份鉴别
     title: 远程管理时防止鉴别信息在网络传输中被窃听
@@ -48,6 +51,8 @@ controls:
       - db.pg.public_db_create
       - db.pg.public_writable
       - mw.iis.anon_open
+      # M4-4：接口层匿名访问（与 mw.iis.anon_open 同类：未登录身份可达受保护面）。
+      - api.anon_protected_access
   - id: "8.1.4.2 b)"
     group: 访问控制
     title: 重命名或删除默认账户，修改默认账户的默认口令
@@ -64,6 +69,9 @@ controls:
     group: 访问控制
     title: 授予管理用户所需的最小权限，实现权限分离
     rules:
+      # M4-4：接口层越权（普通身份达管理员接口、跨所有者读他人资源）均为权限分离失效。
+      - api.user_admin_access
+      - api.cross_owner_access
       - db.mssql.control_server
       - db.mssql.cross_db_chaining
       - db.mssql.sysadmin

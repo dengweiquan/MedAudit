@@ -226,12 +226,18 @@ async function load() {
       } catch { /* 未评估包 */ }
     }
     riskMap.value = rm
-    // 接口审计报告按目标地址匹配本院接口资产（报告本身无医院归属列）。
+    // 接口审计报告归属：绑定（asset_id，M4-4 可靠归属）优先，目标地址匹配
+    // 仅作老报告（未绑定）的回退。
     try {
       const all = await api.apiAudits()
+      const assetIds = new Set(assets.value.map(a => a.id))
       const eps = new Map(assets.value.filter(a => kindCategory(a.kind) === 'api' && a.endpoint).map(a => [a.endpoint as string, a.id]))
       const byAsset = new Map<string, ApiAuditSummary>()
-      for (const r of [...all].sort((x, y) => y.imported_at.localeCompare(x.imported_at))) {
+      const sorted = [...all].sort((x, y) => y.imported_at.localeCompare(x.imported_at))
+      for (const r of sorted) {
+        if (r.asset_id && assetIds.has(r.asset_id) && !byAsset.has(r.asset_id)) byAsset.set(r.asset_id, r)
+      }
+      for (const r of sorted) {
         const aid = eps.get(r.target)
         if (aid && !byAsset.has(aid)) byAsset.set(aid, r)
       }

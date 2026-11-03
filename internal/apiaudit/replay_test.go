@@ -141,6 +141,47 @@ func TestReplay(t *testing.T) {
 	}
 }
 
+// 公开端点重放跳过：公开端点接受失效会话不是漏洞，不判 FAIL；
+// 同一会话在需认证端点被接受仍判 FAIL（证明跳过只针对公开端点）。
+func TestReplaySkipsPublic(t *testing.T) {
+	srv := replayFixture(t)
+	defer srv.Close()
+	specPath := filepath.Join(t.TempDir(), "spec.json")
+	spec := `{"openapi":"3.0.0","paths":{"/api/open":{"get":{}},"/api/me":{"get":{}}}}`
+	if err := os.WriteFile(specPath, []byte(spec), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(t.TempDir(), "cfg.yml")
+	yamlText := `base_url: "` + srv.URL + `"
+spec_file: "` + specPath + `"
+identities:
+  - {name: alice, headers: {Cookie: "session=tok-valid"}}
+expectations:
+  - {method: GET, path: "/api/open", access: public}
+  - {method: GET, path: "/api/me", access: authenticated}
+replay:
+  sessions:
+    - {name: alice-logged-out, identity: alice, invalidated: logged_out}
+`
+	if err := os.WriteFile(cfgPath, []byte(yamlText), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := findReplay(t, rep, "alice-logged-out", "GET /api/open"); c.Conclusion != ConclNotRun {
+		t.Errorf("公开端点重放期望 NOT_RUN，得到 %s (%s)", c.Conclusion, c.Detail)
+	}
+	if c := findReplay(t, rep, "alice-logged-out", "GET /api/me"); c.Conclusion != ConclFail {
+		t.Errorf("需认证端点重放期望 FAIL，得到 %s (%s)", c.Conclusion, c.Detail)
+	}
+}
+
 func TestReplayConfigValidation(t *testing.T) {
 	srv := replayFixture(t)
 	defer srv.Close()

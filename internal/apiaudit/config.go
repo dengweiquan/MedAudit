@@ -74,6 +74,10 @@ type Config struct {
 	ProbeWrites   bool          `yaml:"probe_writes"` // 默认 false：写方法只登记 NOT_RUN
 	TimeoutSecond int           `yaml:"timeout_seconds"`
 	Replay        *ReplayConfig `yaml:"replay"` // M31：会话重放探针；留空则不跑重放
+	// HospitalID / AssetID 合规绑定（可选）：报告归属的医院与接口资产；
+	// 服务端存档时校验资产存在且归属该医院。缺失则报告不用于合规判定。
+	HospitalID string `yaml:"hospital_id"`
+	AssetID    string `yaml:"asset_id"`
 }
 
 // LoadConfig 读取 YAML 配置并做基本校验。
