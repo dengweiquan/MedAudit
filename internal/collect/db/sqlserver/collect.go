@@ -115,7 +115,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 	}
 
 	// 服务器层模板。
-	for _, tid := range []string{"mssql.server_principals", "mssql.server_role_members", "mssql.server_permissions", "mssql.server_config"} {
+	for _, tid := range []string{"mssql.server_principals", "mssql.server_role_members", "mssql.server_permissions", "mssql.server_config", "mssql.server_audits"} {
 		t := byID[tid]
 		mapFn := mapServerTemplate(tid, b, nextID, rowMap)
 		if err := run(t, t.SQL, "", mapFn); err != nil {
@@ -220,6 +220,7 @@ func mapServerTemplate(tid string, b *facts.FactBundle, nextID func() string,
 					Attributes: map[string]string{
 						"principal_type": m["principal_type"], "is_disabled": m["is_disabled"],
 						"default_database_name": m["default_database_name"],
+						"is_policy_checked":     m["is_policy_checked"], "is_expiration_checked": m["is_expiration_checked"],
 					},
 				})
 			case "mssql.server_role_members":
@@ -242,6 +243,17 @@ func mapServerTemplate(tid string, b *facts.FactBundle, nextID func() string,
 					Source:  tid,
 					Attributes: map[string]string{
 						"value_in_use": m["value_in_use"], "is_dynamic": m["is_dynamic"],
+					},
+				})
+			case "mssql.server_audits":
+				b.Facts = append(b.Facts, facts.Fact{
+					FactID:  nextID(),
+					Kind:    facts.FactAccountConfig,
+					Subject: m["audit_name"],
+					Status:  facts.StatusObserved,
+					Source:  tid,
+					Attributes: map[string]string{
+						"is_state_enabled": m["is_state_enabled"],
 					},
 				})
 			case "mssql.server_permissions":

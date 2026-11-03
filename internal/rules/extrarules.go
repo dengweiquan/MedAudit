@@ -72,6 +72,77 @@ var linuxExtraRules = []struct {
 			return hits
 		},
 	},
+	{
+		spec: RuleSpec{
+			ID: "os.linux.ssh_password_auth", Version: "1",
+			Name:        "sshd 允许口令鉴别",
+			Target:      facts.TargetOSLinux,
+			Description: "sshd 允许口令鉴别时，远程管理依赖口令（可爆破、可窃听重放），应改用密钥鉴别。",
+			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Risk:        RiskMedium,
+			Remediation: "将 PasswordAuthentication 设为 no，仅允许密钥登录；确需口令通道的记入基线。",
+		},
+		check: func(c *EvalContext) []CheckHit {
+			var hits []CheckHit
+			for _, f := range c.ByKind[facts.FactAccountConfig] {
+				if f.Source != "linux.sshd" || f.Status != facts.StatusObserved || f.Attributes["present"] != "true" {
+					continue
+				}
+				v := f.Attributes["password_authentication"]
+				explicit := v != ""
+				if !explicit {
+					v = "yes" // sshd 缺省即允许口令鉴别
+				}
+				if !strings.EqualFold(v, "yes") {
+					continue
+				}
+				if c.Baseline.Allowed("sshd_config", "sshd", "password_authentication", "") {
+					continue
+				}
+				detail := "sshd 允许口令鉴别（PasswordAuthentication=yes）"
+				if !explicit {
+					detail = "sshd 未禁用口令鉴别（缺省 PasswordAuthentication=yes）"
+				}
+				hits = append(hits, CheckHit{
+					Subject:  "sshd_config",
+					Detail:   detail,
+					Evidence: []string{f.FactID},
+				})
+			}
+			return hits
+		},
+	},
+	{
+		spec: RuleSpec{
+			ID: "os.linux.ssh_root_login", Version: "1",
+			Name:        "sshd 允许 root 口令登录",
+			Target:      facts.TargetOSLinux,
+			Description: "PermitRootLogin=yes 时 root 可直接口令登录，远程爆破一旦成功即获最高权限。",
+			Requires:    []facts.FactKind{facts.FactAccountConfig},
+			Risk:        RiskHigh,
+			Remediation: "将 PermitRootLogin 设为 no 或 prohibit-password，root 仅经普通账号 sudo 提权。",
+		},
+		check: func(c *EvalContext) []CheckHit {
+			var hits []CheckHit
+			for _, f := range c.ByKind[facts.FactAccountConfig] {
+				if f.Source != "linux.sshd" || f.Status != facts.StatusObserved || f.Attributes["present"] != "true" {
+					continue
+				}
+				if !strings.EqualFold(f.Attributes["permit_root_login"], "yes") {
+					continue
+				}
+				if c.Baseline.Allowed("sshd_config", "sshd", "permit_root_login", "") {
+					continue
+				}
+				hits = append(hits, CheckHit{
+					Subject:  "sshd_config",
+					Detail:   "sshd 允许 root 口令登录（PermitRootLogin=yes）",
+					Evidence: []string{f.FactID},
+				})
+			}
+			return hits
+		},
+	},
 }
 
 // mysqlExtraRules MySQL 补盲规则（M4-4b，传输安全维度）。

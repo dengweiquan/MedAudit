@@ -1,3 +1,4 @@
+db.pg.audit_off	FAIL	medium	server
 db.pg.dangerous_role_attrs	FAIL	high	app_builder
 db.pg.dangerous_role_attrs	FAIL	high	role_mgr
 db.pg.hba_open_network	PASS	medium	
@@ -7,5 +8,6 @@ db.pg.listen_all	FAIL	low	server
 db.pg.password_encryption_weak	FAIL	medium	server
 db.pg.public_db_create	FAIL	high	PUBLIC
 db.pg.public_writable	PASS	high	
+db.pg.ssl_off	FAIL	medium	server
 db.pg.superuser	FAIL	high	app_admin
 db.pg.superuser	FAIL	high	postgres

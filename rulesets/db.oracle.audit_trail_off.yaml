@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.oracle.audit_trail_off
+version: "1"
+name: Oracle 未启用审计
+target: db-oracle
+risk: medium
+description: |
+  AUDIT_TRAIL=NONE 时数据库审计完全关闭，无法追溯用户行为。
+requires: [account_config]
+remediation: |
+  将 AUDIT_TRAIL 设为 DB（或 DB_EXTENDED）并重启生效；审计记录定期归档。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.3 a) 安全审计：启用安全审计功能，覆盖每个用户，对重要用户行为和安全事件进行审计"

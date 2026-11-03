@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.pg.audit_off
+version: "1"
+name: PostgreSQL 未启用审计日志
+target: db-postgres
+risk: medium
+description: |
+  logging_collector、log_connections 与 log_statement 均未表明审计开启时，数据库无审计轨迹，无法追溯登录与数据操作。
+requires: [account_config]
+remediation: |
+  启用 logging_collector 并打开 log_connections（至少记录连接审计），按需将 log_statement 设为 ddl 或 mod。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.3 a) 安全审计：启用安全审计功能，覆盖每个用户，对重要用户行为和安全事件进行审计"

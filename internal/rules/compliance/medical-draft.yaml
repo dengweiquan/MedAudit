@@ -24,6 +24,13 @@
 # - 医疗-04 标题去掉“可审计”（第三方访问的可审计性目前无规则覆盖，属未检查，见下）；
 # - 本框架未覆盖、报告中应标「本平台未检查」的范围：安全审计（审计启用、记录保护、留存期限）、
 #   API 越权检查（apiaudit 引擎存在但未挂入本框架）、数据分级分类与去标识化（GB/T 39725 相关要求超出权限审计范围）。
+#
+# 补全（2026-11-03，等保三级 GB/T 22239-2019 第三级为基线）：
+# - 新增医疗-11 安全审计（Oracle/MSSQL/PG 审计启用规则）；审计记录保护、留存期限仍无规则，属未检查；
+# - 新增医疗-12 API 安全（控制项占位，rules 为空；apiaudit 引擎存在但未挂入本框架，映射待做）；
+# - 医疗-05 补 MySQL/MSSQL 口令策略规则，医疗-06 补 PG 传输加密规则；
+# - 仍未覆盖：Windows 口令策略与 RDP、Oracle/MSSQL 传输加密（采集面不可达：sqlnet.ora 与 ForceEncryption 不在 DB 连接可查范围）、
+#   数据分级分类与去标识化（需敏感对象标记产品能力）、GB/T 39725 条款号（全空，待合规人员持标准文本填写）。
 id: medical-draft
 name: 医疗卫生行业网络与数据安全要求
 short: 医疗行业
@@ -84,6 +91,8 @@ controls:
     title: 口令具备复杂度并定期更换，有登录失败锁定，鉴别信息安全存储
     rules:
       - db.oracle.profile_password_policy
+      - db.mysql.password_policy
+      - db.mssql.password_policy
       - db.pg.hba_trust
       - db.pg.hba_weak_method
       - db.pg.password_encryption_weak
@@ -101,6 +110,7 @@ controls:
       - mw.tomcat.plain_listener
       - mw.tomcat.tls_weak
       - mw.weblogic.plain_listener
+      - db.pg.ssl_off
   - id: 医疗-07
     ref: "《办法》第二十二条（四）（相关）"
     group: 数据安全
@@ -143,3 +153,16 @@ controls:
       - os.linux.writable_service_file
       - os.windows.svc_account_mismatch
       - os.windows.writable_service_binary
+  - id: 医疗-11
+    ref: ""
+    group: 安全审计
+    title: 启用数据库审计功能
+    rules:
+      - db.oracle.audit_trail_off
+      - db.mssql.audit_off
+      - db.pg.audit_off
+  - id: 医疗-12
+    ref: ""
+    group: API 安全
+    title: 应用程序接口访问控制与鉴权，防止越权访问
+    rules: []

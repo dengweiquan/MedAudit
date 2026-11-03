@@ -1153,6 +1153,7 @@ db.oracle.any_privilege	FAIL	medium	XDB
 db.oracle.any_privilege	FAIL	medium	XDB
 db.oracle.any_privilege	FAIL	medium	ZEMR
 db.oracle.any_privilege	FAIL	medium	ZEMR
+db.oracle.audit_trail_off	PASS	medium	
 db.oracle.cdb_dba_in_pdb	FAIL	high	PDB_DBA_TEST
 db.oracle.cdb_dba_in_pdb	FAIL	high	SYS
 db.oracle.cdb_dba_in_pdb	FAIL	high	SYSTEM

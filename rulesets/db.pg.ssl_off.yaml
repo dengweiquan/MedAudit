@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.pg.ssl_off
+version: "1"
+name: PostgreSQL 未启用 SSL
+target: db-postgres
+risk: medium
+description: |
+  ssl=off 时数据库连接不加密，口令与业务数据在网络上传输可被窃听。
+requires: [account_config]
+remediation: |
+  启用 ssl 并配置有效证书；客户端以 hostssl 限定加密连接。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.8 a) 数据保密性：采用密码技术保证重要数据在传输过程中的保密性"
