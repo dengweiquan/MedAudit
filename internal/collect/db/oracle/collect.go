@@ -52,8 +52,9 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 			AssetID:    fmt.Sprintf("oracle-%s:%d/%s", cfg.Host, cfg.Port, cfg.Service),
 			TargetType: facts.TargetDBOracle,
 			Instance:   "ARK19C",
-			Container:  cfg.Service,
-			Profile:    "m1-full",
+			// Container 初始为空，仅由下方的服务端 CON_NAME 探针确认后填写：
+			// 连接服务名与 PDB 名可能不同，服务名不得充当容器身份。
+			Profile: "m1-full",
 		},
 		Identities: facts.Identities{
 			CollectorIdentity: cfg.User + "@collector",
@@ -71,6 +72,40 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 
 	seq := 0
 	nextID := func() string { seq++; return fmt.Sprintf("ora-fact-%06d", seq) }
+
+	// 容器身份探针：以服务端 SYS_CONTEXT 确认的实际容器名（CON_NAME/CON_ID）
+	// 作为 Scope.Container；服务名与 PDB 名可能不同，不得以服务名冒充。
+	// 探针失败或返回空时容器身份保持为空——指定容器的敏感标签将判未确认
+	// （见 internal/platform/sensitive.go）。探针本身不影响整包执行状态
+	// （11g 无 CON_NAME 概念，失败是预期内的，不标 FAILED）。
+	conProbeStart := time.Now()
+	conRc := facts.Receipt{
+		TemplateID: "ora.container", TemplateVersion: "1",
+		Started: conProbeStart.UTC().Truncate(time.Second),
+		Status:  "ok", Visibility: "full",
+	}
+	conRows, conErr := dbutil.QueryRows(ctx, db,
+		"SELECT SYS_CONTEXT('USERENV', 'CON_NAME') AS con_name, SYS_CONTEXT('USERENV', 'CON_ID') AS con_id FROM DUAL", 0, 0, 0)
+	if conErr == nil && len(conRows.Data) > 0 {
+		conName := conRows.Data[0][conRows.ColIndex("con_name")]
+		conID := conRows.Data[0][conRows.ColIndex("con_id")]
+		if strings.TrimSpace(conName) != "" {
+			b.Scope.Container = conName
+			conRc.RowCount = 1
+			b.Facts = append(b.Facts, facts.Fact{
+				FactID: nextID(), Kind: facts.FactAccountConfig, Subject: "container",
+				Status: facts.StatusObserved, Source: "ora.container",
+				Attributes: map[string]string{"con_name": conName, "con_id": conID},
+			})
+		}
+	} else if conErr != nil {
+		conRc.Status = "failed"
+		conRc.ErrorStage = "query"
+		conRc.Error = facts.RedactSecrets(conErr.Error())
+	}
+	conRc.Finished = time.Now().UTC().Truncate(time.Second)
+	conRc.DurationMs = conRc.Finished.Sub(conRc.Started).Milliseconds()
+	b.Receipts = append(b.Receipts, conRc)
 	failed := false
 
 	var users []string
@@ -93,6 +128,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		case qerr != nil && dbutil.IsPermissionDenied(qerr):
 			rc.Status = "denied"
 			rc.ErrorStage = "query"
+			rc.Error = facts.RedactSecrets(qerr.Error())
 			b.Receipts = append(b.Receipts, rc)
 			b.Facts = append(b.Facts, facts.Fact{
 				FactID: nextID(), Kind: facts.FactAccountConfig, Subject: t.ID,
@@ -102,6 +138,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		case qerr != nil:
 			rc.Status = "failed"
 			rc.ErrorStage = "query"
+			rc.Error = facts.RedactSecrets(qerr.Error())
 			failed = true
 			b.Receipts = append(b.Receipts, rc)
 			return fmt.Errorf("template %s: %w", t.ID, qerr)
@@ -150,6 +187,7 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		if perr != nil {
 			rc.Status = "failed"
 			rc.ErrorStage = "query"
+			rc.Error = facts.RedactSecrets(perr.Error())
 			failed = true
 		}
 		rc.Finished = time.Now().UTC().Truncate(time.Second)
@@ -354,6 +392,17 @@ func mapTemplate(tid string, b *facts.FactBundle, nextID func() string) func(*db
 					},
 					Scope:      "instance",
 					Activation: facts.ActivationDefault,
+				})
+			case "ora.parameters":
+				b.Facts = append(b.Facts, facts.Fact{
+					FactID:  nextID(),
+					Kind:    facts.FactAccountConfig,
+					Subject: m["name"],
+					Status:  facts.StatusObserved,
+					Source:  tid,
+					Attributes: map[string]string{
+						"name": m["name"], "value": m["value"],
+					},
 				})
 			}
 		}

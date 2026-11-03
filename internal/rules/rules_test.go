@@ -227,3 +227,214 @@ func TestLinuxRootMismatch(t *testing.T) {
 		t.Fatalf("文案不符：got %q want %q", detail, want)
 	}
 }
+
+func failsFor(t *testing.T, b *facts.FactBundle, ruleID string) []TechnicalResult {
+	t.Helper()
+	var out []TechnicalResult
+	for _, r := range DefaultRegistry().Evaluate(b, &Baseline{}) {
+		if r.RuleID == ruleID && r.Conclusion == facts.ConclusionFail {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func TestPGSSLAndAudit(t *testing.T) {
+	pg := func(name, setting string) facts.Fact {
+		return facts.Fact{FactID: "f-" + name, Kind: facts.FactAccountConfig, Subject: "server",
+			Status: facts.StatusObserved, Source: "pg.settings",
+			Attributes: map[string]string{"name": name, "setting": setting}}
+	}
+	// ssl=off → ssl_off FAIL；三项审计信号全关 → audit_off FAIL
+	b := testBundle(facts.TargetDBPostgres, []facts.Fact{
+		pg("ssl", "off"), pg("logging_collector", "off"),
+		pg("log_connections", "off"), pg("log_statement", "none"),
+	})
+	b.Receipts = []facts.Receipt{{TemplateID: "pg.settings", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b, "db.pg.ssl_off"); len(got) != 1 {
+		t.Fatalf("ssl_off fails = %d, want 1", len(got))
+	}
+	if got := failsFor(t, b, "db.pg.audit_off"); len(got) != 1 {
+		t.Fatalf("audit_off fails = %d, want 1", len(got))
+	}
+	// ssl=on 且仅 logging_collector=on（事件开关全关）→ ssl_off 不 FAIL，但 audit_off 必须 FAIL：
+	// 收集器开启不等于审计事件开启。
+	b2 := testBundle(facts.TargetDBPostgres, []facts.Fact{
+		pg("ssl", "on"), pg("logging_collector", "on"),
+		pg("log_connections", "off"), pg("log_statement", "none"),
+	})
+	b2.Receipts = []facts.Receipt{{TemplateID: "pg.settings", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b2, "db.pg.ssl_off"); len(got) != 0 {
+		t.Fatalf("ssl=on 时 ssl_off 不应 FAIL，got %d", len(got))
+	}
+	if got := failsFor(t, b2, "db.pg.audit_off"); len(got) != 1 {
+		t.Fatalf("仅 logging_collector=on 时 audit_off 应 FAIL，got %d", len(got))
+	}
+	// 收集器 off 但 log_connections=on（事件走其他输出路径）→ audit_off 不 FAIL。
+	b2b := testBundle(facts.TargetDBPostgres, []facts.Fact{
+		pg("ssl", "on"), pg("logging_collector", "off"),
+		pg("log_connections", "on"), pg("log_statement", "none"),
+	})
+	b2b.Receipts = []facts.Receipt{{TemplateID: "pg.settings", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b2b, "db.pg.audit_off"); len(got) != 0 {
+		t.Fatalf("log_connections=on 时 audit_off 不应 FAIL，got %d", len(got))
+	}
+	// 仅 log_statement=ddl 也算审计开启
+	b3 := testBundle(facts.TargetDBPostgres, []facts.Fact{
+		pg("ssl", "on"), pg("logging_collector", "off"),
+		pg("log_connections", "off"), pg("log_statement", "ddl"),
+	})
+	b3.Receipts = []facts.Receipt{{TemplateID: "pg.settings", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b3, "db.pg.audit_off"); len(got) != 0 {
+		t.Fatalf("log_statement=ddl 时 audit_off 不应 FAIL，got %d", len(got))
+	}
+}
+
+func TestMySQLPasswordPolicy(t *testing.T) {
+	mv := func(name, value string) facts.Fact {
+		return facts.Fact{FactID: "f-" + name, Kind: facts.FactAccountConfig, Subject: "global",
+			Status: facts.StatusObserved, Source: "mysql.server_config",
+			Attributes: map[string]string{"name": name, "value": value}}
+	}
+	b := testBundle(facts.TargetDBMySQL, []facts.Fact{
+		mv("validate_password.policy", "LOW"), mv("validate_password.length", "6"),
+	})
+	b.Receipts = []facts.Receipt{{TemplateID: "mysql.server_config", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b, "db.mysql.password_policy"); len(got) != 2 {
+		t.Fatalf("LOW+6 位时 password_policy fails = %d, want 2", len(got))
+	}
+	b2 := testBundle(facts.TargetDBMySQL, []facts.Fact{
+		mv("validate_password.policy", "MEDIUM"), mv("validate_password.length", "12"),
+	})
+	b2.Receipts = []facts.Receipt{{TemplateID: "mysql.server_config", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b2, "db.mysql.password_policy"); len(got) != 0 {
+		t.Fatalf("MEDIUM+12 位时不应 FAIL，got %d", len(got))
+	}
+	// 未采集到 validate_password 变量时结论为 UNKNOWN，不误报 FAIL（老包不误报）
+	b3 := testBundle(facts.TargetDBMySQL, []facts.Fact{mv("general_log", "OFF")})
+	b3.Receipts = []facts.Receipt{{TemplateID: "mysql.server_config", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b3, "db.mysql.password_policy"); len(got) != 0 {
+		t.Fatalf("无 validate_password 事实时不应 FAIL，got %d", len(got))
+	}
+}
+
+func TestMSSQLPasswordPolicy(t *testing.T) {
+	login := func(name, ptype, disabled, policy, expir string) facts.Fact {
+		return facts.Fact{FactID: "f-" + name, Kind: facts.FactIdentity, Subject: name,
+			Status: facts.StatusObserved, Source: "mssql.server_principals",
+			Attributes: map[string]string{
+				"principal_type": ptype, "is_disabled": disabled,
+				"is_policy_checked": policy, "is_expiration_checked": expir,
+			}}
+	}
+	b := testBundle(facts.TargetDBSQLSrv, []facts.Fact{
+		login("app", "SQL_LOGIN", "false", "false", "false"),
+		login("svc", "SQL_LOGIN", "false", "true", "true"),
+		login("dom\\user", "WINDOWS_LOGIN", "false", "false", "false"),
+		login("old", "SQL_LOGIN", "true", "false", "false"),
+	})
+	b.Receipts = []facts.Receipt{{TemplateID: "mssql.server_principals", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b, "db.mssql.password_policy"); len(got) != 2 {
+		t.Fatalf("password_policy fails = %d, want 2（仅 app 的两项）", len(got))
+	}
+}
+
+func TestOracleProfileVerifyFunction(t *testing.T) {
+	prof := func(profile, res, lim string) facts.Fact {
+		return facts.Fact{FactID: "f-" + profile + "-" + res, Kind: facts.FactAccountConfig,
+			Subject: profile, Status: facts.StatusObserved, Source: "ora.profiles",
+			Attributes: map[string]string{"resource": res, "limit": lim}}
+	}
+	b := testBundle(facts.TargetDBOracle, []facts.Fact{
+		prof("DEFAULT", "PASSWORD_VERIFY_FUNCTION", ""),
+		prof("APP_PROFILE", "PASSWORD_VERIFY_FUNCTION", "ora12c_verify_function"),
+		prof("DEFAULT", "PASSWORD_LIFE_TIME", "UNLIMITED"),
+	})
+	if got := failsFor(t, b, "db.oracle.profile_password_policy"); len(got) != 2 {
+		t.Fatalf("profile_password_policy fails = %d, want 2（空验证函数 + UNLIMITED 寿命）", len(got))
+	}
+}
+
+func TestOracleAuditTrail(t *testing.T) {
+	param := func(value string) facts.Fact {
+		return facts.Fact{FactID: "f-audit", Kind: facts.FactAccountConfig, Subject: "AUDIT_TRAIL",
+			Status: facts.StatusObserved, Source: "ora.parameters",
+			Attributes: map[string]string{"name": "AUDIT_TRAIL", "value": value}}
+	}
+	bNone := testBundle(facts.TargetDBOracle, []facts.Fact{param("NONE")})
+	bNone.Receipts = []facts.Receipt{{TemplateID: "ora.parameters", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, bNone, "db.oracle.audit_trail_off"); len(got) != 1 {
+		t.Fatalf("AUDIT_TRAIL=NONE 时 fails = %d, want 1", len(got))
+	}
+	bDB := testBundle(facts.TargetDBOracle, []facts.Fact{param("DB")})
+	bDB.Receipts = []facts.Receipt{{TemplateID: "ora.parameters", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, bDB, "db.oracle.audit_trail_off"); len(got) != 0 {
+		t.Fatalf("AUDIT_TRAIL=DB 时不应 FAIL，got %d", len(got))
+	}
+}
+
+func TestMSSQLAudit(t *testing.T) {
+	audit := func(name, enabled string) facts.Fact {
+		return facts.Fact{FactID: "f-" + name, Kind: facts.FactAccountConfig, Subject: name,
+			Status: facts.StatusObserved, Source: "mssql.server_audits",
+			Attributes: map[string]string{"is_state_enabled": enabled}}
+	}
+	cfg := facts.Fact{FactID: "f-cfg", Kind: facts.FactAccountConfig, Subject: "xp_cmdshell",
+		Status: facts.StatusObserved, Source: "mssql.server_config",
+		Attributes: map[string]string{"value_in_use": "0"}}
+	b := testBundle(facts.TargetDBSQLSrv, []facts.Fact{cfg, audit("audit1", "false")})
+	b.Receipts = []facts.Receipt{{TemplateID: "mssql.server_audits", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b, "db.mssql.audit_off"); len(got) != 1 {
+		t.Fatalf("无启用审计时 fails = %d, want 1", len(got))
+	}
+	b2 := testBundle(facts.TargetDBSQLSrv, []facts.Fact{cfg, audit("audit1", "false"), audit("audit2", "true")})
+	b2.Receipts = []facts.Receipt{{TemplateID: "mssql.server_audits", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b2, "db.mssql.audit_off"); len(got) != 0 {
+		t.Fatalf("有启用审计时不应 FAIL，got %d", len(got))
+	}
+}
+
+func TestLinuxSshRules(t *testing.T) {
+	sshd := func(pa, prl, present string) facts.Fact {
+		return facts.Fact{FactID: "f-sshd", Kind: facts.FactAccountConfig, Subject: "sshd_config",
+			Status: facts.StatusObserved, Source: "linux.sshd",
+			Attributes: map[string]string{"present": present,
+				"password_authentication": pa, "permit_root_login": prl}}
+	}
+	b := testBundle(facts.TargetOSLinux, []facts.Fact{sshd("yes", "yes", "true")})
+	b.Receipts = []facts.Receipt{{TemplateID: "linux.sshd", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b, "os.linux.ssh_password_auth"); len(got) != 1 {
+		t.Fatalf("password_auth=yes 时 fails = %d, want 1", len(got))
+	}
+	if got := failsFor(t, b, "os.linux.ssh_root_login"); len(got) != 1 {
+		t.Fatalf("root_login=yes 时 fails = %d, want 1", len(got))
+	}
+	// 缺省口令鉴别（空值）按 sshd 缺省 yes 判；prohibit-password 不判 root 登录
+	b2 := testBundle(facts.TargetOSLinux, []facts.Fact{sshd("", "prohibit-password", "true")})
+	b2.Receipts = []facts.Receipt{{TemplateID: "linux.sshd", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b2, "os.linux.ssh_password_auth"); len(got) != 1 {
+		t.Fatalf("口令鉴别缺省时 fails = %d, want 1", len(got))
+	}
+	if got := failsFor(t, b2, "os.linux.ssh_root_login"); len(got) != 0 {
+		t.Fatalf("prohibit-password 时不应 FAIL，got %d", len(got))
+	}
+	// 全关与文件缺失均不判
+	b3 := testBundle(facts.TargetOSLinux, []facts.Fact{sshd("no", "no", "true")})
+	b3.Receipts = []facts.Receipt{{TemplateID: "linux.sshd", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b3, "os.linux.ssh_password_auth"); len(got) != 0 {
+		t.Fatalf("全关时 password_auth 不应 FAIL，got %d", len(got))
+	}
+	// 文件缺失（采集器发 StatusUnsupported 事实）→ NOT_APPLICABLE，不是 PASS
+	b4 := testBundle(facts.TargetOSLinux, []facts.Fact{{
+		FactID: "f-sshd", Kind: facts.FactAccountConfig, Subject: "sshd_config",
+		Status: facts.StatusUnsupported, Source: "linux.sshd",
+		Attributes: map[string]string{"present": "false"},
+	}})
+	b4.Receipts = []facts.Receipt{{TemplateID: "linux.sshd", TemplateVersion: "1", Status: "ok"}}
+	if got := failsFor(t, b4, "os.linux.ssh_password_auth"); len(got) != 0 {
+		t.Fatalf("文件缺失时不应 FAIL，got %d", len(got))
+	}
+	if r := singleResult(t, b4, &Baseline{}, "os.linux.ssh_password_auth"); r.Conclusion != facts.ConclusionNotApplicable {
+		t.Fatalf("文件缺失时应为 NOT_APPLICABLE，实际 %s", r.Conclusion)
+	}
+}

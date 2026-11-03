@@ -4,6 +4,7 @@ package windows
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,13 @@ import (
 	"golang.org/x/sys/windows"
 	"medaudit/internal/facts"
 )
+
+// partialError 部分采集失败：已产出部分事实，但有项目未能读取，
+// 收据应记 partial（而非 ok 或 denied），使规则门控走 Partial 语义：
+// 已有明确违规仍 FAIL，无命中则 UNKNOWN，绝不误判 PASS。
+type partialError struct{ msg string }
+
+func (e *partialError) Error() string { return e.msg }
 
 // Config 采集配置。
 type Config struct {
@@ -83,8 +91,13 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		status := "ok"
 		errStage := ""
 		if err != nil {
-			status = "denied"
-			errStage = err.Error()
+			var pe *partialError
+			if errors.As(err, &pe) {
+				status = "partial"
+			} else {
+				status = "denied"
+			}
+			errStage = facts.RedactSecrets(err.Error())
 		}
 		b.Receipts = append(b.Receipts, facts.Receipt{
 			TemplateID: id, TemplateVersion: ver,
@@ -260,6 +273,126 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 				})
 				n++
 			}
+		}
+		return n, nil
+	})
+
+	// 6) Windows 口令策略（NetUserModalsGet level 0/3）：本地 SAM 或域默认策略；
+	//    细粒度用户策略（FGPP/PSO）不在本 API 覆盖内，事实 scope 标注覆盖范围。
+	addReceipt("win.password_policy", "1", func() (int, error) {
+		pol, err := queryPasswordPolicy()
+		if err != nil {
+			return 0, err
+		}
+		b.Facts = append(b.Facts, facts.Fact{
+			FactID: nextID("pwd"), Kind: facts.FactAccountConfig,
+			Subject: "password-policy", Status: facts.StatusObserved, Source: "win.password_policy",
+			Attributes: PasswordPolicyAttributes(pol),
+		})
+		return 1, nil
+	})
+
+	// 7) secedit 复杂度（只读导出）：渠道不可用则无事实，复杂度规则 UNKNOWN；
+	//    不解析本地化 net accounts 文案。
+	addReceipt("win.secedit", "1", func() (int, error) {
+		raw, err := exportSecedit()
+		if err != nil {
+			return 0, err
+		}
+		sec := ParseSeceditInf(raw)
+		// secedit 与数值策略的适用范围必须一致：同一 machineRole 派生 scope，不各自探测。
+		role := machineRole()
+		attrs := map[string]string{"scope": passwordScopeForRole(role), "machine_role": role}
+		if v, ok := sec["passwordcomplexity"]; ok {
+			attrs["password_complexity"] = v
+		}
+		b.Facts = append(b.Facts, facts.Fact{
+			FactID: nextID("sec"), Kind: facts.FactAccountConfig,
+			Subject: "password-policy", Status: facts.StatusObserved, Source: "win.secedit",
+			Attributes: attrs,
+		})
+		return 1, nil
+	})
+
+	// 8) RDP 有效配置（组策略优先于本地）：enabled 读不到则整段失败；
+	//    NLA 缺失则事实无 nla 属性，NLA 规则 UNKNOWN（不默认为安全）。
+	addReceipt("win.rdp", "1", func() (int, error) {
+		s, err := readRDPSettings()
+		if err != nil {
+			return 0, err
+		}
+		if !s.Enabled.Present {
+			return 0, fmt.Errorf("RDP 开关注册表值均不存在，无法判定")
+		}
+		b.Facts = append(b.Facts, facts.Fact{
+			FactID: nextID("rdp"), Kind: facts.FactAccountConfig,
+			Subject: "rdp", Status: facts.StatusObserved, Source: "win.rdp",
+			Attributes: RDPAttributes(s),
+		})
+		return 1, nil
+	})
+
+	// 9) MSSQL ForceEncryption（本机注册表，逐实例）：值只证明“已配置”，
+	//    重启后生效状态未验证（事实 effective=unknown）；单实例不可读不掩盖其他实例：
+	//    有实例不可读时收据记 partial（门控 Partial：已有明确违规仍 FAIL，
+	//    无命中则 UNKNOWN）；枚举跳过（实例名存在但 ID 读不到）同样 partial，
+	//    绝不把枚举不全读成“无实例”。
+	addReceipt("win.mssql_force_encryption", "1", func() (int, error) {
+		insts, skipped, err := enumMSSQLInstances()
+		if err != nil {
+			return 0, err
+		}
+		if len(insts) == 0 && skipped == 0 {
+			b.Facts = append(b.Facts, facts.Fact{
+				FactID: nextID("ms"), Kind: facts.FactAccountConfig,
+				Subject: "mssql-instances", Status: facts.StatusObserved, Source: "win.mssql_force_encryption",
+				Attributes: map[string]string{"mssql_instances": "0"},
+			})
+			return 0, nil
+		}
+		n := 0
+		failed := 0
+		var firstErr error
+		for _, inst := range insts {
+			present, value, rerr := readForceEncryption(inst.ID)
+			if rerr != nil {
+				st := facts.StatusUnsupported
+				if isRegistryDenied(rerr) {
+					st = facts.StatusPermissionDenied
+				}
+				b.Facts = append(b.Facts, facts.Fact{
+					FactID: nextID("ms"), Kind: facts.FactAccountConfig,
+					Subject: inst.Name, Status: st, Source: "win.mssql_force_encryption",
+					Attributes: map[string]string{
+						"instance_id": inst.ID, "registry_path": MSSQLSuperSocketPath(inst.ID),
+						"error": facts.RedactSecrets(rerr.Error()),
+					},
+				})
+				failed++
+				if firstErr == nil {
+					firstErr = rerr
+				}
+				continue
+			}
+			b.Facts = append(b.Facts, facts.Fact{
+				FactID: nextID("ms"), Kind: facts.FactAccountConfig,
+				Subject: inst.Name, Status: facts.StatusObserved, Source: "win.mssql_force_encryption",
+				Attributes: MSSQLForceEncryptionAttrs(inst, MSSQLSuperSocketPath(inst.ID), present, value),
+			})
+			n++
+		}
+		// 部分实例不可读（或枚举跳过）且已有可读实例：partial 收据。
+		if (failed > 0 || skipped > 0) && n > 0 {
+			return n, &partialError{msg: fmt.Sprintf(
+				"部分实例 ForceEncryption 不可读（实例读取失败 %d 个，枚举跳过 %d 个），已读 %d 个",
+				failed, skipped, n)}
+		}
+		// 全部不可读（含枚举到的实例名全部跳过）：无可读事实，记失败，不判无实例。
+		if n == 0 {
+			if firstErr != nil {
+				return 0, firstErr
+			}
+			return 0, fmt.Errorf("枚举到实例名但实例 ID 全部读不到（跳过 %d 个），无法判定", skipped)
 		}
 		return n, nil
 	})

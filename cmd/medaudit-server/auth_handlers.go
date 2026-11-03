@@ -253,7 +253,11 @@ func currentUser(r *http.Request, sessions *platform.SessionStore) string {
 
 // authMiddleware 统一拦截 /api/v1/*：
 // 放行静态资源、健康检查、登录接口、采集器下载（自有令牌），
-// 以及机器通道（目标机采集器回传：POST /bundles、POST /api-audits，无浏览器会话）。
+// 以及机器通道（目标机采集器回传：POST /bundles，无浏览器会话）。
+// POST /api/v1/api-audits 不再免登录：报告用于合规评估后，免登录上传
+// 等于任何人可冒用任意资产 ID 伪造合规 PASS；采集器须以超级令牌登录
+// 换会话后上传（见 medaudit-collector apicheck -t），服务端据此记录
+// 上传可信度，未认证历史报告只保留、不作可信合规依据。
 // 其余 API 需有效会话，否则 401。
 func authMiddleware(next http.Handler, sessions *platform.SessionStore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -262,7 +266,7 @@ func authMiddleware(next http.Handler, sessions *platform.SessionStore) http.Han
 			p == "/api/v1/health" ||
 			p == "/api/v1/auth/login" ||
 			p == "/api/v1/agent/download" ||
-			(r.Method == http.MethodPost && (p == "/api/v1/bundles" || p == "/api/v1/api-audits")) {
+			(r.Method == http.MethodPost && p == "/api/v1/bundles") {
 			next.ServeHTTP(w, r)
 			return
 		}

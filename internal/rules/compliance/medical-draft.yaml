@@ -16,6 +16,32 @@
 # 启用步骤：合规人员确认每条 ref 后，把 status 改为 verified，复制到
 # /etc/medaudit/compliance/（或 MEDAUDIT_COMPLIANCE_DIR）后重启服务。也可不改状态，用
 # MEDAUDIT_COMPLIANCE_ENABLE=medical-draft 临时启用（报告会标「条款号待核实」）。
+#
+# P0 调整（2026-11-03，医疗范围）：
+# - 医疗-02 摘除 mw.iis.default_site（默认站点属示例应用，移入医疗-08）；医疗-02 现仅覆盖默认账号，
+#   示例账号、无用账号的其余情形目前为弱覆盖；不得仅凭默认账号身份判定业务上的无用账号
+#   （无用与否须业务方确认，本框架不据此下结论）；
+# - 医疗-09 摘除 db.mysql.name_resolve_on（主机名解析方式，与“限制访问来源”仅弱相关；该规则仍由等保框架覆盖）；
+# - 医疗-04 标题去掉“可审计”（第三方访问的可审计性目前无规则覆盖，属未检查，见下）；
+# - 本框架未覆盖、报告中应标「本平台未检查」的范围：安全审计的记录保护与留存期限
+#   （审计启用已由医疗-11 覆盖，不再列入未覆盖）、
+#   API 越权检查（apiaudit 引擎存在但未挂入本框架）、数据分级分类与去标识化（GB/T 39725 相关要求超出权限审计范围）。
+#
+# 补全（2026-11-03，等保三级 GB/T 22239-2019 第三级为基线）：
+# - 新增医疗-11 安全审计（Oracle/MSSQL/PG 审计启用规则）；审计记录保护、留存期限仍无规则，属未检查；
+# - 医疗-12 已挂 4 条 API 越权规则（M4-4）：未认证访问、普通身份访问管理员接口、
+#   跨所有者访问、凭据失效后重放；评估对象为绑定医院/资产的 apiaudit 报告，
+#   未绑定或老格式报告不纳入通过（合规判定为未知，见 internal/platform/api_compliance.go）；
+# - 医疗-05 补 MySQL/MSSQL 口令策略规则，医疗-06 补 PG 传输加密规则；
+# - Windows 口令策略与 RDP 已覆盖（口令 4 条 + RDP NLA 1 条）；覆盖边界：RDP NLA 仅覆盖 RDP 通道，
+#   不代表全部管理端口来源限制；Windows 口令策略覆盖范围为本地 SAM 或域默认策略（见事实 scope），
+#   细粒度用户策略（FGPP/PSO）未覆盖，本机策略不代表全部域用户。
+# - Oracle/MSSQL 传输加密已覆盖（宿主规则：sqlnet.ora 与 ForceEncryption）；覆盖边界：
+#   只评价“是否要求加密”，不鉴定链路实际是否加密；未要求原生加密不等于链路明文
+#   （TCPS 等传输层加密不在规则范围，TCPS 部署记入基线豁免）；当前会话协商结果无可靠通道，
+#   不发会话证据；Linux 的 mssql.conf 渠道未实现。
+# - 仍未覆盖：数据分级分类与去标识化（需敏感对象标记产品能力）、
+#   GB/T 39725 条款号（全空，待合规人员持标准文本填写）。
 id: medical-draft
 name: 医疗卫生行业网络与数据安全要求
 short: 医疗行业
@@ -34,7 +60,6 @@ controls:
     title: 及时锁定或删除默认账号、示例账号与无用账号
     rules:
       - db.oracle.default_account_open
-      - mw.iis.default_site
   - id: 医疗-03
     ref: "《办法》第二十二条（四）"
     group: 权限管理
@@ -66,7 +91,7 @@ controls:
   - id: 医疗-04
     ref: "《办法》第十条、第十六条"
     group: 权限管理
-    title: 第三方与运维人员权限按需授予、可审计，不得长期持有无限制特权
+    title: 第三方与运维人员权限按需授予，不得长期持有无限制特权
     rules:
       - os.hpux.sudo_all
       - os.linux.sudo_all
@@ -77,6 +102,12 @@ controls:
     title: 口令具备复杂度并定期更换，有登录失败锁定，鉴别信息安全存储
     rules:
       - db.oracle.profile_password_policy
+      - db.mysql.password_policy
+      - db.mssql.password_policy
+      - os.windows.password_min_length
+      - os.windows.password_max_age_never
+      - os.windows.password_lockout_disabled
+      - os.windows.password_complexity_off
       - db.pg.hba_trust
       - db.pg.hba_weak_method
       - db.pg.password_encryption_weak
@@ -94,12 +125,18 @@ controls:
       - mw.tomcat.plain_listener
       - mw.tomcat.tls_weak
       - mw.weblogic.plain_listener
+      - db.pg.ssl_off
+      - os.linux.oracle_native_encryption_not_required
+      - os.windows.mssql_force_encryption_off
   - id: 医疗-07
     ref: "《办法》第二十二条（四）（相关）"
     group: 数据安全
     title: 防止敏感信息（口令、业务数据）以明文留存在日志等非受控位置
     rules:
       - db.mysql.general_log_on
+    # 注意：本控制现仅以 general_log 开启作为风险信号——开启不等于日志中一定含有患者明文
+    # （是否实际含明文须结合日志内容判定，本平台不解析日志内容）；关闭 general_log 也不代表
+    # 全部日志通道无明文。
   - id: 医疗-08
     ref: ""
     group: 安全加固
@@ -109,6 +146,7 @@ controls:
       - db.mssql.clr_enabled
       - db.mssql.xp_cmdshell
       - db.mysql.local_infile
+      - mw.iis.default_site
       - mw.nginx.autoindex
       - mw.tomcat.manager_deployed
       - mw.tomcat.sample_apps
@@ -120,9 +158,12 @@ controls:
     group: 安全加固
     title: 限制数据库与管理端口的访问来源
     rules:
-      - db.mysql.name_resolve_on
       - db.pg.hba_open_network
       - db.pg.listen_all
+    # 注意：os.windows.rdp_nla_disabled 已从本控制移出——NLA 只证明 RDP 的网络级身份验证要求，
+    # 不证明来源地址限制，不能作为“限制访问来源”的证据；该规则仅保留在等保 8.1.4.4 c) 作辅助证据。
+    # 现仅覆盖 PG（hba 来源与 listen 地址）；其他数据库与中间件的管理端口来源限制尚未覆盖，
+    # 不代表全部管理端口。
   - id: 医疗-10
     ref: "《办法》第六条（相关）"
     group: 安全加固
@@ -136,3 +177,20 @@ controls:
       - os.linux.writable_service_file
       - os.windows.svc_account_mismatch
       - os.windows.writable_service_binary
+  - id: 医疗-11
+    ref: ""
+    group: 安全审计
+    title: 启用数据库审计功能
+    rules:
+      - db.oracle.audit_trail_off
+      - db.mssql.audit_off
+      - db.pg.audit_off
+  - id: 医疗-12
+    ref: ""
+    group: API 安全
+    title: 应用程序接口访问控制与鉴权，防止越权访问
+    rules:
+      - api.anon_protected_access
+      - api.user_admin_access
+      - api.cross_owner_access
+      - api.invalidated_session_replay

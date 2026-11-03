@@ -80,6 +80,12 @@ func DefaultRegistry() *Registry {
 	for _, e := range windowsBuiltinRules {
 		_ = r.Register(e.spec, e.check)
 	}
+	for _, e := range windowsPasswordRules {
+		_ = r.Register(e.spec, e.check)
+	}
+	for _, e := range windowsEncryptionRules {
+		_ = r.Register(e.spec, e.check)
+	}
 	for _, e := range postgresBuiltinRules {
 		_ = r.Register(e.spec, e.check)
 	}
@@ -105,6 +111,9 @@ func DefaultRegistry() *Registry {
 		_ = r.Register(e.spec, e.check)
 	}
 	for _, e := range mw2BuiltinRules {
+		_ = r.Register(e.spec, e.check)
+	}
+	for _, e := range apiBuiltinRules {
 		_ = r.Register(e.spec, e.check)
 	}
 	return r

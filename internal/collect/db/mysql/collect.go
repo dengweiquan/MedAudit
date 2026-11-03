@@ -85,10 +85,12 @@ func Collect(ctx context.Context, cfg Config) (*facts.FactBundle, error) {
 		case qerr != nil && dbutil.IsPermissionDenied(qerr):
 			rc.Status = "denied"
 			rc.ErrorStage = "query"
+			rc.Error = facts.RedactSecrets(qerr.Error())
 			partial = true
 		case qerr != nil:
 			rc.Status = "failed"
 			rc.ErrorStage = "query"
+			rc.Error = facts.RedactSecrets(qerr.Error())
 			failed = true
 		default:
 			rc.RowCount = len(r.Data)

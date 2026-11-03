@@ -54,6 +54,7 @@ const (
 	TargetMWNginx    TargetType = "mw-nginx"
 	TargetMWWebLogic TargetType = "mw-weblogic"
 	TargetMWIIS      TargetType = "mw-iis"
+	TargetAPI        TargetType = "api" // M4-4：业务接口越权检测（apiaudit 合成包）
 )
 
 // FactKind 事实种类。
@@ -67,6 +68,7 @@ const (
 	FactProcess       FactKind = "process"
 	FactFilePerm      FactKind = "file_perm"
 	FactServiceConfig FactKind = "service_config"
+	FactAPICheck      FactKind = "api_check" // M4-4：apiaudit 探针结论与正向对照（见 internal/apiaudit/facts.go）
 )
 
 // Activation 权限激活条件。
@@ -140,8 +142,10 @@ type Receipt struct {
 	Truncated       bool      `json:"truncated"`
 	Status          string    `json:"status"`
 	ErrorStage      string    `json:"error_stage,omitempty"`
-	Visibility      string    `json:"visibility,omitempty"`
-	EvidenceRef     string    `json:"evidence_ref,omitempty"`
+	// Error 失败原因原文（采集失败/被拒绝时；旧包无此字段）。
+	Error       string `json:"error,omitempty"`
+	Visibility  string `json:"visibility,omitempty"`
+	EvidenceRef string `json:"evidence_ref,omitempty"`
 }
 
 // FactBundle v1 事实包。

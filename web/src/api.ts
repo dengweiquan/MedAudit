@@ -34,6 +34,38 @@ export interface Asset {
   labels?: string | null
 }
 
+export interface SensitiveLabel {
+  id: string
+  hospital_id: string
+  asset_id: string
+  database: string
+  schema: string
+  table: string
+  column: string
+  category: string
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SensitiveExposure {
+  label_id: string
+  object: string
+  kind: string
+  subject: string
+  privilege: string
+  evidence: string[]
+  risk: string
+  exempt: boolean
+  note?: string
+}
+
+export interface SensitiveSection {
+  labels: { id: string; database: string; schema: string; table: string; column: string; category: string; version: number; status: string; notes?: string[] }[]
+  exposures: SensitiveExposure[]
+  notes: string[]
+}
+
 export interface ConnConfig {
   engine: string
   host: string
@@ -205,12 +237,41 @@ export interface ApiAuditSummary {
   report_id: string
   target: string
   execution: string
+  hospital_id?: string
+  asset_id?: string
   total: number
   pass_count: number
   fail_count: number
   unknown_count: number
   not_run_count: number
   imported_at: string
+}
+
+// M4-4：业务接口报告的合规判定（医疗-12），来自 GET /api/v1/api-audits/{id}/compliance。
+export interface ApiAuditComplianceRule {
+  rule_id: string
+  name: string
+  outcome: string
+  fails?: number
+}
+
+export interface ApiAuditCompliance {
+  report_id: string
+  target: string
+  schema_version: string
+  hospital_id?: string
+  asset_id?: string
+  bound: boolean
+  clause: {
+    id: string
+    group: string
+    title: string
+    status: string
+    rules: ApiAuditComplianceRule[]
+  }
+  controls: string[]
+  summary: Record<string, number>
+  note?: string
 }
 
 export interface ApiAuditCheck {
@@ -512,6 +573,19 @@ export const api = {
     }),
   deleteAsset: (id: string) =>
     req(`/api/v1/assets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // 敏感对象标记（M5-5）：只存对象标识与类别，不存真实患者数据。
+  sensitiveLabels: (hospitalId: string, assetId: string) =>
+    req<SensitiveLabel[]>(`/api/v1/sensitive-labels?hospital_id=${encodeURIComponent(hospitalId)}&asset_id=${encodeURIComponent(assetId)}`),
+  createSensitiveLabel: (body: { hospital_id: string; asset_id: string; database?: string; schema: string; table: string; column?: string; category: string }) =>
+    post('/api/v1/sensitive-labels', body),
+  updateSensitiveLabel: (id: string, category: string) =>
+    req(`/api/v1/sensitive-labels/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category }),
+    }),
+  deleteSensitiveLabel: (id: string) =>
+    req(`/api/v1/sensitive-labels/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   ruleToggles: () => req<RuleToggle[]>('/api/v1/rule-toggles'),
   setRuleToggle: (body: { rule_id: string; enabled: boolean; reason?: string; updated_by?: string }) =>
     req('/api/v1/rule-toggles', {
@@ -589,6 +663,7 @@ export const api = {
   reportCsvUrl: (id: string) => `/api/v1/reports/${encodeURIComponent(id)}/csv`,
   apiAudits: () => req<ApiAuditSummary[]>('/api/v1/api-audits'),
   apiAuditDocxUrl: (id: string) => `/api/v1/api-audits/${encodeURIComponent(id)}/docx`,
+  apiAuditCompliance: (id: string) => req<ApiAuditCompliance>(`/api/v1/api-audits/${encodeURIComponent(id)}/compliance`),
   getApiAudit: (id: string) =>
     req<{ checks: ApiAuditCheck[]; summary?: Record<string, number>; target?: string; execution?: string }>(
       `/api/v1/api-audits/${encodeURIComponent(id)}`),

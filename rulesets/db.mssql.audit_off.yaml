@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: db.mssql.audit_off
+version: "3"
+name: SQL Server 未启用服务器审计
+target: db-sqlserver
+risk: medium
+description: |
+  sys.server_audits 中无启用状态的服务器审计时，数据库操作无审计轨迹。零行只有在采集账号可见性充分（sysadmin 或 CONTROL SERVER，同包 mssql.audit_visibility 自查）时才认定未配置审计；可见性不足、截断或旧包无自查时零行判 UNKNOWN，不自动提权。
+requires: [account_config]
+remediation: |
+  创建并启用服务器审计（及数据库审计规范），审计目标指向受保护的存储。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.3 a) 安全审计：启用安全审计功能，覆盖每个用户，对重要用户行为和安全事件进行审计"

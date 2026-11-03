@@ -1,0 +1,13 @@
+# MedAudit 内置规则元数据（由 internal/rules 生成，请勿手改）
+id: os.windows.rdp_nla_disabled
+version: "1"
+name: RDP 未要求网络级身份验证
+target: os-windows
+risk: medium
+description: |
+  RDP 已开启但未要求网络级身份验证（NLA）时，远程桌面会话在身份验证前即建立，攻击面更大。仅开启 RDP 本身不判违规；RDP 关闭时本规则不适用。NLA 仅要求网络级身份验证，不等于来源 IP 限制。
+requires: [account_config]
+remediation: |
+  在 RDP-Tcp 设置中启用“仅允许运行使用网络级别身份验证的远程桌面的计算机连接”（或组策略等效项）。
+compliance: # 等保 2.0（GB/T 22239-2019）第三级 · 安全计算环境
+  - "8.1.4.4 c) 入侵防范：限制管理终端的接入方式或网络地址范围"

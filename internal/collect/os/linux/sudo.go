@@ -128,7 +128,7 @@ func collectSudo(b *facts.FactBundle, dir string, addReceipt func(facts.Receipt)
 		b.Facts = append(b.Facts, facts.Fact{
 			FactID: "fact-sudo-denied", Kind: facts.FactAccountConfig,
 			Subject: "sudoers", Status: facts.StatusPermissionDenied, Source: "linux.sudo",
-			Attributes: map[string]string{"error": err.Error(), "dir": dir},
+			Attributes: map[string]string{"error": facts.RedactSecrets(err.Error()), "dir": dir},
 		})
 		*execStatus = facts.ExecutionPartial
 		finish()

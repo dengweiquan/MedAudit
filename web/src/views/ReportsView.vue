@@ -76,13 +76,40 @@
           <td>{{ r.name }}</td>
           <td>{{ fmtLocal(r.imported_at) }}</td>
           <td>{{ r.fail_count > 0 ? `不通过 ${r.fail_count} 条` : '通过' }}</td>
-          <td><a class="btn small" :href="api.apiAuditDocxUrl(r.report_id)" download>下载 Word</a></td>
+          <td>
+            <div class="row-actions">
+              <button class="btn small" @click="viewApiCompliance(r.report_id)">合规判定</button>
+              <a class="btn small" :href="api.apiAuditDocxUrl(r.report_id)" download>下载 Word</a>
+            </div>
+          </td>
         </tr>
       </tbody>
     </table>
     <div v-else-if="loaded" class="empty">暂无业务接口报告。</div>
     <div v-else class="empty">加载中…</div>
   </div>
+
+  <div class="card" v-if="apiCompliance">
+    <h2>业务接口合规判定（医疗-12）<span v-if="engineerMode.on">（{{ apiComplianceId }}）</span></h2>
+    <p>
+      条款：{{ apiCompliance.clause.title }} ·
+      状态：<span class="concl" :class="apiOutcomeClass(apiCompliance.clause.status)">{{ apiOutcomeLabel(apiCompliance.clause.status) }}</span>
+      <span v-if="!apiCompliance.bound" class="todo">未绑定合规对象：{{ apiCompliance.note }}</span>
+    </p>
+    <table v-if="apiCompliance.clause.rules.length">
+      <thead><tr><th>检查项</th><th>结论</th><th>不通过数</th></tr></thead>
+      <tbody>
+        <tr v-for="ru in apiCompliance.clause.rules" :key="ru.rule_id">
+          <td :title="engineerMode.on ? ru.rule_id : undefined">{{ ru.name }}</td>
+          <td><span class="concl" :class="apiOutcomeClass(ru.outcome)">{{ apiOutcomeLabel(ru.outcome) }}</span></td>
+          <td>{{ ru.fails ?? 0 }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p v-if="apiCompliance.controls.length" class="todo">正向对照：{{ apiCompliance.controls.join('、') }}</p>
+    <p v-if="apiCompliance.note && apiCompliance.bound" class="todo">{{ apiCompliance.note }}</p>
+  </div>
+  <div v-if="apiComplianceErr" class="error">{{ apiComplianceErr }}</div>
 
   <div class="card" v-if="detail">
     <h2>报告详情<span v-if="engineerMode.on">（{{ detailId }}）</span></h2>
@@ -127,6 +154,36 @@
         </tbody>
       </table>
     </template>
+    <template v-if="sensitiveSection">
+      <h3>敏感对象暴露</h3>
+      <p class="todo">本节只覆盖已标记对象，未标记不等于不敏感；缺授权事实不等于安全。暴露指 broad 授权（PUBLIC/ANY/全局/库级）可达该对象，风险按策略升级为高；已基线放行的不计入违规暴露。</p>
+      <p v-for="n in sensitiveSection.notes" :key="n" class="todo">{{ n }}</p>
+      <table v-if="sensitiveSection.labels.length" style="margin-top:6px">
+        <thead><tr><th>对象</th><th>类别</th><th>版本</th><th>状态</th><th>备注</th></tr></thead>
+        <tbody>
+          <tr v-for="l in sensitiveSection.labels" :key="l.id">
+            <td>{{ (l.database ? l.database + '.' : '') + l.schema + '.' + l.table + (l.column ? '(' + l.column + ')' : '') }}</td>
+            <td>{{ l.category }}</td>
+            <td>v{{ l.version }}</td>
+            <td><span class="concl" :class="l.status === 'exposed' ? 'c-FAIL' : l.status === 'unconfirmed' ? 'c-UNKNOWN' : 'c-PASS'">{{ sensitiveStatusLabel(l.status) }}</span></td>
+            <td style="font-size:13px">{{ (l.notes || []).join('；') }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-else class="empty">本对象未标记敏感对象。</div>
+      <table v-if="sensitiveSection.exposures.length" style="margin-top:6px">
+        <thead><tr><th>对象</th><th>类型</th><th>被授者</th><th>权限</th><th>豁免</th></tr></thead>
+        <tbody>
+          <tr v-for="(e, i) in sensitiveSection.exposures" :key="i">
+            <td>{{ e.object }}</td>
+            <td>{{ e.kind }}</td>
+            <td>{{ e.subject }}</td>
+            <td>{{ e.privilege }}</td>
+            <td>{{ e.exempt ? '已放行' : '' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </template>
     <template v-if="remediationSection">
       <h3>修复与回滚脚本</h3>
       <p class="todo">
@@ -164,7 +221,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { api, type ApiAuditSummary, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule } from '../api'
+import { api, type ApiAuditCompliance, type ApiAuditSummary, type Asset, type BundleSummary, type Finding, type ReportDriftSection, type ReportPathsSection, type ReportRemediationSection, type ReportRow, type Rule, type SensitiveSection } from '../api'
 import { fmtLocal, latestBundleOf, countSnapshotRisks, filterApiReports } from '../util'
 import { conclLabel, riskLabel, reviewLabel } from '../labels'
 import { reviewerName, filterByHospital, engineerMode, selectedHospital } from '../store'
@@ -181,6 +238,19 @@ async function loadGenBundles() {
   } catch { genBundles.value = []; genBundle.value = '' }
 }
 const apiReports = ref<ApiAuditSummary[]>([])
+const apiCompliance = ref<ApiAuditCompliance | null>(null)
+const apiComplianceId = ref('')
+const apiComplianceErr = ref('')
+async function viewApiCompliance(id: string) {
+  apiComplianceId.value = id
+  apiComplianceErr.value = ''
+  try { apiCompliance.value = await api.apiAuditCompliance(id) }
+  catch (e) { apiCompliance.value = null; apiComplianceErr.value = e instanceof Error ? e.message : '加载失败' }
+}
+// 合规端点返回小写状态（fail/pass/unknown/na），复用大写结论的文案与样式。
+const apiOutcomeMap: Record<string, string> = { fail: 'FAIL', pass: 'PASS', unknown: 'UNKNOWN', na: 'NOT_APPLICABLE' }
+function apiOutcomeLabel(s: string): string { return conclLabel(apiOutcomeMap[s] ?? s) }
+function apiOutcomeClass(s: string): string { return 'c-' + (apiOutcomeMap[s] ?? s) }
 // 端点到登记对象的映射须用未过滤的资产表建，否则他院已匹配报告会因
 // assets.value 已过滤而被误判为未匹配、漏进本院视图（M37-fix2-4）。
 const endpointAsset = ref(new Map<string, Asset>())
@@ -257,6 +327,11 @@ const detail = ref<Record<string, unknown> | null>(null)
 const snapshotFindings = computed(() => (detail.value?.findings as Finding[]) || [])
 const pathsSection = computed(() => (detail.value?.privilege_paths as ReportPathsSection | undefined) ?? null)
 const driftSection = computed(() => (detail.value?.drift as ReportDriftSection | undefined) ?? null)
+const sensitiveSection = computed(() => (detail.value?.sensitive as SensitiveSection | undefined) ?? null)
+
+function sensitiveStatusLabel(s: string) {
+  return s === 'exposed' ? '有暴露' : s === 'unconfirmed' ? '无法确认' : '未发现 broad 授权'
+}
 const remediationSection = computed(() => (detail.value?.remediation as ReportRemediationSection | undefined) ?? null)
 const scriptShow = ref(20)
 const copyMsg = ref('')

@@ -187,6 +187,11 @@ describe('filterApiReports（M37-fix2-4）', () => {
   it('选定医院时只留本院已匹配报告，他院已匹配与未匹配都不显示', () => {
     expect(filterApiReports(rows, byEndpoint, 'h-demo').map(x => x.target)).toEqual(['http://demo-api'])
   })
+  it('绑定医院优先于目标地址匹配（M4-4）：绑定本院的报告即使目标未登记也显示', () => {
+    const bound = { ...r('http://unmatched'), hospital_id: 'h-demo' }
+    expect(filterApiReports([bound], byEndpoint, 'h-demo').map(x => x.target)).toEqual(['http://unmatched'])
+    expect(filterApiReports([bound], byEndpoint, 'h-other')).toEqual([])
+  })
 })
 
 describe('hospitalProgressStatus（M37-fix2-5）', () => {

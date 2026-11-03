@@ -31,15 +31,31 @@ type Check struct {
 	Detail      string     `json:"detail"`
 }
 
+// SchemaVersion API 审计报告格式版本。合规挂接（医疗-12）只认本版本；
+// 老报告无此字段，视为未绑定、不可用于合规判定（不自动纳入通过）。
+const SchemaVersion = "apiaudit/v1"
+
 // Report 一次越权检测的完整报告。
 type Report struct {
-	ReportID   string         `json:"report_id"`
-	Target     string         `json:"target"`
-	SpecSource string         `json:"spec_source"`
-	StartedAt  string         `json:"started_at"`
-	FinishedAt string         `json:"finished_at"`
-	Execution  string         `json:"execution"` // COMPLETE | PARTIAL
-	Identities []string       `json:"identities"`
+	// SchemaVersion 由引擎写入；服务端存档时原样保留，不补写（补写会把
+	// 老格式报告伪装成新版，破坏“历史报告不自动纳入通过”的约定）。
+	SchemaVersion string   `json:"schema_version,omitempty"`
+	ReportID      string   `json:"report_id"`
+	Target        string   `json:"target"`
+	SpecSource    string   `json:"spec_source"`
+	StartedAt     string   `json:"started_at"`
+	FinishedAt    string   `json:"finished_at"`
+	Execution     string   `json:"execution"` // COMPLETE | PARTIAL
+	Identities    []string `json:"identities"`
+	// AnonymousIdentities 匿名身份名：合规转换用它区分“未认证”与“普通身份”
+	// 对管理员端点的探针；老报告无此字段时二者无法区分，管理员端点 FAIL
+	// 只归垂直越权规则（见 internal/apiaudit/facts.go）。
+	AnonymousIdentities []string `json:"anonymous_identities,omitempty"`
+	// HospitalID / AssetID 合规绑定：由 apicheck 配置给出；服务端存档时校验
+	// 资产存在且归属该医院，否则拒绝上传。缺失则报告仅作存档查询，
+	// 不用于合规判定。
+	HospitalID string         `json:"hospital_id,omitempty"`
+	AssetID    string         `json:"asset_id,omitempty"`
 	Summary    map[string]int `json:"summary"`
 	Checks     []Check        `json:"checks"`
 }
@@ -135,17 +151,23 @@ func Run(ctx context.Context, cfg *Config) (*Report, error) {
 	}
 
 	rep := &Report{
-		ReportID:   "apiaudit-" + started.Format("20060102-150405"),
-		Target:     cfg.BaseURL,
-		SpecSource: specSource,
-		StartedAt:  started.Format(time.RFC3339),
-		FinishedAt: time.Now().UTC().Format(time.RFC3339),
-		Execution:  "COMPLETE",
-		Summary:    map[string]int{"PASS": 0, "FAIL": 0, "UNKNOWN": 0, "NOT_RUN": 0},
-		Checks:     r.checks,
+		SchemaVersion: SchemaVersion,
+		ReportID:      "apiaudit-" + started.Format("20060102-150405"),
+		Target:        cfg.BaseURL,
+		SpecSource:    specSource,
+		StartedAt:     started.Format(time.RFC3339),
+		FinishedAt:    time.Now().UTC().Format(time.RFC3339),
+		Execution:     "COMPLETE",
+		HospitalID:    cfg.HospitalID,
+		AssetID:       cfg.AssetID,
+		Summary:       map[string]int{"PASS": 0, "FAIL": 0, "UNKNOWN": 0, "NOT_RUN": 0},
+		Checks:        r.checks,
 	}
 	for _, id := range cfg.Identities {
 		rep.Identities = append(rep.Identities, id.Name)
+		if id.IsAnonymous() {
+			rep.AnonymousIdentities = append(rep.AnonymousIdentities, id.Name)
+		}
 	}
 	for _, c := range r.checks {
 		rep.Summary[string(c.Conclusion)]++

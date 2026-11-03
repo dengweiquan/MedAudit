@@ -297,6 +297,7 @@ type reportSnapshot struct {
 	Drift             map[string]any            `json:"drift"`
 	Remediation       map[string]any            `json:"remediation"`
 	Compliance        []ComplianceResult        `json:"compliance"`
+	Sensitive         *SensitiveSection         `json:"sensitive"`
 }
 
 // 显示时区见 display_time.go（displayZone，默认 Asia/Shanghai）
@@ -772,6 +773,43 @@ func RenderReportDocx(snapshotJSON string, reportID string) ([]byte, error) {
 				rows = append(rows, []string{label + " " + c.Group, c.Title, clauseStatusCN(c.Status), clauseBasis(c)})
 			}
 			body.WriteString(docxTableEx(rows, tableOpts{Widths: []int{1700, 3100, 1100, 3300}, Header: true, FontSz: 19}))
+		}
+	}
+
+	// ---------- 敏感对象暴露（M5-5） ----------
+	if snap.Sensitive != nil {
+		body.WriteString(secTitle("敏感对象暴露"))
+		body.WriteString(grayPara("本节只覆盖已标记对象，未标记不等于不敏感；缺授权事实不等于安全；暴露指 broad 授权（PUBLIC/ANY/全局/库级）可达该对象，风险按策略升级为高；已基线放行的不计入违规暴露。"))
+		for _, n := range snap.Sensitive.Notes {
+			body.WriteString(grayPara(n))
+		}
+		if len(snap.Sensitive.Labels) == 0 {
+			body.WriteString(docxPara("本对象未标记敏感对象。", ""))
+		} else {
+			rows := [][]string{{"对象", "类别", "版本", "状态", "备注"}}
+			for _, l := range snap.Sensitive.Labels {
+				obj := l.Schema + "." + l.Table
+				if l.Database != "" {
+					obj = l.Database + "." + obj
+				}
+				if l.Column != "" {
+					obj += "(" + l.Column + ")"
+				}
+				rows = append(rows, []string{obj, l.Category, fmt.Sprintf("%d", l.Version), l.Status, strings.Join(l.Notes, "；")})
+			}
+			body.WriteString(docxTableEx(rows, tableOpts{Widths: []int{2300, 1400, 800, 1400, 3000}, Header: true, FontSz: 19}))
+		}
+		if len(snap.Sensitive.Exposures) > 0 {
+			body.WriteString(docxPara("暴露明细（原始授权证据见事实 ID，可在平台按事实追溯）", "Heading2"))
+			rows := [][]string{{"对象", "类型", "被授者", "权限", "风险", "豁免"}}
+			for _, e := range snap.Sensitive.Exposures {
+				exempt := ""
+				if e.Exempt {
+					exempt = "已放行"
+				}
+				rows = append(rows, []string{e.Object, e.Kind, e.Subject, e.Privilege, e.Risk, exempt})
+			}
+			body.WriteString(docxTableEx(rows, tableOpts{Widths: []int{2300, 1200, 1700, 1400, 800, 1000}, Header: true, FontSz: 19}))
 		}
 	}
 

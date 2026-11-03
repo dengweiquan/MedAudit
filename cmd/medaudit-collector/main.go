@@ -124,6 +124,7 @@ func usage() {
   medaudit-collector hpux <user@host[:port]> [资产id] [-e 口令环境变量] [-o 输出.zip] [-H 医院]
   medaudit-collector hpux -t <转录目录> [资产id] [-o 输出.zip] [-H 医院]
   medaudit-collector apicheck -f <配置.yml> [-o 报告.json] [-u 上传地址]（缺省读环境 MEDAUDIT_SERVER）
+  上传须认证：-t 超级令牌（缺省环境 MEDAUDIT_TOKEN），采集器登录换会话后上传；无令牌时拒绝上传
   medaudit-collector bundle verify <文件.zip>
   medaudit-collector bundle upload <文件.zip> [服务地址]
 长旗标（--out/--hospital/--config/--upload 等）继续可用，与短旗标等价。

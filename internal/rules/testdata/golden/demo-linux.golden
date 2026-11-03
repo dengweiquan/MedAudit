@@ -1,5 +1,8 @@
 os.linux.high_capabilities	UNKNOWN	high	
+os.linux.oracle_native_encryption_not_required	UNKNOWN	medium	
 os.linux.root_mismatch	UNKNOWN	high	
+os.linux.ssh_password_auth	UNKNOWN	medium	
+os.linux.ssh_root_login	UNKNOWN	high	
 os.linux.sudo_all	PASS	medium	
 os.linux.sudo_nopasswd_all	PASS	high	
 os.linux.writable_service_file	UNKNOWN	high	
