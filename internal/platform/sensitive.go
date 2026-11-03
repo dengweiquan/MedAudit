@@ -248,27 +248,42 @@ func isTableANY(priv string) bool {
 	return p == "ANY TABLE" || strings.Contains(p, " ANY TABLE")
 }
 
+// roleMember 一条默认激活边：成员名 + 该边来源收据是否可信。
+type roleMember struct {
+	name     string
+	credible bool
+}
+
+// expandedUser 传递展开的确定用户：用户名 + 经角色链（首位为授权角色，
+// “→”连接；直接用户链为空）。
+type expandedUser struct {
+	name string
+	via  string
+}
+
 // roleResolution 从角色边与身份清单事实建解析表：roles 为全部角色名（边
-// PermissionPath[0]），defaultUsers 为角色 → 默认激活用户，
-// credibleDefaultUsers 为其中边来源可信的默认用户，users 为已确认用户
+// PermissionPath[0]），defaultEdges 为角色 → 默认激活边（全部，含边可信度），
+// edgeSources 为角色 → 其已观察边的来源集合（任意激活态），users 为已确认用户
 // （身份清单事实中的账号，且清单来源收据可信）。
 // 角色与用户共用命名空间：出现在边中的名字即角色；角色权限只通过
 // 默认激活边到达用户，非默认角色需 SET ROLE 激活，不计入自动可达。
 // 边逐条验收据：边事实的来源收据被拒/失败/缺失/冲突时，该边不可信——
 // 角色授权本身可显示，但实际用户可达性不得作为确定暴露。
 type roleResolution struct {
-	roles                map[string]bool
-	defaultUsers         map[string][]string
-	credibleDefaultUsers map[string][]string
-	users                map[string]bool
+	roles        map[string]bool
+	defaultEdges map[string][]roleMember
+	edgeSources  map[string]map[string]bool
+	users        map[string]bool
 }
 
-// identityKey 身份清单键：Oracle 用户名按大写折叠（字典存储惯例），
-// MySQL 账号为 user@host 全量匹配；其余类型无清单，返回空键。
+// identityKey 身份清单键：字典事实按实际名称精确匹配，不折叠大小写——
+// 未引用标识符在字典中本就以规范大小写存储（Oracle 大写），引用标识符保留
+// 原大小写；折叠会把混合大小写用户与大写角色混淆。MySQL 账号为 user@host
+// 全量匹配；其余类型无清单，返回空键。
 func identityKey(adapter facts.TargetType, subject string) string {
 	switch adapter {
 	case facts.TargetDBOracle:
-		return "ora:" + strings.ToUpper(subject)
+		return "ora:" + subject
 	case facts.TargetDBMySQL:
 		return "mysql:" + subject
 	default:
@@ -277,18 +292,19 @@ func identityKey(adapter facts.TargetType, subject string) string {
 }
 
 func resolveRoles(b *facts.FactBundle) roleResolution {
-	r := roleResolution{roles: map[string]bool{}, defaultUsers: map[string][]string{}, credibleDefaultUsers: map[string][]string{}, users: map[string]bool{}}
+	r := roleResolution{roles: map[string]bool{}, defaultEdges: map[string][]roleMember{}, edgeSources: map[string]map[string]bool{}, users: map[string]bool{}}
 	for _, f := range b.Facts {
 		if f.Kind != facts.FactRoleEdge || f.Status != facts.StatusObserved || len(f.PermissionPath) == 0 {
 			continue
 		}
 		role := f.PermissionPath[0]
 		r.roles[role] = true
+		if r.edgeSources[role] == nil {
+			r.edgeSources[role] = map[string]bool{}
+		}
+		r.edgeSources[role][f.Source] = true
 		if f.Activation == facts.ActivationDefault {
-			r.defaultUsers[role] = append(r.defaultUsers[role], f.Subject)
-			if sensitiveSourceCredible(b, f.Source) {
-				r.credibleDefaultUsers[role] = append(r.credibleDefaultUsers[role], f.Subject)
-			}
+			r.defaultEdges[role] = append(r.defaultEdges[role], roleMember{name: f.Subject, credible: sensitiveSourceCredible(b, f.Source)})
 		}
 	}
 	// 已确认用户：身份清单事实（Oracle ora.users/ora.cdb_users、MySQL
@@ -310,28 +326,60 @@ func resolveRoles(b *facts.FactBundle) roleResolution {
 }
 
 // expandGrantee 三态展开被授者：
-//   - 已确认角色 → 按默认边展开（可信边用户 / 不可信边用户），isRole=true；
+//   - 已确认角色 → 按默认激活语义传递展开：只跟随默认边，终点只认已确认用户；
+//     传递中遇到未知身份成员或不可信边 → 该路径未证实（unproven）；循环分支剪枝。
+//     membersComplete 为遍历到的全部角色的边来源是否完整（收据 ok 且未截断）：
+//     无可靠可达用户时，只有来源完整才能断言无可达用户，否则未确认。
 //   - 已确认用户 → 本人，isRole=false；
 //   - 身份未知 → unknown=true，不展开：角色边缺失/被拒且无可信用户清单时，
 //     不得把未知被授者直接当成确定用户（角色采集被拒、根本没有返回边时，
 //     角色名会被误当成用户暴露）。
-func (r roleResolution) expandGrantee(adapter facts.TargetType, subject string) (credible, uncredible []string, isRole, unknown bool) {
-	if r.roles[subject] {
-		cred := map[string]bool{}
-		for _, u := range r.credibleDefaultUsers[subject] {
-			cred[u] = true
+func (r roleResolution) expandGrantee(b *facts.FactBundle, subject string) (users []expandedUser, unproven, isRole, unknown, membersComplete bool) {
+	adapter := b.Collector.Adapter
+	if !r.roles[subject] {
+		if r.users[identityKey(adapter, subject)] {
+			return []expandedUser{{name: subject}}, false, false, false, true
 		}
-		for _, u := range r.defaultUsers[subject] {
-			if !cred[u] {
-				uncredible = append(uncredible, u)
+		return nil, false, false, true, false
+	}
+	traversed := map[string]bool{}
+	seenUsers := map[string]bool{}
+	var dfs func(cur string, path map[string]bool, chain []string, pathCredible bool)
+	dfs = func(cur string, path map[string]bool, chain []string, pathCredible bool) {
+		traversed[cur] = true
+		for _, m := range r.defaultEdges[cur] {
+			hopCredible := pathCredible && m.credible
+			if r.roles[m.name] {
+				if path[m.name] {
+					continue // 循环分支剪枝
+				}
+				path[m.name] = true
+				dfs(m.name, path, append(chain, m.name), hopCredible)
+				delete(path, m.name)
+			} else if r.users[identityKey(adapter, m.name)] {
+				if hopCredible {
+					if !seenUsers[m.name] {
+						seenUsers[m.name] = true
+						users = append(users, expandedUser{name: m.name, via: strings.Join(chain, "→")})
+					}
+				} else {
+					unproven = true
+				}
+			} else {
+				unproven = true
 			}
 		}
-		return r.credibleDefaultUsers[subject], uncredible, true, false
 	}
-	if r.users[identityKey(adapter, subject)] {
-		return []string{subject}, nil, false, false
+	dfs(subject, map[string]bool{subject: true}, []string{subject}, true)
+	membersComplete = true
+	for role := range traversed {
+		for src := range r.edgeSources[role] {
+			if ok, _ := sensitiveSourceComplete(b, src); !ok {
+				membersComplete = false
+			}
+		}
 	}
-	return nil, nil, false, true
+	return users, unproven, true, false, membersComplete
 }
 
 // hasPrivilegeFacts 包中是否存在授权事实（无则无法判定暴露面）。
@@ -396,6 +444,9 @@ func sensitiveSourceCredible(b *facts.FactBundle, source string) bool {
 // 加可信收据。旧包无此事实（Scope.Container 是连接服务名，不可信），探针失败
 // 时事实缺失或收据不可信——均不得据 Scope 判定归属；服务名与 PDB 名可能不同，
 // 服务名即使与标签库名相同也不作数。
+// database 须为已规范化的标签库名（调用方以 NormalizeIdentifier 规范化一次：
+// 未引用折叠、引用保留原样）；容器名按字典实际名称精确匹配，不折叠大小写
+// （折叠会把引用混合大小写 PDB 与大写 PDB 混淆）。
 func sensitiveOracleContainer(b *facts.FactBundle, database string) (bool, string) {
 	if !sensitiveSourceCredible(b, "ora.container") {
 		return false, "标签指定了库名（" + database + "），但本包无可信容器身份（旧包无 ora.container 事实，或容器探针失败），无法确认标签归属，不作跨容器匹配。"
@@ -404,7 +455,7 @@ func sensitiveOracleContainer(b *facts.FactBundle, database string) (bool, strin
 		if f.Source != "ora.container" || f.Kind != facts.FactAccountConfig || f.Status != facts.StatusObserved {
 			continue
 		}
-		if strings.EqualFold(f.Attributes["con_name"], database) {
+		if f.Attributes["con_name"] == database {
 			return true, ""
 		}
 	}
@@ -558,16 +609,22 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 			snap.Notes = append(snap.Notes,
 				"列级标记：现有事实为表级粒度，列级授权未采集；表级 broad 授权可达该列时仍计暴露，列级专属授权无法确认。")
 		}
+		// matchDB 匹配用标签库名：规范化一次（未引用折叠、引用保留原样）。
+		// 注意入库时 Database 只 trim 未规范化，故匹配时规范化；规范化不得
+		// 做两次（已去引号的混合大小写名二次规范化会被误折叠）。
+		matchDB := NormalizeIdentifier(adapter, l.Database)
 		var labelExposures []SensitiveExposure
 		var labelCredible []bool // 与 labelExposures 对齐：该暴露的事实来源是否可信
-		add := func(kind, subject, priv string, evidence []string, scope string, viaRole string, src string) {
+		add := func(kind, subject, priv string, evidence []string, scope string, viaChain string, src string) {
 			ex := SensitiveExposure{
 				LabelID: l.ID, Object: display, Kind: kind, Subject: subject,
 				Privilege: priv, Evidence: evidence, Risk: "high",
 			}
-			if viaRole != "" {
-				ex.Subject = subject + "（经角色 " + viaRole + "）"
-				ex.Exempt = exempt(viaRole, priv, scope) || exempt(subject, priv, scope)
+			if viaChain != "" {
+				ex.Subject = subject + "（经角色 " + viaChain + "）"
+				// 豁免只看授权角色（链首）与用户本人：中间角色的基线放行
+				// 不豁免整条传递链。
+				ex.Exempt = exempt(strings.Split(viaChain, "→")[0], priv, scope) || exempt(subject, priv, scope)
 			} else {
 				ex.Exempt = exempt(subject, priv, scope)
 			}
@@ -589,7 +646,7 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 			// （同名表在不同 PDB 是不同对象；Scope.Instance 为写死占位值，不可信）。
 			containerMismatch := false
 			if l.Database != "" {
-				if ok, reason := sensitiveOracleContainer(b, l.Database); !ok {
+				if ok, reason := sensitiveOracleContainer(b, matchDB); !ok {
 					containerMismatch = true
 					snap.Notes = append(snap.Notes, reason)
 				}
@@ -620,13 +677,9 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					// CDB 通用权限（common=YES，CONTAINER=ALL）可达全部 PDB，
 					// 本节只计本包（本资产容器），跨 PDB 可达另行注记。
 					common := f.Attributes["common"] == "YES"
-					credUsers, uncredUsers, isRole, unknown := roles.expandGrantee(adapter, f.Subject)
-					for _, u := range credUsers {
-						via := ""
-						if isRole {
-							via = f.Subject
-						}
-						add("any", u, priv, []string{f.FactID}, f.Scope, via, f.Source)
+					expUsers, unproven, isRole, unknown, membersComplete := roles.expandGrantee(b, f.Subject)
+					for _, u := range expUsers {
+						add("any", u.name, priv, []string{f.FactID}, f.Scope, u.via, f.Source)
 						if common {
 							labelExposures[len(labelExposures)-1].Note = "CONTAINER=ALL：该权限可达全部 PDB，本节只计本包。"
 						}
@@ -638,13 +691,21 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 						labelExposures[len(labelExposures)-1].Note = "被授者身份无法确认（角色边缺失/被拒且无可信用户清单），不能直接当成确定用户；不计入确定暴露。"
 						snap.Notes = append(snap.Notes, "被授者 "+f.Subject+" 身份无法确认（非确认角色、非确认用户），不计入确定暴露。")
 					}
-					if isRole && len(uncredUsers) > 0 && !exempt(f.Subject, priv, f.Scope) {
-						// 角色授权存在，但成员边来源不可信：只显角色授权，
+					if isRole && unproven && !exempt(f.Subject, priv, f.Scope) {
+						// 传递路径未证实（不可信边、未知身份成员）：只显角色授权，
 						// 不计确定暴露（实际用户可达性未确认）。
 						add("any", f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
 						labelCredible[len(labelCredible)-1] = false
-						labelExposures[len(labelExposures)-1].Note = "角色授权存在，但角色成员边来源不可信（被拒/失败/缺收据），无法确认实际用户可达性；不计入确定暴露。"
-						snap.Notes = append(snap.Notes, "角色 "+f.Subject+" 的 "+priv+" 授权存在，但角色成员边来源不可信，无法确认实际用户可达性（不计入确定暴露）。")
+						labelExposures[len(labelExposures)-1].Note = "角色授权存在，但角色成员可达性无法确认（成员边来源不可信或成员身份未知）；不计入确定暴露。"
+						snap.Notes = append(snap.Notes, "角色 "+f.Subject+" 的 "+priv+" 授权存在，但角色成员可达性无法确认（成员边来源不可信或成员身份未知），不计入确定暴露。")
+					}
+					if isRole && len(expUsers) == 0 && !unproven && !membersComplete && !exempt(f.Subject, priv, f.Scope) {
+						// 无可靠可达用户且成员来源不完整（partial/denied/缺失）：
+						// 不能断言无可达用户，判未确认（来源完整时才可称“未发现”）。
+						add("any", f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
+						labelCredible[len(labelCredible)-1] = false
+						labelExposures[len(labelExposures)-1].Note = "角色授权存在，但成员来源不完整（partial/denied/缺失），无法确认无可达用户；不计入确定暴露。"
+						snap.Notes = append(snap.Notes, "角色 "+f.Subject+" 的 "+priv+" 授权存在，但成员来源不完整，无法确认无可达用户（不判“未发现”）。")
 					}
 				}
 			}
@@ -653,7 +714,7 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				if !strings.EqualFold(f.Subject, "PUBLIC") {
 					continue
 				}
-				if l.Database != "" && !matchName(adapter, f.Attributes["database"], l.Database) {
+				if l.Database != "" && !matchName(adapter, f.Attributes["database"], matchDB) {
 					continue
 				}
 				if !matchName(adapter, f.Attributes["schema"], l.Schema) ||
@@ -667,7 +728,7 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 		case facts.TargetDBMySQL:
 			// MySQL 无 PUBLIC：全局（*.*）与库级（db.*）数据权限即 broad 授权。
 			// MySQL 的模式即库：标签库名优先，库名为空时用模式名匹配。
-			effDB := l.Database
+			effDB := matchDB
 			if effDB == "" {
 				effDB = l.Schema
 			}
@@ -695,13 +756,9 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 				default:
 					continue
 				}
-				credUsers, uncredUsers, isRole, unknown := roles.expandGrantee(adapter, f.Subject)
-				for _, u := range credUsers {
-					via := ""
-					if isRole {
-						via = f.Subject
-					}
-					add(kind, u, priv, []string{f.FactID}, f.Scope, via, f.Source)
+				expUsers, unproven, isRole, unknown, membersComplete := roles.expandGrantee(b, f.Subject)
+				for _, u := range expUsers {
+					add(kind, u.name, priv, []string{f.FactID}, f.Scope, u.via, f.Source)
 				}
 				if unknown && !exempt(f.Subject, priv, f.Scope) {
 					// 身份未知：不得当成确定用户；显示疑似，不计确定暴露。
@@ -710,13 +767,21 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					labelExposures[len(labelExposures)-1].Note = "被授者身份无法确认（角色边缺失/被拒且无可信用户清单），不能直接当成确定用户；不计入确定暴露。"
 					snap.Notes = append(snap.Notes, "被授者 "+f.Subject+" 身份无法确认（非确认角色、非确认用户），不计入确定暴露。")
 				}
-				if isRole && len(uncredUsers) > 0 && !exempt(f.Subject, priv, f.Scope) {
-					// 角色授权存在，但成员边来源不可信：只显角色授权，
+				if isRole && unproven && !exempt(f.Subject, priv, f.Scope) {
+					// 传递路径未证实（不可信边、未知身份成员）：只显角色授权，
 					// 不计确定暴露（实际用户可达性未确认）。
 					add(kind, f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
 					labelCredible[len(labelCredible)-1] = false
-					labelExposures[len(labelExposures)-1].Note = "角色授权存在，但角色成员边来源不可信（被拒/失败/缺收据），无法确认实际用户可达性；不计入确定暴露。"
-					snap.Notes = append(snap.Notes, "角色 "+f.Subject+" 的 "+priv+" 授权存在，但角色成员边来源不可信，无法确认实际用户可达性（不计入确定暴露）。")
+					labelExposures[len(labelExposures)-1].Note = "角色授权存在，但角色成员可达性无法确认（成员边来源不可信或成员身份未知）；不计入确定暴露。"
+					snap.Notes = append(snap.Notes, "角色 "+f.Subject+" 的 "+priv+" 授权存在，但角色成员可达性无法确认（成员边来源不可信或成员身份未知），不计入确定暴露。")
+				}
+				if isRole && len(expUsers) == 0 && !unproven && !membersComplete && !exempt(f.Subject, priv, f.Scope) {
+					// 无可靠可达用户且成员来源不完整（partial/denied/缺失）：
+					// 不能断言无可达用户，判未确认（来源完整时才可称“未发现”）。
+					add(kind, f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
+					labelCredible[len(labelCredible)-1] = false
+					labelExposures[len(labelExposures)-1].Note = "角色授权存在，但成员来源不完整（partial/denied/缺失），无法确认无可达用户；不计入确定暴露。"
+					snap.Notes = append(snap.Notes, "角色 "+f.Subject+" 的 "+priv+" 授权存在，但成员来源不完整，无法确认无可达用户（不判“未发现”）。")
 				}
 			}
 		case facts.TargetDBSQLSrv:
@@ -729,7 +794,7 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					continue
 				}
 				dbName := strings.TrimPrefix(f.Scope, "database:")
-				if l.Database != "" && !matchName(adapter, dbName, l.Database) {
+				if l.Database != "" && !matchName(adapter, dbName, matchDB) {
 					continue
 				}
 				snap.Notes = append(snap.Notes,
