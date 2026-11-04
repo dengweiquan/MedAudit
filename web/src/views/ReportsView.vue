@@ -172,7 +172,7 @@
       </table>
       <div v-else class="empty">本对象未标记敏感对象。</div>
       <table v-if="sensitiveSection.exposures.length" style="margin-top:6px">
-        <thead><tr><th>对象</th><th>类型</th><th>被授者</th><th>权限</th><th>豁免</th></tr></thead>
+        <thead><tr><th>对象</th><th>类型</th><th>被授者</th><th>权限</th><th>豁免</th><th>证据（事实 ID）</th><th>备注</th></tr></thead>
         <tbody>
           <tr v-for="(e, i) in sensitiveSection.exposures" :key="i">
             <td>{{ e.object }}</td>
@@ -180,6 +180,8 @@
             <td>{{ e.subject }}</td>
             <td>{{ e.privilege }}</td>
             <td>{{ e.exempt ? '已放行' : '' }}</td>
+            <td style="font-size:13px">{{ (e.evidence || []).join(', ') }}</td>
+            <td style="font-size:13px">{{ e.note || '' }}</td>
           </tr>
         </tbody>
       </table>
