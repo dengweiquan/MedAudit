@@ -1,8 +1,11 @@
 package platform
 
 import (
+	"archive/zip"
+	"bytes"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
@@ -1096,4 +1099,357 @@ func TestSensitiveRoleLevelExemptionCoversMembers(t *testing.T) {
 	if s := findSnap(t, MatchSensitive(myB, myLbl, myRoleBl), "l1"); s.Status != "no-broad-grant" {
 		t.Errorf("MySQL 角色级豁免 + 成员来源 partial：want no-broad-grant, got %s", s.Status)
 	}
+}
+
+// 核心闭环事项 1：豁免语义负例——错主体、错权限、错 scope、中间角色豁免
+// 均不豁免；用户级与角色级豁免在五种收据状态下的行为对照。
+// 注意：本组只固定语义，不先断言代码已有误判；若用例失败即为真缺陷。
+func TestSensitiveExemptionNegatives(t *testing.T) {
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	tabOK := facts.Receipt{TemplateID: "ora.tab_privs", Status: "ok"}
+	sysOK := facts.Receipt{TemplateID: "ora.sys_privs", Status: "ok"}
+	usersOK := facts.Receipt{TemplateID: "ora.users", Status: "ok"}
+	grant := privFact("a1", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	edge := roleEdgeFact("RPT_ROLE", "BOB", facts.ActivationDefault)
+	bob := accountFact("u1", "ora.users", "BOB")
+	mkOra := func(roleReceipt string, fs ...facts.Fact) *facts.FactBundle {
+		return sensBundleReceipts("db-oracle",
+			[]facts.Receipt{tabOK, sysOK, usersOK, {TemplateID: "ora.role_privs", Status: roleReceipt}}, fs...)
+	}
+	allow := func(subject, value, scope string) *rules.Baseline {
+		return &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: subject, Kind: "privilege", Value: value, Scope: scope}}}
+	}
+	// 错主体（角色）：放行 OTHER_ROLE 不豁免 RPT_ROLE 的成员。
+	if s := findSnap(t, MatchSensitive(mkOra("ok", grant, edge, bob), lbl, allow("OTHER_ROLE", "SELECT ANY TABLE", "instance")), "l1"); s.Status != "exposed" {
+		t.Errorf("错主体（角色）：want exposed, got %s", s.Status)
+	}
+	// 错主体（用户）：直接授权 APP_USER，放行 BOB 不豁免。
+	userGrant := privFact("a2", "ora.sys_privs", "APP_USER", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	b := mkOra("ok", userGrant, accountFact("u2", "ora.users", "APP_USER"))
+	if s := findSnap(t, MatchSensitive(b, lbl, allow("BOB", "SELECT ANY TABLE", "instance")), "l1"); s.Status != "exposed" {
+		t.Errorf("错主体（用户）：want exposed, got %s", s.Status)
+	}
+	// 错权限：放行 DELETE ANY TABLE 不豁免 SELECT ANY TABLE。
+	if s := findSnap(t, MatchSensitive(mkOra("ok", grant, edge, bob), lbl, allow("RPT_ROLE", "DELETE ANY TABLE", "instance")), "l1"); s.Status != "exposed" {
+		t.Errorf("错权限：want exposed, got %s", s.Status)
+	}
+	// 错 scope：放行范围 other 不豁免范围 instance 的授权。
+	if s := findSnap(t, MatchSensitive(mkOra("ok", grant, edge, bob), lbl, allow("RPT_ROLE", "SELECT ANY TABLE", "other")), "l1"); s.Status != "exposed" {
+		t.Errorf("错 scope：want exposed, got %s", s.Status)
+	}
+	// 中间角色豁免：放行 R_OUTER 不豁免经 R_INNER→R_OUTER 到达的 BOB
+	// （豁免只看链首授权角色与用户本人）。
+	innerGrant := privFact("a3", "ora.sys_privs", "R_INNER", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	b = mkOra("ok", innerGrant,
+		roleEdgeFact("R_INNER", "R_OUTER", facts.ActivationDefault),
+		roleEdgeFact("R_OUTER", "BOB", facts.ActivationDefault), bob)
+	if s := findSnap(t, MatchSensitive(b, lbl, allow("R_OUTER", "SELECT ANY TABLE", "instance")), "l1"); s.Status != "exposed" {
+		t.Errorf("中间角色豁免：want exposed, got %s", s.Status)
+	}
+	// 角色级豁免在成员来源 denied/缺失/冲突时仍覆盖 → no-broad-grant。
+	roleBl := allow("RPT_ROLE", "SELECT ANY TABLE", "instance")
+	if s := findSnap(t, MatchSensitive(mkOra("denied", grant, edge, bob), lbl, roleBl), "l1"); s.Status != "no-broad-grant" {
+		t.Errorf("角色级豁免 + 成员来源 denied：want no-broad-grant, got %s", s.Status)
+	}
+	b = sensBundleReceipts("db-oracle", []facts.Receipt{tabOK, sysOK, usersOK}, grant, edge, bob)
+	if s := findSnap(t, MatchSensitive(b, lbl, roleBl), "l1"); s.Status != "no-broad-grant" {
+		t.Errorf("角色级豁免 + 成员来源缺失：want no-broad-grant, got %s", s.Status)
+	}
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{tabOK, sysOK, usersOK, {TemplateID: "ora.role_privs", Status: "ok"}, {TemplateID: "ora.role_privs", Status: "denied"}},
+		grant, edge, bob)
+	if s := findSnap(t, MatchSensitive(b, lbl, roleBl), "l1"); s.Status != "no-broad-grant" {
+		t.Errorf("角色级豁免 + 成员来源冲突：want no-broad-grant, got %s", s.Status)
+	}
+	// 用户级豁免在成员来源 denied/缺失/冲突时不覆盖 → 未确认。
+	userBl := allow("BOB", "SELECT ANY TABLE", "instance")
+	if s := findSnap(t, MatchSensitive(mkOra("denied", grant, edge, bob), lbl, userBl), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("用户级豁免 + 成员来源 denied：want unconfirmed, got %s", s.Status)
+	}
+	b = sensBundleReceipts("db-oracle", []facts.Receipt{tabOK, sysOK, usersOK}, grant, edge, bob)
+	if s := findSnap(t, MatchSensitive(b, lbl, userBl), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("用户级豁免 + 成员来源缺失：want unconfirmed, got %s", s.Status)
+	}
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{tabOK, sysOK, usersOK, {TemplateID: "ora.role_privs", Status: "ok"}, {TemplateID: "ora.role_privs", Status: "denied"}},
+		grant, edge, bob)
+	if s := findSnap(t, MatchSensitive(b, lbl, userBl), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("用户级豁免 + 成员来源冲突：want unconfirmed, got %s", s.Status)
+	}
+
+	// MySQL 同口径负例。
+	myLbl := []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"}}
+	myGrant := privFact("m1", "mysql.db_privs", "rpt_role", "hisdb.*", map[string]string{"privilege": "SELECT"})
+	myEdge := func(role, member string) facts.Fact {
+		return facts.Fact{Kind: facts.FactRoleEdge, Subject: member, Status: facts.StatusObserved,
+			Source:         "mysql.role_edges",
+			PermissionPath: []string{role, member}, Activation: facts.ActivationDefault}
+	}
+	myAcct := accountFact("u1", "mysql.accounts", "app@%")
+	mkMy := func(roleReceipt string, fs ...facts.Fact) *facts.FactBundle {
+		return sensBundleReceipts("db-mysql",
+			[]facts.Receipt{
+				{TemplateID: "mysql.user_privs", Status: "ok"},
+				{TemplateID: "mysql.global_grants", Status: "ok"},
+				{TemplateID: "mysql.db_privs", Status: "ok"},
+				{TemplateID: "mysql.role_edges", Status: roleReceipt},
+				{TemplateID: "mysql.accounts", Status: "ok"},
+			}, fs...)
+	}
+	if s := findSnap(t, MatchSensitive(mkMy("ok", myGrant, myEdge("rpt_role", "app@%"), myAcct), myLbl, allow("other_role", "SELECT", "hisdb.*")), "l1"); s.Status != "exposed" {
+		t.Errorf("MySQL 错主体：want exposed, got %s", s.Status)
+	}
+	insGrant := privFact("m2", "mysql.db_privs", "rpt_role", "hisdb.*", map[string]string{"privilege": "INSERT"})
+	if s := findSnap(t, MatchSensitive(mkMy("ok", insGrant, myEdge("rpt_role", "app@%"), myAcct), myLbl, allow("rpt_role", "SELECT", "hisdb.*")), "l1"); s.Status != "exposed" {
+		t.Errorf("MySQL 错权限：want exposed, got %s", s.Status)
+	}
+	if s := findSnap(t, MatchSensitive(mkMy("ok", myGrant, myEdge("rpt_role", "app@%"), myAcct), myLbl, allow("rpt_role", "SELECT", "otherdb.*")), "l1"); s.Status != "exposed" {
+		t.Errorf("MySQL 错 scope：want exposed, got %s", s.Status)
+	}
+	innerMyGrant := privFact("m3", "mysql.db_privs", "inner_role", "hisdb.*", map[string]string{"privilege": "SELECT"})
+	b = mkMy("ok", innerMyGrant, myEdge("inner_role", "mid_role"), myEdge("mid_role", "app@%"), myAcct)
+	if s := findSnap(t, MatchSensitive(b, myLbl, allow("mid_role", "SELECT", "hisdb.*")), "l1"); s.Status != "exposed" {
+		t.Errorf("MySQL 中间角色豁免：want exposed, got %s", s.Status)
+	}
+	if s := findSnap(t, MatchSensitive(mkMy("denied", myGrant, myEdge("rpt_role", "app@%"), myAcct), myLbl, allow("rpt_role", "SELECT", "hisdb.*")), "l1"); s.Status != "no-broad-grant" {
+		t.Errorf("MySQL 角色级豁免 + 成员来源 denied：want no-broad-grant, got %s", s.Status)
+	}
+	if s := findSnap(t, MatchSensitive(mkMy("denied", myGrant, myEdge("rpt_role", "app@%"), myAcct), myLbl, allow("app@%", "SELECT", "hisdb.*")), "l1"); s.Status != "unconfirmed" {
+		t.Errorf("MySQL 用户级豁免 + 成员来源 denied：want unconfirmed, got %s", s.Status)
+	}
+}
+
+// 核心闭环事项 2：空 scope 现状固定——基线 scope 为空或事实 scope 为空，
+// 任一为空即匹配（通配语义）。本轮不收紧，只固定现状并在界面与文档提示。
+func TestBaselineEmptyScopeBehavior(t *testing.T) {
+	// 规则层单元口径。
+	bl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "R", Kind: "privilege", Value: "P", Scope: ""}}}
+	if !bl.Allowed("R", "privilege", "P", "instance") {
+		t.Errorf("基线 scope 为空应匹配任意事实范围")
+	}
+	if !bl.Allowed("R", "privilege", "P", "") {
+		t.Errorf("双方 scope 均为空应匹配")
+	}
+	bl2 := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "R", Kind: "privilege", Value: "P", Scope: "instance"}}}
+	if !bl2.Allowed("R", "privilege", "P", "") {
+		t.Errorf("事实 scope 为空应匹配任意基线范围（现状通配）")
+	}
+	if bl2.Allowed("R", "privilege", "P", "other") {
+		t.Errorf("双方 scope 非空且不同不应匹配")
+	}
+	if bl2.Allowed("OTHER", "privilege", "P", "instance") {
+		t.Errorf("主体不同不应匹配")
+	}
+	// 端到端：基线 scope 留空 + Oracle 授权 → 豁免。
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	grant := privFact("a1", "ora.sys_privs", "APP_USER", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	b := sensBundleReceipts("db-oracle",
+		[]facts.Receipt{
+			{TemplateID: "ora.tab_privs", Status: "ok"},
+			{TemplateID: "ora.sys_privs", Status: "ok"},
+			{TemplateID: "ora.users", Status: "ok"},
+		}, grant, accountFact("u1", "ora.users", "APP_USER"))
+	emptyScopeBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "APP_USER", Kind: "privilege", Value: "SELECT ANY TABLE", Scope: ""}}}
+	if s := findSnap(t, MatchSensitive(b, lbl, emptyScopeBl), "l1"); s.Status != "no-broad-grant" {
+		t.Errorf("基线 scope 留空端到端：want no-broad-grant, got %s", s.Status)
+	}
+	// 端到端：事实 scope 为空 + 基线 scope 有值 → 同样匹配（现状通配）。
+	noScopeGrant := privFact("a2", "ora.sys_privs", "APP_USER", "", map[string]string{"privilege": "SELECT ANY TABLE"})
+	b = sensBundleReceipts("db-oracle",
+		[]facts.Receipt{
+			{TemplateID: "ora.tab_privs", Status: "ok"},
+			{TemplateID: "ora.sys_privs", Status: "ok"},
+			{TemplateID: "ora.users", Status: "ok"},
+		}, noScopeGrant, accountFact("u1", "ora.users", "APP_USER"))
+	scopedBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "APP_USER", Kind: "privilege", Value: "SELECT ANY TABLE", Scope: "instance"}}}
+	if s := findSnap(t, MatchSensitive(b, lbl, scopedBl), "l1"); s.Status != "no-broad-grant" {
+		t.Errorf("事实 scope 为空端到端：want no-broad-grant, got %s", s.Status)
+	}
+}
+
+// 核心闭环事项 3：零成员且角色整体豁免时，报告必须留下豁免记录——
+// 授权角色、权限、范围、事实 ID 与豁免依据，不编造用户可达性。
+func TestSensitiveZeroMemberRoleExemptionRecord(t *testing.T) {
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	grant := privFact("a9", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	condEdge := roleEdgeFact("RPT_ROLE", "CAROL", facts.ActivationConditional)
+	roleBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "RPT_ROLE", Kind: "privilege", Value: "SELECT ANY TABLE", Scope: "instance"}}}
+	mk := func(roleReceipt string) *facts.FactBundle {
+		return sensBundleReceipts("db-oracle",
+			[]facts.Receipt{
+				{TemplateID: "ora.tab_privs", Status: "ok"},
+				{TemplateID: "ora.sys_privs", Status: "ok"},
+				{TemplateID: "ora.role_privs", Status: roleReceipt},
+				{TemplateID: "ora.users", Status: "ok"},
+			}, grant, condEdge)
+	}
+	for _, rcs := range []string{"ok", "partial"} {
+		sec := MatchSensitive(mk(rcs), lbl, roleBl)
+		s := findSnap(t, sec, "l1")
+		if s.Status != "no-broad-grant" {
+			t.Errorf("零成员角色豁免(%s)：want no-broad-grant, got %s", rcs, s.Status)
+		}
+		var rec *SensitiveExposure
+		for i := range sec.Exposures {
+			if sec.Exposures[i].Subject == "RPT_ROLE" && sec.Exposures[i].Exempt {
+				rec = &sec.Exposures[i]
+			}
+		}
+		if rec == nil {
+			t.Fatalf("零成员角色豁免(%s)：应有角色豁免记录条目", rcs)
+		}
+		if len(rec.Evidence) != 1 || rec.Evidence[0] != "a9" {
+			t.Errorf("零成员角色豁免(%s)：证据应为事实 a9，得到 %v", rcs, rec.Evidence)
+		}
+		for _, want := range []string{"角色整体豁免", "RPT_ROLE", "SELECT ANY TABLE", "instance", "不编造"} {
+			if !strings.Contains(rec.Note, want) {
+				t.Errorf("零成员角色豁免(%s)：备注应含 %q，得到 %q", rcs, want, rec.Note)
+			}
+		}
+		if n := countExposures(sec, "l1", false); n != 0 {
+			t.Errorf("零成员角色豁免(%s)：不应有违规暴露，得到 %d", rcs, n)
+		}
+	}
+	// MySQL 同口径。
+	myLbl := []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"}}
+	myGrant := privFact("m9", "mysql.db_privs", "rpt_role", "hisdb.*", map[string]string{"privilege": "SELECT"})
+	myEdge := facts.Fact{Kind: facts.FactRoleEdge, Subject: "carol@%", Status: facts.StatusObserved,
+		Source:         "mysql.role_edges",
+		PermissionPath: []string{"rpt_role", "carol@%"}, Activation: facts.ActivationConditional}
+	myBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "rpt_role", Kind: "privilege", Value: "SELECT", Scope: "hisdb.*"}}}
+	myB := sensBundleReceipts("db-mysql",
+		[]facts.Receipt{
+			{TemplateID: "mysql.user_privs", Status: "ok"},
+			{TemplateID: "mysql.global_grants", Status: "ok"},
+			{TemplateID: "mysql.db_privs", Status: "ok"},
+			{TemplateID: "mysql.role_edges", Status: "ok"},
+			{TemplateID: "mysql.accounts", Status: "ok"},
+		}, myGrant, myEdge)
+	sec := MatchSensitive(myB, myLbl, myBl)
+	if s := findSnap(t, sec, "l1"); s.Status != "no-broad-grant" {
+		t.Errorf("MySQL 零成员角色豁免：want no-broad-grant, got %s", s.Status)
+	}
+	found := false
+	for _, e := range sec.Exposures {
+		if e.Subject == "rpt_role" && e.Exempt && len(e.Evidence) == 1 && e.Evidence[0] == "m9" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("MySQL 零成员角色豁免：应有角色豁免记录条目（证据 m9）")
+	}
+}
+
+// 核心闭环事项 3：全流程验证——评估 → 添加豁免 → 生成报告 → 撤销豁免 →
+// 再评估，并核对旧报告快照原义不变；Word 渲染含事实 ID 与豁免备注。
+func TestSensitiveExemptionFullFlow(t *testing.T) {
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	grant := privFact("a1", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	edge := roleEdgeFact("RPT_ROLE", "BOB", facts.ActivationDefault)
+	b := sensBundleReceipts("db-oracle",
+		[]facts.Receipt{
+			{TemplateID: "ora.tab_privs", Status: "ok"},
+			{TemplateID: "ora.sys_privs", Status: "ok"},
+			{TemplateID: "ora.role_privs", Status: "ok"},
+			{TemplateID: "ora.users", Status: "ok"},
+		}, grant, edge, accountFact("u1", "ora.users", "BOB"))
+	// 评估（无豁免）：暴露。
+	secA := MatchSensitive(b, lbl, nil)
+	if s := findSnap(t, secA, "l1"); s.Status != "exposed" {
+		t.Fatalf("流程评估：want exposed, got %s", s.Status)
+	}
+	if n := countExposures(secA, "l1", false); n != 1 {
+		t.Fatalf("流程评估：应有 1 条违规暴露，得到 %d", n)
+	}
+	// 生成报告（快照化）：旧报告内容此后不再改写。
+	snapA, err := json.Marshal(secA)
+	if err != nil {
+		t.Fatalf("快照序列化失败：%v", err)
+	}
+	// 添加豁免（用户级）：不再违规，豁免条目带证据。
+	userBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "BOB", Kind: "privilege", Value: "SELECT ANY TABLE", Scope: "instance"}}}
+	secB := MatchSensitive(b, lbl, userBl)
+	if s := findSnap(t, secB, "l1"); s.Status != "no-broad-grant" {
+		t.Fatalf("流程加豁免：want no-broad-grant, got %s", s.Status)
+	}
+	if n := countExposures(secB, "l1", true); n != 1 {
+		t.Fatalf("流程加豁免：应有 1 条豁免条目，得到 %d", n)
+	}
+	// Word 渲染豁免后报告：事实 ID 与豁免标记应出现在文档中。
+	doc, err := RenderReportDocx(`{"sensitive":`+string(mustJSON(t, secB))+`}`, "r-flow")
+	if err != nil {
+		t.Fatalf("Word 渲染失败：%v", err)
+	}
+	if xml := docxText(t, doc); !strings.Contains(xml, "a1") || !strings.Contains(xml, "已放行") {
+		t.Errorf("Word 豁免报告应含事实 ID a1 与已放行标记")
+	}
+	// 撤销豁免 → 再评估：恢复暴露。
+	secC := MatchSensitive(b, lbl, nil)
+	if s := findSnap(t, secC, "l1"); s.Status != "exposed" {
+		t.Fatalf("流程撤销豁免：want exposed, got %s", s.Status)
+	}
+	// 核对旧报告：快照原义不变（仍为暴露、1 条违规条目）。
+	var old SensitiveSection
+	if err := json.Unmarshal(snapA, &old); err != nil {
+		t.Fatalf("旧快照解析失败：%v", err)
+	}
+	if s := findSnap(t, &old, "l1"); s.Status != "exposed" {
+		t.Errorf("旧报告快照应仍为 exposed，得到 %s", s.Status)
+	}
+	if n := countExposures(&old, "l1", false); n != 1 {
+		t.Errorf("旧报告快照应仍有 1 条违规条目，得到 %d", n)
+	}
+	// 零成员角色豁免报告的 Word 渲染：记录条目事实 ID 与豁免备注应出现。
+	zeroGrant := privFact("a9", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	condEdge := roleEdgeFact("RPT_ROLE", "CAROL", facts.ActivationConditional)
+	zb := sensBundleReceipts("db-oracle",
+		[]facts.Receipt{
+			{TemplateID: "ora.tab_privs", Status: "ok"},
+			{TemplateID: "ora.sys_privs", Status: "ok"},
+			{TemplateID: "ora.role_privs", Status: "ok"},
+			{TemplateID: "ora.users", Status: "ok"},
+		}, zeroGrant, condEdge)
+	roleBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "RPT_ROLE", Kind: "privilege", Value: "SELECT ANY TABLE", Scope: "instance"}}}
+	secZ := MatchSensitive(zb, lbl, roleBl)
+	doc, err = RenderReportDocx(`{"sensitive":`+string(mustJSON(t, secZ))+`}`, "r-zero")
+	if err != nil {
+		t.Fatalf("Word 零成员报告渲染失败：%v", err)
+	}
+	if xml := docxText(t, doc); !strings.Contains(xml, "a9") || !strings.Contains(xml, "角色整体豁免") {
+		t.Errorf("Word 零成员报告应含事实 ID a9 与角色整体豁免备注")
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("JSON 序列化失败：%v", err)
+	}
+	return b
+}
+
+// docxText 解包 docx 并返回 document.xml 文本（渲染断言用）。
+func docxText(t *testing.T, doc []byte) string {
+	t.Helper()
+	zr, err := zip.NewReader(bytes.NewReader(doc), int64(len(doc)))
+	if err != nil {
+		t.Fatalf("docx 解包失败：%v", err)
+	}
+	for _, f := range zr.File {
+		if f.Name == "word/document.xml" {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatalf("document.xml 打开失败：%v", err)
+			}
+			defer rc.Close()
+			data, err := io.ReadAll(rc)
+			if err != nil {
+				t.Fatalf("document.xml 读取失败：%v", err)
+			}
+			return string(data)
+		}
+	}
+	t.Fatalf("docx 中未找到 word/document.xml")
+	return ""
 }
