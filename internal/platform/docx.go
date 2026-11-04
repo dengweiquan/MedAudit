@@ -801,15 +801,15 @@ func RenderReportDocx(snapshotJSON string, reportID string) ([]byte, error) {
 		}
 		if len(snap.Sensitive.Exposures) > 0 {
 			body.WriteString(docxPara("暴露明细（原始授权证据见事实 ID，可在平台按事实追溯）", "Heading2"))
-			rows := [][]string{{"对象", "类型", "被授者", "权限", "风险", "豁免"}}
+			rows := [][]string{{"对象", "类型", "被授者", "权限", "风险", "豁免", "证据（事实 ID）", "备注"}}
 			for _, e := range snap.Sensitive.Exposures {
 				exempt := ""
 				if e.Exempt {
 					exempt = "已放行"
 				}
-				rows = append(rows, []string{e.Object, e.Kind, e.Subject, e.Privilege, e.Risk, exempt})
+				rows = append(rows, []string{e.Object, e.Kind, e.Subject, e.Privilege, e.Risk, exempt, strings.Join(e.Evidence, ", "), e.Note})
 			}
-			body.WriteString(docxTableEx(rows, tableOpts{Widths: []int{2300, 1200, 1700, 1400, 800, 1000}, Header: true, FontSz: 19}))
+			body.WriteString(docxTableEx(rows, tableOpts{Widths: []int{2000, 900, 1500, 1200, 700, 800, 1200, 1200}, Header: true, FontSz: 19}))
 		}
 	}
 

@@ -47,3 +47,6 @@ jobs:
       - name: Typecheck web frontend
         working-directory: web
         run: npm run typecheck
+      - name: Test web frontend
+        working-directory: web
+        run: npm run test

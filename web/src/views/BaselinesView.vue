@@ -52,6 +52,7 @@
       <label>创建人<input v-model="form.created_by" placeholder="创建人" /></label>
     </div>
     <p class="todo" style="margin:6px 0">放行项一条 = 放行某个账号的一项权限/角色/身份。<span title="逐项填写后点「添加一条」，可加多条再一次创建。更推荐：到「问题」页对具体问题点「加入基线」，放行项由系统按证据自动推导，不必手填。">?</span></p>
+    <p class="todo" style="margin:6px 0">注意范围通配：基线 scope 留空表示不限范围，会匹配该主体在所有范围的同项授权；事实本身缺 scope 时也会匹配任意基线范围。留空前请确认放行意图确实不限范围，否则请填具体范围。</p>
     <div class="form-grid">
       <label>账号/角色/对象<input v-model="draft.subject" :placeholder="subjectHint" /></label>
       <label>种类
@@ -60,7 +61,7 @@
         </select>
       </label>
       <label>值<input v-model="draft.value" :placeholder="valueHint" /></label>
-      <label>范围 scope（可空）<input v-model="draft.scope" placeholder="如 *.*，多数情况留空" /></label>
+      <label>范围 scope（可空）<input v-model="draft.scope" placeholder="如 *.*；留空 = 不限范围（匹配所有范围）" /></label>
       <label>原因<input v-model="draft.reason" placeholder="业务依据（必填思路：为何可放行）" /></label>
     </div>
     <div class="inline-form">
