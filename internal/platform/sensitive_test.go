@@ -1665,4 +1665,182 @@ func TestSensitivePersistedBaselineAndReportReread(t *testing.T) {
 	if len(secOld.Labels) != 1 || secOld.Labels[0].Status != "unconfirmed" {
 		t.Fatalf("旧报告 A 重读：标签应仍为 unconfirmed，实际 %+v", secOld.Labels)
 	}
+	// 撤销豁免后重读已豁免的报告 B：结论与事实 ID 仍不变。
+	secOldB := sensitiveOf(repB)
+	if len(secOldB.Labels) != 1 || secOldB.Labels[0].Status != "no-broad-grant" {
+		t.Fatalf("旧报告 B 重读：标签应仍为 no-broad-grant，实际 %+v", secOldB.Labels)
+	}
+	foundB := false
+	for _, e := range secOldB.Exposures {
+		if e.Subject == "RPT_ROLE" && e.Exempt && len(e.Evidence) == 1 && e.Evidence[0] == "a1" &&
+			strings.Contains(e.Note, "成员可达性未确认") {
+			foundB = true
+		}
+	}
+	if !foundB {
+		t.Errorf("旧报告 B 重读：豁免记录条目（证据 a1）应保持不变，实际 %+v", secOldB.Exposures)
+	}
+}
+
+// 复审跟进（PR #17 draft 复审意见，2027ddc 后）：成员采集被拒后完全没有
+// 返回角色边时，被授者身份无法确认；即使原授权匹配豁免，也须留下授权
+// 事实与豁免依据，记录“被授者授权已豁免、身份及可达性未确认”，不猜它
+// 是角色还是用户。
+func TestSensitiveUnknownGranteeExemptionRecord(t *testing.T) {
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	grant := privFact("a1", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	roleBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "RPT_ROLE", Kind: "privilege", Value: "SELECT ANY TABLE", Scope: "instance"}}}
+	base := []facts.Receipt{
+		{TemplateID: "ora.tab_privs", Status: "ok"},
+		{TemplateID: "ora.sys_privs", Status: "ok"},
+		{TemplateID: "ora.users", Status: "ok"},
+	}
+	cases := []struct {
+		name string
+		rcs  []facts.Receipt
+	}{
+		{"denied", append(append([]facts.Receipt{}, base...), facts.Receipt{TemplateID: "ora.role_privs", Status: "denied"})},
+		{"missing", base},
+		{"conflict", append(append([]facts.Receipt{}, base...),
+			facts.Receipt{TemplateID: "ora.role_privs", Status: "ok"},
+			facts.Receipt{TemplateID: "ora.role_privs", Status: "denied"})},
+	}
+	for _, c := range cases {
+		// 零边：无任何角色边事实、无用户事实。
+		sec := MatchSensitive(sensBundleReceipts("db-oracle", c.rcs, grant), lbl, roleBl)
+		s := findSnap(t, sec, "l1")
+		if s.Status != "no-broad-grant" {
+			t.Errorf("Oracle 未知被授者豁免 + 收据 %s：want no-broad-grant, got %s", c.name, s.Status)
+		}
+		var rec *SensitiveExposure
+		for i := range sec.Exposures {
+			if sec.Exposures[i].Subject == "RPT_ROLE" && sec.Exposures[i].Exempt {
+				rec = &sec.Exposures[i]
+			}
+		}
+		if rec == nil {
+			t.Fatalf("Oracle 未知被授者豁免 + 收据 %s：应有豁免记录条目", c.name)
+		}
+		if len(rec.Evidence) != 1 || rec.Evidence[0] != "a1" {
+			t.Errorf("Oracle 未知被授者豁免 + 收据 %s：证据应为事实 a1，得到 %v", c.name, rec.Evidence)
+		}
+		for _, want := range []string{"被授者授权已豁免、身份及可达性未确认", "不猜它是角色还是用户", "RPT_ROLE", "SELECT ANY TABLE", "instance"} {
+			if !strings.Contains(rec.Note, want) {
+				t.Errorf("Oracle 未知被授者豁免 + 收据 %s：备注应含 %q，得到 %q", c.name, want, rec.Note)
+			}
+		}
+		if strings.Contains(rec.Note, "角色整体豁免") {
+			t.Errorf("Oracle 未知被授者豁免 + 收据 %s：备注不应断言它是角色", c.name)
+		}
+		if n := countExposures(sec, "l1", false); n != 0 {
+			t.Errorf("Oracle 未知被授者豁免 + 收据 %s：不应有违规暴露，得到 %d", c.name, n)
+		}
+		// 非豁免对照：零边 + 无基线仍为未确认（疑似，不进确定暴露表）。
+		sec2 := MatchSensitive(sensBundleReceipts("db-oracle", c.rcs, grant), lbl, nil)
+		if s := findSnap(t, sec2, "l1"); s.Status != "unconfirmed" {
+			t.Errorf("Oracle 未知被授者无豁免 + 收据 %s：want unconfirmed, got %s", c.name, s.Status)
+		}
+		if n := countExposures(sec2, "l1", true); n != 0 {
+			t.Errorf("Oracle 未知被授者无豁免 + 收据 %s：确定暴露表应为空，得到 %d", c.name, n)
+		}
+	}
+	// MySQL 同型。
+	myLbl := []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"}}
+	myGrant := privFact("m1", "mysql.db_privs", "rpt_role", "hisdb.*", map[string]string{"privilege": "SELECT"})
+	myBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "rpt_role", Kind: "privilege", Value: "SELECT", Scope: "hisdb.*"}}}
+	myBase := []facts.Receipt{
+		{TemplateID: "mysql.user_privs", Status: "ok"},
+		{TemplateID: "mysql.global_grants", Status: "ok"},
+		{TemplateID: "mysql.db_privs", Status: "ok"},
+		{TemplateID: "mysql.accounts", Status: "ok"},
+	}
+	myCases := []struct {
+		name string
+		rcs  []facts.Receipt
+	}{
+		{"denied", append(append([]facts.Receipt{}, myBase...), facts.Receipt{TemplateID: "mysql.role_edges", Status: "denied"})},
+		{"missing", myBase},
+		{"conflict", append(append([]facts.Receipt{}, myBase...),
+			facts.Receipt{TemplateID: "mysql.role_edges", Status: "ok"},
+			facts.Receipt{TemplateID: "mysql.role_edges", Status: "denied"})},
+	}
+	for _, c := range myCases {
+		sec := MatchSensitive(sensBundleReceipts("db-mysql", c.rcs, myGrant), myLbl, myBl)
+		s := findSnap(t, sec, "l1")
+		if s.Status != "no-broad-grant" {
+			t.Errorf("MySQL 未知被授者豁免 + 收据 %s：want no-broad-grant, got %s", c.name, s.Status)
+		}
+		found := false
+		for _, e := range sec.Exposures {
+			if e.Subject == "rpt_role" && e.Exempt && len(e.Evidence) == 1 && e.Evidence[0] == "m1" &&
+				strings.Contains(e.Note, "被授者授权已豁免、身份及可达性未确认") &&
+				strings.Contains(e.Note, "不猜它是角色还是用户") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("MySQL 未知被授者豁免 + 收据 %s：应有豁免记录条目（证据 m1，备注含身份及可达性未确认）", c.name)
+		}
+	}
+}
+
+// 复审跟进：未证实原因的第二成因——收据正常、成员身份未知（边指向未登
+// 记主体）时，豁免记录备注须用涵盖表述，不得只写收据不可信。
+func TestSensitiveUnprovenUnknownIdentityRecord(t *testing.T) {
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	grant := privFact("a1", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	ghostEdge := roleEdgeFact("RPT_ROLE", "GHOST", facts.ActivationDefault)
+	roleBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "RPT_ROLE", Kind: "privilege", Value: "SELECT ANY TABLE", Scope: "instance"}}}
+	b := sensBundleReceipts("db-oracle",
+		[]facts.Receipt{
+			{TemplateID: "ora.tab_privs", Status: "ok"},
+			{TemplateID: "ora.sys_privs", Status: "ok"},
+			{TemplateID: "ora.role_privs", Status: "ok"},
+			{TemplateID: "ora.users", Status: "ok"},
+		}, grant, ghostEdge)
+	sec := MatchSensitive(b, lbl, roleBl)
+	if s := findSnap(t, sec, "l1"); s.Status != "no-broad-grant" {
+		t.Fatalf("Oracle 身份未知成因：want no-broad-grant, got %s", s.Status)
+	}
+	found := false
+	for _, e := range sec.Exposures {
+		if e.Subject == "RPT_ROLE" && e.Exempt && strings.Contains(e.Note, "成员身份未知") &&
+			strings.Contains(e.Note, "成员可达性未确认") {
+			found = true
+		}
+		if e.Subject == "GHOST" {
+			t.Errorf("Oracle 身份未知成因：不应把未登记主体 GHOST 当成确定用户条目")
+		}
+	}
+	if !found {
+		t.Errorf("Oracle 身份未知成因：应有豁免记录条目（备注含成员身份未知与成员可达性未确认）")
+	}
+	// MySQL 同型。
+	myLbl := []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"}}
+	myGrant := privFact("m1", "mysql.db_privs", "rpt_role", "hisdb.*", map[string]string{"privilege": "SELECT"})
+	myEdge := facts.Fact{Kind: facts.FactRoleEdge, Subject: "ghost@%", Status: facts.StatusObserved,
+		Source:         "mysql.role_edges",
+		PermissionPath: []string{"rpt_role", "ghost@%"}, Activation: facts.ActivationDefault}
+	myBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "rpt_role", Kind: "privilege", Value: "SELECT", Scope: "hisdb.*"}}}
+	myB := sensBundleReceipts("db-mysql",
+		[]facts.Receipt{
+			{TemplateID: "mysql.user_privs", Status: "ok"},
+			{TemplateID: "mysql.global_grants", Status: "ok"},
+			{TemplateID: "mysql.db_privs", Status: "ok"},
+			{TemplateID: "mysql.role_edges", Status: "ok"},
+			{TemplateID: "mysql.accounts", Status: "ok"},
+		}, myGrant, myEdge)
+	sec = MatchSensitive(myB, myLbl, myBl)
+	if s := findSnap(t, sec, "l1"); s.Status != "no-broad-grant" {
+		t.Fatalf("MySQL 身份未知成因：want no-broad-grant, got %s", s.Status)
+	}
+	found = false
+	for _, e := range sec.Exposures {
+		if e.Subject == "rpt_role" && e.Exempt && strings.Contains(e.Note, "成员身份未知") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("MySQL 身份未知成因：应有豁免记录条目（备注含成员身份未知）")
+	}
 }

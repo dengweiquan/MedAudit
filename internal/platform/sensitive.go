@@ -713,6 +713,14 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 						labelExposures[len(labelExposures)-1].Note = "被授者身份无法确认（角色边缺失/被拒且无可信用户清单），不能直接当成确定用户；不计入确定暴露。"
 						snap.Notes = append(snap.Notes, "被授者 "+f.Subject+" 身份无法确认（非确认角色、非确认用户），不计入确定暴露。")
 					}
+					if unknown && exempt(f.Subject, priv, f.Scope) {
+						// 被授者身份无法确认，但授权事实可信且匹配豁免：留豁免记录，
+						// 不猜它是角色还是用户；身份及可达性均未确认。授权事实 ID
+						// 在 Evidence 列，范围与依据在备注。可信度不改写：授权来源
+						// 不可信时条目仍为非确定，不进报告暴露表。
+						add("any", f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
+						labelExposures[len(labelExposures)-1].Note = "被授者授权已豁免、身份及可达性未确认：基线放行被授者 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "）；无角色边可确认身份，不猜它是角色还是用户，身份及可达性均未确认。"
+					}
 					if isRole && unproven && !exempt(f.Subject, priv, f.Scope) {
 						// 传递路径未证实（不可信边、未知身份成员）：只显角色授权，
 						// 不计确定暴露（实际用户可达性未确认）。
@@ -733,11 +741,11 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 						// 零成员且角色整体豁免：无可报告的用户成员，但结论由豁免
 						// 支撑，必须留痕——授权角色、权限、范围、事实 ID 与豁免依据，
 						// 不编造用户可达性。事实 ID 在 Evidence 列，范围与依据在备注。
-						// 成员来源不可信（denied/缺失/冲突）时同样留痕：备注明示
-						// “授权已豁免、成员可达性未确认”，不把未确认说成无成员。
+						// 成员可达性未证实（边来源不可信或成员身份未知）时同样留痕：
+						// 备注明示“授权已豁免、成员可达性未确认”，不把未确认说成无成员。
 						add("any", f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
 						if unproven {
-							labelExposures[len(labelExposures)-1].Note = "角色授权已豁免、成员可达性未确认：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；但成员来源不可信（denied/缺失/冲突），无法确认成员可达性，本条不编造用户成员。"
+							labelExposures[len(labelExposures)-1].Note = "角色授权已豁免、成员可达性未确认：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；但成员可达性未证实（边来源不可信或成员身份未知），无法确认成员可达性，本条不编造用户成员。"
 						} else {
 							labelExposures[len(labelExposures)-1].Note = "角色整体豁免：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；本授权无可报告的用户成员，不编造用户可达性。"
 						}
@@ -820,6 +828,14 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					labelExposures[len(labelExposures)-1].Note = "被授者身份无法确认（角色边缺失/被拒且无可信用户清单），不能直接当成确定用户；不计入确定暴露。"
 					snap.Notes = append(snap.Notes, "被授者 "+f.Subject+" 身份无法确认（非确认角色、非确认用户），不计入确定暴露。")
 				}
+				if unknown && exempt(f.Subject, priv, f.Scope) {
+					// 被授者身份无法确认，但授权事实可信且匹配豁免：留豁免记录，
+					// 不猜它是角色还是用户；身份及可达性均未确认。授权事实 ID
+					// 在 Evidence 列，范围与依据在备注。可信度不改写：授权来源
+					// 不可信时条目仍为非确定，不进报告暴露表。
+					add(kind, f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
+					labelExposures[len(labelExposures)-1].Note = "被授者授权已豁免、身份及可达性未确认：基线放行被授者 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "）；无角色边可确认身份，不猜它是角色还是用户，身份及可达性均未确认。"
+				}
 				if isRole && unproven && !exempt(f.Subject, priv, f.Scope) {
 					// 传递路径未证实（不可信边、未知身份成员）：只显角色授权，
 					// 不计确定暴露（实际用户可达性未确认）。
@@ -840,11 +856,11 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					// 零成员且角色整体豁免：无可报告的用户成员，但结论由豁免
 					// 支撑，必须留痕——授权角色、权限、范围、事实 ID 与豁免依据，
 					// 不编造用户可达性。事实 ID 在 Evidence 列，范围与依据在备注。
-					// 成员来源不可信（denied/缺失/冲突）时同样留痕：备注明示
-					// “授权已豁免、成员可达性未确认”，不把未确认说成无成员。
+					// 成员可达性未证实（边来源不可信或成员身份未知）时同样留痕：
+					// 备注明示“授权已豁免、成员可达性未确认”，不把未确认说成无成员。
 					add(kind, f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
 					if unproven {
-						labelExposures[len(labelExposures)-1].Note = "角色授权已豁免、成员可达性未确认：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；但成员来源不可信（denied/缺失/冲突），无法确认成员可达性，本条不编造用户成员。"
+						labelExposures[len(labelExposures)-1].Note = "角色授权已豁免、成员可达性未确认：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；但成员可达性未证实（边来源不可信或成员身份未知），无法确认成员可达性，本条不编造用户成员。"
 					} else {
 						labelExposures[len(labelExposures)-1].Note = "角色整体豁免：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；本授权无可报告的用户成员，不编造用户可达性。"
 					}
