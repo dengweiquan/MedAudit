@@ -729,12 +729,18 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 						labelExposures[len(labelExposures)-1].Note = "角色授权存在，但成员来源不完整（partial/denied/缺失），无法确认无可达用户；不计入确定暴露。"
 						snap.Notes = append(snap.Notes, "角色 "+f.Subject+" 的 "+priv+" 授权存在，但成员来源不完整，无法确认无可达用户（不判“未发现”）。")
 					}
-					if isRole && len(expUsers) == 0 && !unproven && exempt(f.Subject, priv, f.Scope) {
+					if isRole && len(expUsers) == 0 && exempt(f.Subject, priv, f.Scope) {
 						// 零成员且角色整体豁免：无可报告的用户成员，但结论由豁免
 						// 支撑，必须留痕——授权角色、权限、范围、事实 ID 与豁免依据，
 						// 不编造用户可达性。事实 ID 在 Evidence 列，范围与依据在备注。
+						// 成员来源不可信（denied/缺失/冲突）时同样留痕：备注明示
+						// “授权已豁免、成员可达性未确认”，不把未确认说成无成员。
 						add("any", f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
-						labelExposures[len(labelExposures)-1].Note = "角色整体豁免：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；本授权无可报告的用户成员，不编造用户可达性。"
+						if unproven {
+							labelExposures[len(labelExposures)-1].Note = "角色授权已豁免、成员可达性未确认：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；但成员来源不可信（denied/缺失/冲突），无法确认成员可达性，本条不编造用户成员。"
+						} else {
+							labelExposures[len(labelExposures)-1].Note = "角色整体豁免：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；本授权无可报告的用户成员，不编造用户可达性。"
+						}
 					}
 				}
 			}
@@ -830,12 +836,18 @@ func MatchSensitive(b *facts.FactBundle, labels []SensitiveLabel, baseline *rule
 					labelExposures[len(labelExposures)-1].Note = "角色授权存在，但成员来源不完整（partial/denied/缺失），无法确认无可达用户；不计入确定暴露。"
 					snap.Notes = append(snap.Notes, "角色 "+f.Subject+" 的 "+priv+" 授权存在，但成员来源不完整，无法确认无可达用户（不判“未发现”）。")
 				}
-				if isRole && len(expUsers) == 0 && !unproven && exempt(f.Subject, priv, f.Scope) {
+				if isRole && len(expUsers) == 0 && exempt(f.Subject, priv, f.Scope) {
 					// 零成员且角色整体豁免：无可报告的用户成员，但结论由豁免
 					// 支撑，必须留痕——授权角色、权限、范围、事实 ID 与豁免依据，
 					// 不编造用户可达性。事实 ID 在 Evidence 列，范围与依据在备注。
+					// 成员来源不可信（denied/缺失/冲突）时同样留痕：备注明示
+					// “授权已豁免、成员可达性未确认”，不把未确认说成无成员。
 					add(kind, f.Subject, priv, []string{f.FactID}, f.Scope, "", f.Source)
-					labelExposures[len(labelExposures)-1].Note = "角色整体豁免：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；本授权无可报告的用户成员，不编造用户可达性。"
+					if unproven {
+						labelExposures[len(labelExposures)-1].Note = "角色授权已豁免、成员可达性未确认：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；但成员来源不可信（denied/缺失/冲突），无法确认成员可达性，本条不编造用户成员。"
+					} else {
+						labelExposures[len(labelExposures)-1].Note = "角色整体豁免：基线放行授权角色 " + f.Subject + " 的 " + priv + "（范围 " + f.Scope + "），覆盖该角色下已知与未采集的成员；本授权无可报告的用户成员，不编造用户可达性。"
+					}
 				}
 			}
 		case facts.TargetDBSQLSrv:

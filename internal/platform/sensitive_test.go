@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -1340,9 +1341,11 @@ func TestSensitiveZeroMemberRoleExemptionRecord(t *testing.T) {
 	}
 }
 
-// 核心闭环事项 3：全流程验证——评估 → 添加豁免 → 生成报告 → 撤销豁免 →
-// 再评估，并核对旧报告快照原义不变；Word 渲染含事实 ID 与豁免备注。
-func TestSensitiveExemptionFullFlow(t *testing.T) {
+// 覆盖边界（如实标注）：本测试只覆盖 MatchSensitive 评估→加豁免→内存 JSON
+// 快照重解析→Word 渲染；持久化基线增删、GenerateReport 生成、旧报告重读
+// 见 TestSensitivePersistedBaselineAndReportReread；Web 组件渲染未覆盖，
+// 本测试不作为完整端到端验收。
+func TestSensitiveExemptionReportSectionFlow(t *testing.T) {
 	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
 	grant := privFact("a1", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
 	edge := roleEdgeFact("RPT_ROLE", "BOB", facts.ActivationDefault)
@@ -1388,7 +1391,7 @@ func TestSensitiveExemptionFullFlow(t *testing.T) {
 	if s := findSnap(t, secC, "l1"); s.Status != "exposed" {
 		t.Fatalf("流程撤销豁免：want exposed, got %s", s.Status)
 	}
-	// 核对旧报告：快照原义不变（仍为暴露、1 条违规条目）。
+	// 核对内存快照：重解析结论不变（非落库旧报告重读，见持久化测试）。
 	var old SensitiveSection
 	if err := json.Unmarshal(snapA, &old); err != nil {
 		t.Fatalf("旧快照解析失败：%v", err)
@@ -1452,4 +1455,214 @@ func docxText(t *testing.T, doc []byte) string {
 	}
 	t.Fatalf("docx 中未找到 word/document.xml")
 	return ""
+}
+
+// 复审跟进（PR #17 draft 复审意见 1）：角色授权事实可信、角色级豁免匹配，
+// 但成员关系收据为 denied、缺失或冲突时，结论 no-broad-grant 仍须输出原
+// 授权事实与豁免依据，备注明示“授权已豁免、成员可达性未确认”，不编造成员。
+func TestSensitiveRoleExemptionUnprovenMemberRecord(t *testing.T) {
+	lbl := []SensitiveLabel{{ID: "l1", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}}
+	grant := privFact("a1", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"})
+	edge := roleEdgeFact("RPT_ROLE", "BOB", facts.ActivationDefault)
+	bob := accountFact("u1", "ora.users", "BOB")
+	roleBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "RPT_ROLE", Kind: "privilege", Value: "SELECT ANY TABLE", Scope: "instance"}}}
+	base := []facts.Receipt{
+		{TemplateID: "ora.tab_privs", Status: "ok"},
+		{TemplateID: "ora.sys_privs", Status: "ok"},
+		{TemplateID: "ora.users", Status: "ok"},
+	}
+	cases := []struct {
+		name string
+		rcs  []facts.Receipt
+	}{
+		{"denied", append(append([]facts.Receipt{}, base...), facts.Receipt{TemplateID: "ora.role_privs", Status: "denied"})},
+		{"missing", base},
+		{"conflict", append(append([]facts.Receipt{}, base...),
+			facts.Receipt{TemplateID: "ora.role_privs", Status: "ok"},
+			facts.Receipt{TemplateID: "ora.role_privs", Status: "denied"})},
+	}
+	for _, c := range cases {
+		sec := MatchSensitive(sensBundleReceipts("db-oracle", c.rcs, grant, edge, bob), lbl, roleBl)
+		s := findSnap(t, sec, "l1")
+		if s.Status != "no-broad-grant" {
+			t.Errorf("Oracle 角色豁免 + 成员来源 %s：want no-broad-grant, got %s", c.name, s.Status)
+		}
+		var rec *SensitiveExposure
+		for i := range sec.Exposures {
+			if sec.Exposures[i].Subject == "RPT_ROLE" && sec.Exposures[i].Exempt {
+				rec = &sec.Exposures[i]
+			}
+			if sec.Exposures[i].Subject == "BOB" {
+				t.Errorf("Oracle 角色豁免 + 成员来源 %s：不应编造用户 BOB 的条目", c.name)
+			}
+		}
+		if rec == nil {
+			t.Fatalf("Oracle 角色豁免 + 成员来源 %s：应有角色豁免记录条目", c.name)
+		}
+		if len(rec.Evidence) != 1 || rec.Evidence[0] != "a1" {
+			t.Errorf("Oracle 角色豁免 + 成员来源 %s：证据应为事实 a1，得到 %v", c.name, rec.Evidence)
+		}
+		for _, want := range []string{"成员可达性未确认", "RPT_ROLE", "SELECT ANY TABLE", "instance", "不编造"} {
+			if !strings.Contains(rec.Note, want) {
+				t.Errorf("Oracle 角色豁免 + 成员来源 %s：备注应含 %q，得到 %q", c.name, want, rec.Note)
+			}
+		}
+		if n := countExposures(sec, "l1", false); n != 0 {
+			t.Errorf("Oracle 角色豁免 + 成员来源 %s：不应有违规暴露，得到 %d", c.name, n)
+		}
+	}
+	// MySQL 同型。
+	myLbl := []SensitiveLabel{{ID: "l1", Database: "hisdb", Schema: "", Table: "patients", Category: "患者身份"}}
+	myGrant := privFact("m1", "mysql.db_privs", "rpt_role", "hisdb.*", map[string]string{"privilege": "SELECT"})
+	myEdge := facts.Fact{Kind: facts.FactRoleEdge, Subject: "app@%", Status: facts.StatusObserved,
+		Source:         "mysql.role_edges",
+		PermissionPath: []string{"rpt_role", "app@%"}, Activation: facts.ActivationDefault}
+	myAcct := accountFact("u1", "mysql.accounts", "app@%")
+	myBl := &rules.Baseline{Allows: []rules.BaselineAllow{{Subject: "rpt_role", Kind: "privilege", Value: "SELECT", Scope: "hisdb.*"}}}
+	myBase := []facts.Receipt{
+		{TemplateID: "mysql.user_privs", Status: "ok"},
+		{TemplateID: "mysql.global_grants", Status: "ok"},
+		{TemplateID: "mysql.db_privs", Status: "ok"},
+		{TemplateID: "mysql.accounts", Status: "ok"},
+	}
+	myCases := []struct {
+		name string
+		rcs  []facts.Receipt
+	}{
+		{"denied", append(append([]facts.Receipt{}, myBase...), facts.Receipt{TemplateID: "mysql.role_edges", Status: "denied"})},
+		{"missing", myBase},
+		{"conflict", append(append([]facts.Receipt{}, myBase...),
+			facts.Receipt{TemplateID: "mysql.role_edges", Status: "ok"},
+			facts.Receipt{TemplateID: "mysql.role_edges", Status: "denied"})},
+	}
+	for _, c := range myCases {
+		sec := MatchSensitive(sensBundleReceipts("db-mysql", c.rcs, myGrant, myEdge, myAcct), myLbl, myBl)
+		s := findSnap(t, sec, "l1")
+		if s.Status != "no-broad-grant" {
+			t.Errorf("MySQL 角色豁免 + 成员来源 %s：want no-broad-grant, got %s", c.name, s.Status)
+		}
+		found := false
+		for _, e := range sec.Exposures {
+			if e.Subject == "rpt_role" && e.Exempt && len(e.Evidence) == 1 && e.Evidence[0] == "m1" &&
+				strings.Contains(e.Note, "成员可达性未确认") {
+				found = true
+			}
+			if e.Subject == "app@%" {
+				t.Errorf("MySQL 角色豁免 + 成员来源 %s：不应编造用户 app@%% 的条目", c.name)
+			}
+		}
+		if !found {
+			t.Errorf("MySQL 角色豁免 + 成员来源 %s：应有角色豁免记录条目（证据 m1，备注含成员可达性未确认）", c.name)
+		}
+	}
+}
+
+// 复审跟进（PR #17 draft 复审意见 2）：持久化层面的豁免闭环——基线增删、
+// GenerateReport 生成、旧报告重读均走真实落库行；Web 组件渲染仍未覆盖，
+// 本测试不作为完整端到端验收。
+func TestSensitivePersistedBaselineAndReportReread(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "sens.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := CreateHospital(db, "h-test", "测试医院"); err != nil {
+		t.Fatal(err)
+	}
+	if err := CreateAsset(db, Asset{ID: "a-ora", HospitalID: "h-test", Kind: "db-oracle", Name: "测试 Oracle"}); err != nil {
+		t.Fatal(err)
+	}
+	// 成员来源 denied 的包：授权事实可信，边不可信。
+	b := sensBundleReceipts("db-oracle",
+		[]facts.Receipt{
+			{TemplateID: "ora.tab_privs", Status: "ok"},
+			{TemplateID: "ora.sys_privs", Status: "ok"},
+			{TemplateID: "ora.role_privs", Status: "denied"},
+			{TemplateID: "ora.users", Status: "ok"},
+		},
+		privFact("a1", "ora.sys_privs", "RPT_ROLE", "instance", map[string]string{"privilege": "SELECT ANY TABLE"}),
+		roleEdgeFact("RPT_ROLE", "BOB", facts.ActivationDefault),
+		accountFact("u1", "ora.users", "BOB"))
+	if _, err := db.Exec(`INSERT INTO collection_plans (id, hospital_id, name, profile, spec, created_by)
+		VALUES ('p1', 'h-test', 'P1', 'prof', '{}', 'web')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO fact_bundles (id, plan_id, hospital_id, asset_id, schema_version, adapter, execution, bundle, imported_at)
+		VALUES ('bundle-1', 'p1', 'h-test', 'a-ora', '1', 'db-oracle', 'COMPLETE', ?, '2026-11-04 10:00:00')`, string(mustJSON(t, b))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := UpsertSensitiveLabel(db, "db-oracle", "admin", SensitiveLabel{
+		Hospital: "h-test", Asset: "a-ora", Schema: "HIS", Table: "PATIENTS", Category: "患者身份"}); err != nil {
+		t.Fatal(err)
+	}
+	sensitiveOf := func(reportID string) *SensitiveSection {
+		t.Helper()
+		snap, err := GetReportSnapshot(db, reportID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var parsed struct {
+			Sensitive *SensitiveSection `json:"sensitive"`
+		}
+		if err := json.Unmarshal([]byte(snap), &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Sensitive == nil {
+			t.Fatalf("报告 %s 应含敏感对象节", reportID)
+		}
+		return parsed.Sensitive
+	}
+	// 无基线：成员可达性未确认（非暴露、非“未发现”）。
+	repA, err := GenerateReport(db, "h-test", "p1", "bundle-1", "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secA := sensitiveOf(repA)
+	// 标签 ID 由落库生成，按唯一标签行断言。
+	if len(secA.Labels) != 1 || secA.Labels[0].Status != "unconfirmed" {
+		t.Fatalf("无基线报告：标签应为 unconfirmed，实际 %+v", secA.Labels)
+	}
+	// 持久化基线新增 → 再生成报告：角色豁免记录出现，结论 no-broad-grant。
+	if err := CreateBaseline(db, "bl-1", "h-test", "db-oracle",
+		[]rules.BaselineAllow{{Subject: "RPT_ROLE", Kind: "privilege", Value: "SELECT ANY TABLE", Scope: "instance"}}, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	repB, err := GenerateReport(db, "h-test", "p1", "bundle-1", "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secB := sensitiveOf(repB)
+	if len(secB.Labels) != 1 || secB.Labels[0].Status != "no-broad-grant" {
+		t.Fatalf("加基线报告：标签应为 no-broad-grant，实际 %+v", secB.Labels)
+	}
+	found := false
+	for _, e := range secB.Exposures {
+		if e.Subject == "RPT_ROLE" && e.Exempt && len(e.Evidence) == 1 && e.Evidence[0] == "a1" &&
+			strings.Contains(e.Note, "成员可达性未确认") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("加基线报告：应有角色豁免记录条目（证据 a1，备注含成员可达性未确认），实际 %+v", secB.Exposures)
+	}
+	// 持久化基线删除 → 再生成报告：恢复未确认。
+	if err := DeleteBaseline(db, "bl-1"); err != nil {
+		t.Fatal(err)
+	}
+	repC, err := GenerateReport(db, "h-test", "p1", "bundle-1", "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secC := sensitiveOf(repC)
+	if len(secC.Labels) != 1 || secC.Labels[0].Status != "unconfirmed" {
+		t.Fatalf("删基线报告：标签应恢复 unconfirmed，实际 %+v", secC.Labels)
+	}
+	// 旧报告重读：报告 A 快照不被 B、C 污染。
+	secOld := sensitiveOf(repA)
+	if len(secOld.Labels) != 1 || secOld.Labels[0].Status != "unconfirmed" {
+		t.Fatalf("旧报告 A 重读：标签应仍为 unconfirmed，实际 %+v", secOld.Labels)
+	}
 }
